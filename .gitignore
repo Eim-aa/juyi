@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+venv/
+.venv/
+
+# Argos model packages — fetched at install time via argospm
+packages/
+
+# Local symlink to ~/Library/Logs
+logs
+
+# macOS
+.DS_Store

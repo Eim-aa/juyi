@@ -1,0 +1,20 @@
+Hello, world.
+The quick brown fox jumps over the lazy dog.
+This app translates selected text without sending it to the cloud.
+Latency matters more than decorative user interface effects.
+Please keep the original clipboard exactly as it was.
+The service should restart automatically after a crash.
+Machine translation can be useful even when it is imperfect.
+Short phrases should appear almost instantly.
+Long paragraphs should be split into sentences before translation.
+The model is loaded once and reused for every request.
+Privacy is a product feature, not a marketing slogan.
+The launch agent runs without sudo or system-wide daemons.
+If the input is mostly Chinese, return it unchanged.
+Numbers and punctuation should not be translated.
+The floating window should stay inside the current screen.
+The cache stores hashes instead of long source strings.
+Structured logs make failures easier to diagnose.
+Offline software should never call cloud translation APIs.
+The user can press the hotkey again without waiting.
+Good engineering starts with observable failure modes.
