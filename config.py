@@ -40,3 +40,32 @@ LOG_BACKUP_COUNT = 3
 # argostranslate reads this env var to locate installed model packages.
 # We set it eagerly so any import of argostranslate.* picks it up.
 os.environ.setdefault("ARGOS_PACKAGES_DIR", str(PACKAGES_DIR))
+
+
+# ---- Engine selection + Volcengine credentials ----
+# Creds live in a local, gitignored file. The committed repo ships no creds, so
+# ENGINE defaults to the fully-offline "argos". A local volc.env with valid keys
+# and ENGINE=volc switches this machine to the Volcengine cloud engine.
+def _load_env_file(path: Path) -> dict:
+    out: dict[str, str] = {}
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            out[k.strip()] = v.strip()
+    except OSError:
+        pass
+    return out
+
+
+_VOLC_ENV_FILE = Path.home() / ".config" / "argos-translator" / "volc.env"
+_volc_cfg = _load_env_file(_VOLC_ENV_FILE)
+VOLC_ACCESS_KEY = _volc_cfg.get("VOLC_ACCESS_KEY", "")
+VOLC_SECRET_KEY = _volc_cfg.get("VOLC_SECRET_KEY", "")
+
+# "argos" (offline, default) or "volc" (Volcengine cloud).
+ENGINE = _volc_cfg.get("ENGINE", "argos")
+if ENGINE == "volc" and not (VOLC_ACCESS_KEY and VOLC_SECRET_KEY):
+    ENGINE = "argos"
