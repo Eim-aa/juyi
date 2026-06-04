@@ -1,5 +1,5 @@
 -- argos-translator.lua
--- ⌥+T to translate the current selection via the local argos-translator service.
+-- Double-tap ⌥ (Option) to translate the current selection via the local argos-translator service.
 --
 -- Capture path (primary): hs.uielement.focusedElement():selectedText() — works
 -- in AX-aware apps (Safari, Pages, Notes, Mail, native Cocoa text views).
@@ -13,8 +13,9 @@
 local M = {}
 
 local URL = "http://127.0.0.1:54321"
-local HOTKEY_MODS = { "alt" }
-local HOTKEY_KEY = "t"
+-- Trigger: double-tap the Option (⌥) key — two clean taps within the window.
+local DOUBLE_TAP_WINDOW_S = 0.35 -- max gap between the two taps
+local TAP_MAX_HOLD_S = 0.35      -- each tap must be a quick press→release
 local FONT_NAME = ".AppleSystemUIFont"
 local FONT_SIZE = 14
 local MAX_WIDTH = 460
@@ -25,7 +26,11 @@ local CLIPBOARD_KEY_DELAY_US = 100 * 1000
 
 local activeCanvas = nil
 local activeWatcher = nil
-local hotkey = nil
+local tapWatcher = nil
+local optDown = false
+local optPressTime = 0
+local lastTapTime = 0
+local sawOtherKey = false
 
 local function appendLog(fields)
     fields.ts = os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -343,15 +348,63 @@ local function onHotkey()
     callTranslate(text, src)
 end
 
+-- ---------- double-tap Option detection ---------- --
+
+local function flagsOnlyOption(flags)
+    return flags.alt and not flags.cmd and not flags.ctrl and not flags.shift and not flags.fn
+end
+
+local function flagsCleared(flags)
+    return not flags.alt and not flags.cmd and not flags.ctrl and not flags.shift and not flags.fn
+end
+
+local function onFlagsOrKey(event)
+    if event:getType() == hs.eventtap.event.types.keyDown then
+        -- A real key was pressed; if Option is held this isn't a lone tap.
+        if optDown then sawOtherKey = true end
+        return false
+    end
+
+    -- flagsChanged
+    local flags = event:getFlags()
+    local now = hs.timer.secondsSinceEpoch()
+
+    if flagsOnlyOption(flags) and not optDown then
+        optDown = true
+        optPressTime = now
+        sawOtherKey = false
+    elseif flagsCleared(flags) and optDown then
+        optDown = false
+        local clean = (not sawOtherKey) and (now - optPressTime) <= TAP_MAX_HOLD_S
+        if clean and (now - lastTapTime) <= DOUBLE_TAP_WINDOW_S then
+            lastTapTime = 0
+            onHotkey()
+        elseif clean then
+            lastTapTime = now
+        else
+            lastTapTime = 0
+        end
+    elseif optDown then
+        -- Option still down but another modifier changed → not a lone tap.
+        sawOtherKey = true
+    end
+
+    return false
+end
+
 function M.start()
-    if hotkey then hotkey:delete() end
-    hotkey = hs.hotkey.bind(HOTKEY_MODS, HOTKEY_KEY, onHotkey)
+    if tapWatcher then tapWatcher:stop() end
+    tapWatcher = hs.eventtap.new(
+        { hs.eventtap.event.types.flagsChanged, hs.eventtap.event.types.keyDown },
+        onFlagsOrKey
+    )
+    tapWatcher:start()
 end
 
 function M.stop()
-    if hotkey then
-        hotkey:delete()
-        hotkey = nil
+    if tapWatcher then
+        tapWatcher:stop()
+        tapWatcher = nil
     end
     dismiss()
 end
