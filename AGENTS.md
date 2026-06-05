@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Instructions for an AI coding agent (Claude Code, OpenHands, Codex, etc.) asked
-to install or deploy **argos-translator** on the user's behalf.
+to install or deploy **juyi** (句译) on the user's behalf.
 
 This is a macOS-only, English→Chinese, selection-translation tool: select English
 text in any app, double-tap the Option key, a popup shows the Chinese. It runs a
@@ -23,7 +23,7 @@ Run the one-line bootstrap (clones to `~/.local/share/argos-translator` and runs
 the installer):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Eim-aa/argos-translator/main/scripts/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Eim-aa/juyi/main/scripts/bootstrap.sh | bash
 ```
 
 The installer creates a venv, installs `requirements.txt`, downloads the

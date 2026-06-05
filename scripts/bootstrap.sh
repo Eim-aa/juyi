@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-line installer entry point. Pipe to bash:
-#   curl -fsSL https://raw.githubusercontent.com/Eim-aa/argos-translator/main/scripts/bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Eim-aa/juyi/main/scripts/bootstrap.sh | bash
 #
 # Honors env overrides:
 #   REPO_URL  override the git remote (e.g. fork URL)
@@ -8,7 +8,7 @@
 #   BRANCH    override the branch (default: main)
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/Eim-aa/argos-translator.git}"
+REPO_URL="${REPO_URL:-https://github.com/Eim-aa/juyi.git}"
 DEST="${DEST:-$HOME/.local/share/argos-translator}"
 BRANCH="${BRANCH:-main}"
 

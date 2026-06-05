@@ -1,4 +1,4 @@
-# argos-translator
+# juyi 句译
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)
@@ -20,7 +20,7 @@ Most macOS selection translators either need an API key (OpenAI, DeepL) or round
 - **Pluggable architecture** — the engine sits behind a single function, so adding another (DeepL, Google, Qwen, …) is just one more small function; the pipeline (hotkey, cache, popup) is untouched.
 - **Double-tap Option to trigger** — select English, tap ⌥ twice, the translation pops up next to the cursor.
 
-|                          | argos-translator (this)        | [pot-desktop](https://github.com/pot-app/pot-desktop) | [openai-translator](https://github.com/openai-translator/openai-translator) | macOS Translate |
+|                          | juyi 句译 (this)               | [pot-desktop](https://github.com/pot-app/pot-desktop) | [openai-translator](https://github.com/openai-translator/openai-translator) | macOS Translate |
 | ------------------------ | ------------------------------ | ----------------------------------------------------- | --------------------------------------------------------------------------- | --------------- |
 | 100% offline             | ✓ default (optional cloud)     | partial                                               | ✗ (needs API key)                                                           | ✓               |
 | System-wide hotkey       | ✓ (double-tap Option)          | ✓                                                     | ✓                                                                           | ✗               |
@@ -40,7 +40,7 @@ and it can run **almost the entire** install for you — you barely have to do
 anything. Just send your agent:
 
 ```
-Please install argos-translator following the AGENTS.md at https://github.com/Eim-aa/argos-translator
+Please install juyi following the AGENTS.md at https://github.com/Eim-aa/juyi
 ```
 
 The agent clones the repo, installs dependencies, downloads the offline model,
@@ -66,13 +66,13 @@ Only **two things can't be automated** and need you:
 One-line install (clones to `~/.local/share/argos-translator` and runs the installer):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Eim-aa/argos-translator/main/scripts/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Eim-aa/juyi/main/scripts/bootstrap.sh | bash
 ```
 
 Or clone and run manually:
 
 ```bash
-git clone https://github.com/Eim-aa/argos-translator.git ~/.local/share/argos-translator
+git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
 ~/.local/share/argos-translator/scripts/install.sh
 ```
 
