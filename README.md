@@ -112,7 +112,13 @@ git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
    launchctl kickstart -k gui/$(id -u)/io.github.Eim-aa.argos-translator
    ```
 
-火山引擎用 AK/SK V4 签名（实现见 [`volc_engine.py`](volc_engine.py)，纯标准库），翻译质量更高、尤其擅长长难句与专业术语。此模式下选中文本会经 HTTPS 发往火山 API（见"隐私"）。想切回离线：把 `ENGINE` 改回 `argos`（或删掉 `volc.env`）再重启。
+火山引擎用 AK/SK V4 签名（实现见 [`volc_engine.py`](volc_engine.py)，纯标准库），翻译质量更高、尤其擅长长难句与专业术语。此模式下选中文本会经 HTTPS 发往火山 API（见"隐私"）。
+
+### 运行时一键切换（菜单栏，无需重启）
+
+装好后菜单栏会出现 **「句译 · 本地 / 句译 · 云端」**。点它即可在**本地离线 ⇄ 火山云端**之间实时切换，当前模式带勾显示、选择会被记住；切到本地时会在后台预热离线模型，第一句不至于卡。此后 `volc.env` 里的 `ENGINE` 只决定**开机默认**引擎。
+
+每条译文下方都会用小字标注**来源**，例如 `来自 火山云端 · 589 ms` 或 `来自 本地离线 · 75 ms`，一眼就知道这条结果是谁翻的。
 
 **新增其他引擎**：引擎被隔离在 `translator.py` 的一个 `_translate_*` 函数后。照着 `volc_engine.py` 再写一个（如 DeepL、谷歌、Qwen），在 `config.ENGINE` 加个分支即可——热键、缓存、浮窗、HTTP 这些管道完全不用动。
 

@@ -127,7 +127,13 @@ The engine is chosen by `ENGINE` in `config.py`, **defaulting to `argos` (offlin
    launchctl kickstart -k gui/$(id -u)/io.github.Eim-aa.argos-translator
    ```
 
-Volcengine uses AK/SK V4 request signing (implemented in [`volc_engine.py`](volc_engine.py), stdlib only) and gives higher quality, especially on long sentences and domain jargon. In this mode the selected text is sent over HTTPS to the Volcengine API (see "Privacy"). To go back offline, set `ENGINE` to `argos` (or delete `volc.env`) and restart.
+Volcengine uses AK/SK V4 request signing (implemented in [`volc_engine.py`](volc_engine.py), stdlib only) and gives higher quality, especially on long sentences and domain jargon. In this mode the selected text is sent over HTTPS to the Volcengine API (see "Privacy").
+
+### Switch engines at runtime (menu bar, no restart)
+
+After install, a **`句译 · 本地 / 句译 · 云端`** item appears in the menu bar. Click it to switch **offline ⇄ Volcengine cloud** live — the active mode is checkmarked, the choice is remembered, and switching to local warms the offline model in the background so the first translation isn't slow. The `ENGINE` in `volc.env` now only sets the **startup default**.
+
+Every translation's subtitle shows its **source**, e.g. `来自 火山云端 · 589 ms` or `来自 本地离线 · 75 ms`, so you always know which engine produced the result.
 
 **Adding another engine:** the engine lives behind one `_translate_*` function in `translator.py`. Copy the shape of `volc_engine.py` (e.g. for DeepL, Google, Qwen) and add a branch on `config.ENGINE` — the hotkey, cache, popup, and HTTP plumbing stay untouched.
 

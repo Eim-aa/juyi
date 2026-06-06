@@ -67,6 +67,7 @@ class Result:
     cached: bool = False
     truncated: bool = False
     skipped: bool = False
+    engine: str = ""
     warnings: list[str] = field(default_factory=list)
     error: Optional[str] = None
 
@@ -98,17 +99,28 @@ class Translator:
 
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
+        self._offline_load_lock = asyncio.Lock()
         self._latencies: deque[int] = deque(maxlen=config.LATENCY_RING_SIZE)
         self._started_at = time.time()
         self._count = 0
         self._sbd_pipeline = None
+        self._offline_loaded = False
         self.warmup_ms = 0
 
         if config.ENGINE == "volc":
-            # Cloud engine: no local model or sentence splitter to load.
+            # Cloud engine is the startup default: skip loading the local model
+            # and sentence splitter. They load lazily if the client later asks
+            # for the offline engine at runtime (see _ensure_offline_loaded).
             log.info("engine_selected", extra={"engine": "volc"})
             return
 
+        # Offline is the startup default: load eagerly so the first request is hot.
+        self._load_offline()
+
+    def _load_offline(self) -> None:
+        """Load the Stanza splitter and warm the Argos model. Blocking; idempotent."""
+        if self._offline_loaded:
+            return
         self._sbd_pipeline = stanza.Pipeline(
             lang=config.SRC_LANG,
             dir=str(config.PACKAGES_DIR / "translate-en_zh-1_9" / "stanza"),
@@ -117,14 +129,24 @@ class Translator:
             logging_level="WARNING",
             download_method=_spc.DownloadMethod.REUSE_RESOURCES,
         )
-
         t0 = time.perf_counter()
         AT.translate("warmup", config.SRC_LANG, config.TGT_LANG)
         self.warmup_ms = int((time.perf_counter() - t0) * 1000)
+        self._offline_loaded = True
         log.info(
             "model_warmup_done",
             extra={"warmup_ms": self.warmup_ms, "engine": "argos"},
         )
+
+    async def _ensure_offline_loaded(self) -> None:
+        """Lazily load the offline model the first time the client asks for it."""
+        if self._offline_loaded:
+            return
+        async with self._offline_load_lock:
+            if self._offline_loaded:
+                return
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self._load_offline)
 
     async def _infer(self, text: str) -> str:
         loop = asyncio.get_running_loop()
@@ -138,9 +160,17 @@ class Translator:
         doc = self._sbd_pipeline(text)
         return [sent.text.strip() for sent in doc.sentences if sent.text.strip()]
 
-    async def translate(self, text: str) -> Result:
+    async def translate(self, text: str, engine: Optional[str] = None) -> Result:
         t0 = time.perf_counter()
         r = Result()
+
+        # Resolve the engine for THIS request. The client may override the
+        # process default per call; fall back to offline if cloud has no keys.
+        eng = engine or config.ENGINE
+        if eng == "volc" and not (config.VOLC_ACCESS_KEY and config.VOLC_SECRET_KEY):
+            eng = "argos"
+            r.warnings.append("volc_unavailable_fallback_argos")
+        r.engine = eng
 
         if text is None:
             text = ""
@@ -173,7 +203,7 @@ class Translator:
         long_input = words > config.LONG_INPUT_WORDS or chars > config.LONG_INPUT_CHARS
 
         # ---- Cloud engine: one signed API call, no sentence splitting ----
-        if config.ENGINE == "volc":
+        if eng == "volc":
             info_before = _translate_cached_volc.cache_info()
             try:
                 r.result = await self._infer_volc(text)
@@ -192,6 +222,7 @@ class Translator:
             return r
 
         # ---- Offline engine: sentence-split long inputs, per-sentence cache ----
+        await self._ensure_offline_loaded()
         info_before = _translate_cached.cache_info()
         async with self._lock:
             if long_input:
@@ -226,15 +257,16 @@ class Translator:
         return r
 
     def stats(self) -> dict:
-        cache = _translate_cached_volc if config.ENGINE == "volc" else _translate_cached
-        info = cache.cache_info()
+        # Both engines may be used at runtime; report combined cache counters.
+        a = _translate_cached.cache_info()
+        v = _translate_cached_volc.cache_info()
         s = sorted(self._latencies)
         n = len(s)
         return {
             "translations_total": self._count,
-            "cache_hits": info.hits,
-            "cache_misses": info.misses,
-            "cache_size": info.currsize,
+            "cache_hits": a.hits + v.hits,
+            "cache_misses": a.misses + v.misses,
+            "cache_size": a.currsize + v.currsize,
             "uptime_s": round(time.time() - self._started_at, 1),
             "warmup_ms": self.warmup_ms,
             "p50_ms": s[n // 2] if n else 0,

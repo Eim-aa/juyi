@@ -32,6 +32,15 @@ local optPressTime = 0
 local lastTapTime = 0
 local sawOtherKey = false
 
+-- Engine selection: switched live via the menu bar, sent with each request.
+local ENGINE_STATE_PATH = os.getenv("HOME") .. "/.config/argos-translator/hs-engine"
+local ENGINE_SHORT = { argos = "本地", volc = "云端" }
+local ENGINE_SOURCE = { argos = "本地离线", volc = "火山云端" }
+local currentEngine = "volc"
+local volcAvailable = true
+local menubar = nil
+local setEngine, rebuildMenu -- forward declarations (assigned below)
+
 local function appendLog(fields)
     fields.ts = os.date("!%Y-%m-%dT%H:%M:%SZ")
     local ok, line = pcall(hs.json.encode, fields)
@@ -249,7 +258,7 @@ local function callTranslate(text, source)
     show(mp.x, mp.y, "翻译中…", nil)
     appendLog({ event = "trigger", app = appName, source = source or "unknown", input_len = #text })
 
-    local body = hs.json.encode({ text = text })
+    local body = hs.json.encode({ text = text, engine = currentEngine })
 
     local t08, t15, t30
     t08 = hs.timer.doAfter(0.8, function()
@@ -296,6 +305,7 @@ local function callTranslate(text, source)
                 app = appName,
                 source = source or "unknown",
                 status = status,
+                engine = parsed.engine or "",
                 elapsed_ms = parsed.elapsed_ms or 0,
                 cached = parsed.cached or false,
                 error = parsed.error or "",
@@ -309,13 +319,102 @@ local function callTranslate(text, source)
                 return
             end
             local result = parsed.result or "(空结果)"
-            local subParts = { string.format("%d ms", parsed.elapsed_ms or 0) }
+            local engUsed = parsed.engine or currentEngine
+            local subParts = {
+                "来自 " .. (ENGINE_SOURCE[engUsed] or engUsed),
+                string.format("%d ms", parsed.elapsed_ms or 0),
+            }
             if parsed.cached then table.insert(subParts, "cached") end
             if parsed.truncated then table.insert(subParts, "已截断") end
             if parsed.skipped then table.insert(subParts, "未翻译") end
             update(result, table.concat(subParts, " · "))
         end
     )
+end
+
+-- ---------- engine selection (menu bar) ---------- --
+
+local function readPersistedEngine()
+    local f = io.open(ENGINE_STATE_PATH, "r")
+    if not f then return nil end
+    local s = f:read("*l")
+    f:close()
+    if s then s = s:gsub("%s+", "") end
+    if s == "argos" or s == "volc" then return s end
+    return nil
+end
+
+local function persistEngine(eng)
+    local f = io.open(ENGINE_STATE_PATH, "w")
+    if f then
+        f:write(eng .. "\n")
+        f:close()
+    end
+end
+
+rebuildMenu = function()
+    if not menubar then return end
+    menubar:setTitle("句译·" .. (ENGINE_SHORT[currentEngine] or "?"))
+    menubar:setMenu({
+        { title = "翻译引擎", disabled = true },
+        {
+            title = "本地（离线 · 隐私）",
+            checked = (currentEngine == "argos"),
+            fn = function() setEngine("argos") end,
+        },
+        {
+            title = "云端（火山 · 更准）",
+            checked = (currentEngine == "volc"),
+            disabled = (not volcAvailable),
+            fn = function() setEngine("volc") end,
+        },
+        { title = "-" },
+        { title = "译文下方会标注「来自 …」", disabled = true },
+    })
+end
+
+setEngine = function(eng)
+    if eng == "volc" and not volcAvailable then
+        hs.alert.show("云端不可用：未配置火山 API Key", 1.5)
+        return
+    end
+    currentEngine = eng
+    persistEngine(eng)
+    rebuildMenu()
+    if eng == "argos" then
+        hs.alert.show("已切到 本地离线（首次会加载模型…）", 1.5)
+        -- Warm the offline model in the background so the first real
+        -- translation after switching isn't slow.
+        hs.http.asyncPost(
+            URL .. "/translate",
+            hs.json.encode({ text = "warmup", engine = "argos" }),
+            { ["Content-Type"] = "application/json" },
+            function() end
+        )
+    else
+        hs.alert.show("已切到 火山云端", 1.0)
+    end
+    appendLog({ event = "engine_switch", engine = eng })
+end
+
+local function initEngineState()
+    local persisted = readPersistedEngine()
+    hs.http.asyncGet(URL .. "/health", function(code, bodyStr, _)
+        if code == 200 then
+            local ok, h = pcall(hs.json.decode, bodyStr or "")
+            if ok and type(h) == "table" then
+                if h.engines ~= nil and h.engines.volc ~= nil then
+                    volcAvailable = h.engines.volc and true or false
+                end
+                if not persisted and h.default_engine then
+                    currentEngine = h.default_engine
+                end
+            end
+        end
+        if persisted then currentEngine = persisted end
+        if currentEngine == "volc" and not volcAvailable then currentEngine = "argos" end
+        rebuildMenu()
+    end)
 end
 
 -- ---------- hotkey entry ---------- --
@@ -399,12 +498,25 @@ function M.start()
         onFlagsOrKey
     )
     tapWatcher:start()
+
+    -- Menu-bar engine switch (本地 ⇄ 云端).
+    if menubar then menubar:delete() end
+    menubar = hs.menubar.new()
+    if menubar then
+        menubar:setTitle("句译…")
+        rebuildMenu()
+        initEngineState()
+    end
 end
 
 function M.stop()
     if tapWatcher then
         tapWatcher:stop()
         tapWatcher = nil
+    end
+    if menubar then
+        menubar:delete()
+        menubar = nil
     end
     dismiss()
 end

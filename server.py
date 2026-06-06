@@ -106,18 +106,20 @@ app = FastAPI(lifespan=lifespan)
 
 class TranslateRequest(BaseModel):
     text: Optional[str] = ""
+    engine: Optional[str] = None
 
 
 @app.post("/translate")
 async def translate(req: TranslateRequest):
     rid = uuid.uuid4().hex[:8]
     t = Translator.get_instance()
-    result = await t.translate(req.text or "")
+    result = await t.translate(req.text or "", engine=req.engine)
     log.info(
         "translate_done",
         extra={
             "request_id": rid,
             "input_len": len(req.text or ""),
+            "engine": result.engine,
             "latency_ms": result.elapsed_ms,
             "cached": result.cached,
             "truncated": result.truncated,
@@ -129,6 +131,7 @@ async def translate(req: TranslateRequest):
         return JSONResponse({"error": "empty_input"}, status_code=400)
     body = {
         "result": result.result,
+        "engine": result.engine,
         "elapsed_ms": result.elapsed_ms,
         "cached": result.cached,
         "truncated": result.truncated,
@@ -143,7 +146,16 @@ async def translate(req: TranslateRequest):
 @app.get("/health")
 async def health():
     t = Translator.get_instance()
-    return {"ok": True, "model_loaded": True, **t.stats()}
+    return {
+        "ok": True,
+        "model_loaded": True,
+        "default_engine": config.ENGINE,
+        "engines": {
+            "argos": True,
+            "volc": bool(config.VOLC_ACCESS_KEY and config.VOLC_SECRET_KEY),
+        },
+        **t.stats(),
+    }
 
 
 @app.get("/metrics")
