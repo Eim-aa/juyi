@@ -25,7 +25,7 @@ English: [README_EN.md](README_EN.md)
 | 100% 离线      | ✓ 默认（可选切云端）            | 部分                                                  | ✗（需 API key）                                                             | ✓              |
 | 系统级热键     | ✓（双击 Option）                | ✓                                                     | ✓                                                                           | ✗              |
 | 任意 app 划词  | ✓（AX + 剪贴板兜底）            | ✓                                                     | ✓                                                                           | 受限           |
-| 翻译引擎       | 离线 Argos + 云端火山（可插拔） | 多家                                                  | OpenAI 等                                                                   | 系统级         |
+| 翻译引擎       | 离线 Argos/苹果端上 + 云端火山（可插拔） | 多家                                                  | OpenAI 等                                                                   | 系统级         |
 | 语言对         | 仅英→中                         | 55 种                                                 | 55 种                                                                       | 系统级         |
 | 典型延迟       | 本地 ~150 ms / 火山 ~0.3–1 s    | 网络往返                                              | 网络往返                                                                    | 系统级         |
 | GUI            | 浮窗                            | 完整窗口                                              | 完整窗口                                                                    | 系统级         |
@@ -114,11 +114,19 @@ git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
 
 火山引擎用 AK/SK V4 签名（实现见 [`volc_engine.py`](volc_engine.py)，纯标准库），翻译质量更高、尤其擅长长难句与专业术语。此模式下选中文本会经 HTTPS 发往火山 API（见"隐私"）。
 
+### 苹果端上引擎（macOS 15+，安装时自动启用）
+
+macOS 15 起系统自带端上翻译（Translation framework）。安装脚本检测到 macOS 15+ 且有 `swiftc` 时，会把 [`apple/TranslationHelper.swift`](apple/TranslationHelper.swift) 编译成一个约 140 KB 的小助手，作为第三个引擎 `apple` 接入：
+
+- **零模型下载**：模型由系统管理，仓库与磁盘不再为离线翻译背任何模型。
+- **端上运行**：文本不出本机，隐私与离线 Argos 同级；实测长难句质量优于 Argos，暖机延迟 ~70–100 ms。
+- 首次使用若系统尚未下载中英语言包，会弹一次系统确认框（之后纯离线）；也可手动触发：`bin/apple-translation-helper --prepare`。
+
 ### 运行时一键切换（菜单栏，无需重启）
 
-装好后菜单栏会出现 **「句译 · 本地 / 句译 · 云端」**。点它即可在**本地离线 ⇄ 火山云端**之间实时切换，当前模式带勾显示、选择会被记住；切到本地时会在后台预热离线模型，第一句不至于卡。此后 `volc.env` 里的 `ENGINE` 只决定**开机默认**引擎。
+装好后菜单栏会出现 **「句译 · 苹果 / 本地 / 云端」**。点它即可在**苹果端上 / 本地 Argos / 火山云端**三个引擎间实时切换，当前模式带勾显示、选择会被记住；切到离线引擎时会在后台预热，第一句不至于卡。此后 `volc.env` 里的 `ENGINE` 只决定**开机默认**引擎。
 
-每条译文下方都会用小字标注**来源**，例如 `来自 火山云端 · 589 ms` 或 `来自 本地离线 · 75 ms`，一眼就知道这条结果是谁翻的。
+每条译文下方都会用小字标注**来源**，例如 `来自 火山云端 · 589 ms`、`来自 苹果端上翻译 · 96 ms` 或 `来自 本地离线 · 75 ms`，一眼就知道这条结果是谁翻的。
 
 **新增其他引擎**：引擎被隔离在 `translator.py` 的一个 `_translate_*` 函数后。照着 `volc_engine.py` 再写一个（如 DeepL、谷歌、Qwen），在 `config.ENGINE` 加个分支即可——热键、缓存、浮窗、HTTP 这些管道完全不用动。
 
@@ -163,6 +171,7 @@ flowchart LR
 | `/health` 失败      | `curl -s http://127.0.0.1:54321/health`                                                         | 看 `~/Library/Logs/argos-translator.err.log`                                                    |
 | 首次请求很慢（离线）| `tail -50 ~/Library/Logs/argos-translator.err.log`                                              | 确认日志里有 `model_warmup_done`（火山模式无需预热）                                            |
 | 火山返回报错        | 看浮窗里的 `volc_error` 提示                                                                     | 确认 `volc.env` 的 AK/SK 正确、子用户已授 `TranslateFullAccess`、机器翻译已开通                 |
+| 苹果引擎报错        | 看浮窗里的 `apple_error` 提示；跑 `bin/apple-translation-helper --status`                        | 需 macOS 15+；若语言包未装，跑 `bin/apple-translation-helper --prepare` 并确认系统下载弹窗     |
 | 剪贴板被改          | 手动跑 `pbpaste \| shasum`，双击 Option 前后对比                                                | 反馈给作者：源 app 名 + pasteboard type                                                         |
 | Stanza 尝试联网     | 日志里 grep `raw.githubusercontent.com`                                                         | 确认 `translator.py` 在 import Argos 之前 patch 了 `DownloadMethod.REUSE_RESOURCES`             |
 
@@ -175,6 +184,7 @@ flowchart LR
   PID=$(launchctl print gui/$(id -u)/io.github.Eim-aa.argos-translator | awk '/pid =/ {print $3}')
   nettop -p "$PID"
   ```
+- **苹果端上模式（`apple`）**：翻译由 macOS 系统的端上模型完成，文本同样不出本机；语言包由系统下载与管理。
 - **云端模式（`ENGINE=volc`）**：你选中的文本会通过 HTTPS 发送到**火山翻译 API** 以获取译文——此模式**不再离线**。是否启用完全由你掌控（默认关闭）。AK/SK 只从本地 `volc.env` 读取，不进仓库。
 
 ## 替换为 NLLB-200-Distilled 模型（离线引擎）

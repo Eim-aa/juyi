@@ -34,10 +34,11 @@ local sawOtherKey = false
 
 -- Engine selection: switched live via the menu bar, sent with each request.
 local ENGINE_STATE_PATH = os.getenv("HOME") .. "/.config/argos-translator/hs-engine"
-local ENGINE_SHORT = { argos = "本地", volc = "云端" }
-local ENGINE_SOURCE = { argos = "本地离线", volc = "火山云端" }
+local ENGINE_SHORT = { argos = "本地", volc = "云端", apple = "苹果" }
+local ENGINE_SOURCE = { argos = "本地离线", volc = "火山云端", apple = "苹果端上翻译" }
 local currentEngine = "volc"
 local volcAvailable = true
+local appleAvailable = false
 local menubar = nil
 local setEngine, rebuildMenu -- forward declarations (assigned below)
 
@@ -340,7 +341,7 @@ local function readPersistedEngine()
     local s = f:read("*l")
     f:close()
     if s then s = s:gsub("%s+", "") end
-    if s == "argos" or s == "volc" then return s end
+    if s == "argos" or s == "volc" or s == "apple" then return s end
     return nil
 end
 
@@ -358,7 +359,13 @@ rebuildMenu = function()
     menubar:setMenu({
         { title = "翻译引擎", disabled = true },
         {
-            title = "本地（离线 · 隐私）",
+            title = "苹果端上（离线 · 系统翻译）",
+            checked = (currentEngine == "apple"),
+            disabled = (not appleAvailable),
+            fn = function() setEngine("apple") end,
+        },
+        {
+            title = "本地 Argos（离线 · 兼容）",
             checked = (currentEngine == "argos"),
             fn = function() setEngine("argos") end,
         },
@@ -378,21 +385,26 @@ setEngine = function(eng)
         hs.alert.show("云端不可用：未配置火山 API Key", 1.5)
         return
     end
+    if eng == "apple" and not appleAvailable then
+        hs.alert.show("苹果端上翻译不可用（需 macOS 15+ 并构建助手）", 1.8)
+        return
+    end
     currentEngine = eng
     persistEngine(eng)
     rebuildMenu()
-    if eng == "argos" then
-        hs.alert.show("已切到 本地离线（首次会加载模型…）", 1.5)
-        -- Warm the offline model in the background so the first real
+    if eng == "volc" then
+        hs.alert.show("已切到 火山云端", 1.0)
+    else
+        local label = (eng == "apple") and "已切到 苹果端上翻译" or "已切到 本地 Argos（首次会加载模型…）"
+        hs.alert.show(label, 1.5)
+        -- Warm the offline engine in the background so the first real
         -- translation after switching isn't slow.
         hs.http.asyncPost(
             URL .. "/translate",
-            hs.json.encode({ text = "warmup", engine = "argos" }),
+            hs.json.encode({ text = "warmup", engine = eng }),
             { ["Content-Type"] = "application/json" },
             function() end
         )
-    else
-        hs.alert.show("已切到 火山云端", 1.0)
     end
     appendLog({ event = "engine_switch", engine = eng })
 end
@@ -403,8 +415,13 @@ local function initEngineState()
         if code == 200 then
             local ok, h = pcall(hs.json.decode, bodyStr or "")
             if ok and type(h) == "table" then
-                if h.engines ~= nil and h.engines.volc ~= nil then
-                    volcAvailable = h.engines.volc and true or false
+                if h.engines ~= nil then
+                    if h.engines.volc ~= nil then
+                        volcAvailable = h.engines.volc and true or false
+                    end
+                    if h.engines.apple ~= nil then
+                        appleAvailable = h.engines.apple and true or false
+                    end
                 end
                 if not persisted and h.default_engine then
                     currentEngine = h.default_engine
@@ -413,6 +430,9 @@ local function initEngineState()
         end
         if persisted then currentEngine = persisted end
         if currentEngine == "volc" and not volcAvailable then currentEngine = "argos" end
+        if currentEngine == "apple" and not appleAvailable then
+            currentEngine = volcAvailable and "volc" or "argos"
+        end
         rebuildMenu()
     end)
 end

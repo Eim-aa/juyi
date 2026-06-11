@@ -65,7 +65,12 @@ _volc_cfg = _load_env_file(_VOLC_ENV_FILE)
 VOLC_ACCESS_KEY = _volc_cfg.get("VOLC_ACCESS_KEY", "")
 VOLC_SECRET_KEY = _volc_cfg.get("VOLC_SECRET_KEY", "")
 
-# "argos" (offline, default) or "volc" (Volcengine cloud).
+# "argos" (offline, default), "volc" (Volcengine cloud) or "apple"
+# (macOS 15+ system on-device translation via bin/apple-translation-helper).
 ENGINE = _volc_cfg.get("ENGINE", "argos")
 if ENGINE == "volc" and not (VOLC_ACCESS_KEY and VOLC_SECRET_KEY):
     ENGINE = "argos"
+
+# Helper binary for the apple engine; built by scripts/install.sh on macOS 15+
+# from apple/TranslationHelper.swift. Missing file = engine unavailable.
+APPLE_HELPER_PATH = ROOT / "bin" / "apple-translation-helper"

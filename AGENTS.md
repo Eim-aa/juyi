@@ -56,6 +56,11 @@ Two modes (see the "Local vs Cloud" section in README for the trade-off):
 
 - **Offline (default, `ENGINE=argos`)** — works now, no keys, text stays on the
   machine. If the user only wants this, you are done after Step 3. Verify (Step 6).
+- **Apple on-device (`apple`, macOS 15+)** — built automatically by the installer
+  when macOS 15+ and `swiftc` are present (`bin/apple-translation-helper`). Also
+  offline; the user switches to it from the menu bar at runtime. The first use may
+  require the human to confirm the system language-pack download dialog
+  (`bin/apple-translation-helper --prepare` triggers it manually).
 - **Cloud (`ENGINE=volc`, recommended for long/complex sentences)** — higher
   accuracy via the Volcengine API. Continue to Step 5.
 

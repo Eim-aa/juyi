@@ -25,7 +25,7 @@ Most macOS selection translators either need an API key (OpenAI, DeepL) or round
 | 100% offline             | ✓ default (optional cloud)     | partial                                               | ✗ (needs API key)                                                           | ✓               |
 | System-wide hotkey       | ✓ (double-tap Option)          | ✓                                                     | ✓                                                                           | ✗               |
 | Works in any app         | ✓ (AX + clipboard)             | ✓                                                     | ✓                                                                           | limited         |
-| Engines                  | offline Argos + cloud Volcengine (pluggable) | several                                 | OpenAI etc.                                                                 | system          |
+| Engines                  | offline Argos/Apple on-device + cloud Volcengine (pluggable) | several                                 | OpenAI etc.                                                                 | system          |
 | Language pairs           | en→zh                          | 55                                                    | 55                                                                          | system          |
 | Typical latency          | ~150 ms local / ~0.3–1 s Volc  | network RTT                                           | network RTT                                                                 | system          |
 | GUI                      | floating canvas                | full window                                           | full window                                                                 | system          |
@@ -129,11 +129,19 @@ The engine is chosen by `ENGINE` in `config.py`, **defaulting to `argos` (offlin
 
 Volcengine uses AK/SK V4 request signing (implemented in [`volc_engine.py`](volc_engine.py), stdlib only) and gives higher quality, especially on long sentences and domain jargon. In this mode the selected text is sent over HTTPS to the Volcengine API (see "Privacy").
 
+### Apple on-device engine (macOS 15+, enabled automatically at install)
+
+macOS 15 ships an on-device Translation framework. When the installer detects macOS 15+ with `swiftc`, it compiles [`apple/TranslationHelper.swift`](apple/TranslationHelper.swift) into a ~140 KB helper and wires it in as a third engine, `apple`:
+
+- **Zero model download** — the models are managed by the system; the repo carries no model weight for it.
+- **On-device** — text never leaves the machine (same privacy as offline Argos); in our tests it beats Argos on long-sentence quality at ~70–100 ms warm.
+- The first use may show one system dialog to download the en-zh language pack (fully offline afterwards). Manual trigger: `bin/apple-translation-helper --prepare`.
+
 ### Switch engines at runtime (menu bar, no restart)
 
-After install, a **`句译 · 本地 / 句译 · 云端`** item appears in the menu bar. Click it to switch **offline ⇄ Volcengine cloud** live — the active mode is checkmarked, the choice is remembered, and switching to local warms the offline model in the background so the first translation isn't slow. The `ENGINE` in `volc.env` now only sets the **startup default**.
+After install, a **`句译 · 苹果 / 本地 / 云端`** item appears in the menu bar. Click it to switch between **Apple on-device / local Argos / Volcengine cloud** live — the active mode is checkmarked, the choice is remembered, and switching to an offline engine warms it in the background so the first translation isn't slow. The `ENGINE` in `volc.env` now only sets the **startup default**.
 
-Every translation's subtitle shows its **source**, e.g. `来自 火山云端 · 589 ms` or `来自 本地离线 · 75 ms`, so you always know which engine produced the result.
+Every translation's subtitle shows its **source**, e.g. `来自 火山云端 · 589 ms`, `来自 苹果端上翻译 · 96 ms`, or `来自 本地离线 · 75 ms`, so you always know which engine produced the result.
 
 **Adding another engine:** the engine lives behind one `_translate_*` function in `translator.py`. Copy the shape of `volc_engine.py` (e.g. for DeepL, Google, Qwen) and add a branch on `config.ENGINE` — the hotkey, cache, popup, and HTTP plumbing stay untouched.
 
@@ -178,6 +186,7 @@ flowchart LR
 | Health fails          | `curl -s http://127.0.0.1:54321/health`                                                        | Check `~/Library/Logs/argos-translator.err.log`                                              |
 | Slow first request (offline) | `tail -50 ~/Library/Logs/argos-translator.err.log`                                      | Confirm warmup logged `model_warmup_done` (the volc engine needs no warmup)                  |
 | Volcengine error      | See the `volc_error` note in the popup                                                         | Check the AK/SK in `volc.env`, that the sub-user has `TranslateFullAccess`, and that Machine Translation is enabled |
+| Apple engine error    | See the `apple_error` note in the popup; run `bin/apple-translation-helper --status`           | Needs macOS 15+; if the language pack is missing, run `bin/apple-translation-helper --prepare` and confirm the system download dialog |
 | Clipboard changed     | Run manual `pbpaste \| shasum` before and after the double-tap                                 | Report the source app and pasteboard type                                                    |
 | Stanza tries network  | Search logs for `raw.githubusercontent.com`                                                    | Confirm `translator.py` patches `DownloadMethod.REUSE_RESOURCES` before importing Argos      |
 
@@ -190,6 +199,7 @@ The mode is controlled by the `ENGINE` switch in `volc.env`, **offline by defaul
   PID=$(launchctl print gui/$(id -u)/io.github.Eim-aa.argos-translator | awk '/pid =/ {print $3}')
   nettop -p "$PID"
   ```
+- **Apple on-device mode (`apple`)**: translation runs on the macOS system's on-device models; text never leaves the machine. Language packs are downloaded and managed by the OS.
 - **Cloud mode (`ENGINE=volc`)**: your selected text is sent over HTTPS to the **Volcengine** translation API to get the translation — this mode is **not offline**. It is entirely opt-in (off by default). The AK/SK is read only from the local `volc.env` and never enters the repo.
 
 ## Replacing The Model With NLLB-200-Distilled (offline engine)

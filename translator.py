@@ -36,6 +36,7 @@ _spc.Pipeline.__init__ = _offline_pipeline_init
 
 import config  # noqa: E402
 import volc_engine  # noqa: E402
+import apple_engine  # noqa: E402
 import stanza  # noqa: E402
 import argostranslate.translate as AT  # noqa: E402
 
@@ -86,6 +87,11 @@ def _translate_cached_volc(text: str) -> str:
         source=config.SRC_LANG,
         target=config.TGT_LANG,
     )
+
+
+@functools.lru_cache(maxsize=config.CACHE_SIZE)
+def _translate_cached_apple(text: str) -> str:
+    return apple_engine.translate_text(text)
 
 
 class Translator:
@@ -156,6 +162,10 @@ class Translator:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _translate_cached_volc, text)
 
+    async def _infer_apple(self, text: str) -> str:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _translate_cached_apple, text)
+
     def _split_sentences(self, text: str) -> list[str]:
         doc = self._sbd_pipeline(text)
         return [sent.text.strip() for sent in doc.sentences if sent.text.strip()]
@@ -170,6 +180,9 @@ class Translator:
         if eng == "volc" and not (config.VOLC_ACCESS_KEY and config.VOLC_SECRET_KEY):
             eng = "argos"
             r.warnings.append("volc_unavailable_fallback_argos")
+        if eng == "apple" and not apple_engine.available():
+            eng = "argos"
+            r.warnings.append("apple_unavailable_fallback_argos")
         r.engine = eng
 
         if text is None:
@@ -201,6 +214,25 @@ class Translator:
         chars = len(text)
         words = _word_count(text)
         long_input = words > config.LONG_INPUT_WORDS or chars > config.LONG_INPUT_CHARS
+
+        # ---- Apple engine: system on-device translation via the helper ----
+        if eng == "apple":
+            info_before = _translate_cached_apple.cache_info()
+            try:
+                r.result = await self._infer_apple(text)
+            except Exception as e:  # noqa: BLE001
+                r.error = "apple_error"
+                r.warnings.append(str(e)[:200])
+                r.result = text
+            info_after = _translate_cached_apple.cache_info()
+            r.cached = (
+                info_after.misses == info_before.misses
+                and info_after.hits > info_before.hits
+            )
+            r.elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            self._count += 1
+            self._latencies.append(r.elapsed_ms)
+            return r
 
         # ---- Cloud engine: one signed API call, no sentence splitting ----
         if eng == "volc":
@@ -257,16 +289,17 @@ class Translator:
         return r
 
     def stats(self) -> dict:
-        # Both engines may be used at runtime; report combined cache counters.
+        # All engines may be used at runtime; report combined cache counters.
         a = _translate_cached.cache_info()
         v = _translate_cached_volc.cache_info()
+        ap = _translate_cached_apple.cache_info()
         s = sorted(self._latencies)
         n = len(s)
         return {
             "translations_total": self._count,
-            "cache_hits": a.hits + v.hits,
-            "cache_misses": a.misses + v.misses,
-            "cache_size": a.currsize + v.currsize,
+            "cache_hits": a.hits + v.hits + ap.hits,
+            "cache_misses": a.misses + v.misses + ap.misses,
+            "cache_size": a.currsize + v.currsize + ap.currsize,
             "uptime_s": round(time.time() - self._started_at, 1),
             "warmup_ms": self.warmup_ms,
             "p50_ms": s[n // 2] if n else 0,

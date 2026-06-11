@@ -145,6 +145,20 @@ elif ! grep -Fq 'require("argos-translator")' "$HOME/.hammerspoon/init.lua"; the
     printf '\n%s\n' 'require("argos-translator")' >> "$HOME/.hammerspoon/init.lua"
 fi
 
+# Optional apple engine: compile the system-translation helper on macOS 15+.
+MACOS_MAJOR="$(sw_vers -productVersion | cut -d. -f1)"
+if [[ "$MACOS_MAJOR" -ge 15 ]] && command -v swiftc >/dev/null 2>&1; then
+    echo "[building apple-translation-helper (macOS on-device translation engine)]"
+    mkdir -p "$ROOT/bin"
+    if swiftc -O -o "$ROOT/bin/apple-translation-helper" "$ROOT/apple/TranslationHelper.swift"; then
+        echo "apple engine ready: $ROOT/bin/apple-translation-helper"
+    else
+        echo "WARN: apple helper build failed; apple engine unavailable (argos/volc unaffected)" >&2
+    fi
+else
+    echo "[skipping apple engine helper: needs macOS 15+ and swiftc]"
+fi
+
 echo
 echo "== required next steps =="
 echo "1. Install Hammerspoon if needed: brew install --cask hammerspoon"

@@ -9,6 +9,9 @@ venv/
 # Argos model packages — fetched at install time via argospm
 packages/
 
+# Compiled Swift helper for the apple engine (source: apple/TranslationHelper.swift)
+bin/
+
 # Local symlink to ~/Library/Logs
 logs
 

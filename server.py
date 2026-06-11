@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
+import apple_engine
 import config
 from translator import Translator
 
@@ -153,6 +154,7 @@ async def health():
         "engines": {
             "argos": True,
             "volc": bool(config.VOLC_ACCESS_KEY and config.VOLC_SECRET_KEY),
+            "apple": apple_engine.available(),
         },
         **t.stats(),
     }
