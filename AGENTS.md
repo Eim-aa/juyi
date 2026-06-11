@@ -12,7 +12,8 @@ require the human** and are marked `HUMAN STEP`. Do not try to automate those.
 
 ## Prerequisites (verify, don't assume)
 
-- macOS (the tool is macOS-only; bail out otherwise).
+- macOS (the tool is macOS-only; bail out otherwise). macOS 15+ enables the
+  default offline engine; older macOS works cloud-only with Volcengine keys.
 - A shell you can run commands in.
 - Homebrew and Python >= 3.10. The installer checks these and prints a fix hint
   if missing; install Homebrew first if it is absent.
@@ -26,10 +27,10 @@ the installer):
 curl -fsSL https://raw.githubusercontent.com/Eim-aa/juyi/main/scripts/bootstrap.sh | bash
 ```
 
-The installer creates a venv, installs `requirements.txt`, downloads the
-`translate-en_zh` offline model (~150 MB, the only network call), loads a
-LaunchAgent on `127.0.0.1:54321`, and wires the Hammerspoon module into
-`~/.hammerspoon/init.lua`.
+The installer creates a venv, installs `requirements.txt` (FastAPI/uvicorn only),
+compiles the Apple on-device translation helper on macOS 15+ (no model
+download), loads a LaunchAgent on `127.0.0.1:54321`, and wires the Hammerspoon
+module into `~/.hammerspoon/init.lua`.
 
 ## Step 2 — Install Hammerspoon (you can do this)
 
@@ -54,13 +55,12 @@ Do not attempt to edit the TCC database or otherwise bypass this.
 
 Two modes (see the "Local vs Cloud" section in README for the trade-off):
 
-- **Offline (default, `ENGINE=argos`)** — works now, no keys, text stays on the
-  machine. If the user only wants this, you are done after Step 3. Verify (Step 6).
-- **Apple on-device (`apple`, macOS 15+)** — built automatically by the installer
-  when macOS 15+ and `swiftc` are present (`bin/apple-translation-helper`). Also
-  offline; the user switches to it from the menu bar at runtime. The first use may
-  require the human to confirm the system language-pack download dialog
-  (`bin/apple-translation-helper --prepare` triggers it manually).
+- **Apple on-device (default, `apple`, macOS 15+)** — offline, no keys, text
+  stays on the machine. The helper is compiled automatically by the installer
+  when macOS 15+ and `swiftc` are present (`bin/apple-translation-helper`). The
+  first use may require the human to confirm the system language-pack download
+  dialog (`bin/apple-translation-helper --prepare` triggers it manually). If the
+  user only wants this, you are done after Step 3. Verify (Step 6).
 - **Cloud (`ENGINE=volc`, recommended for long/complex sentences)** — higher
   accuracy via the Volcengine API. Continue to Step 5.
 

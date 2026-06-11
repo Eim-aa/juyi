@@ -3,9 +3,6 @@
 set -euo pipefail
 
 ROOT="$HOME/.local/share/argos-translator"
-PACKAGES_DIR="$ROOT/packages"
-TARGET_MODEL="$PACKAGES_DIR/translate-en_zh-1_9"
-ARGOS_PACKAGE="translate-en_zh"
 VENV="$ROOT/venv"
 REQ="$ROOT/requirements.txt"
 BREW_BIN="${BREW_BIN:-}"
@@ -108,7 +105,7 @@ echo "disk: $((avail_kb / 1024)) MB available"
 
 echo
 echo "== directories =="
-mkdir -p "$ROOT" "$PACKAGES_DIR" "$ROOT/scripts" "$ROOT/launchd" "$ROOT/hammerspoon" "$HOME/Library/Logs"
+mkdir -p "$ROOT" "$ROOT/scripts" "$ROOT/launchd" "$ROOT/hammerspoon" "$HOME/Library/Logs"
 ln -sfn "$HOME/Library/Logs" "$ROOT/logs"
 echo "root: $ROOT"
 
@@ -119,17 +116,6 @@ if [[ ! -x "$VENV/bin/python" ]]; then
 fi
 "$VENV/bin/python" -m pip install --upgrade pip
 "$VENV/bin/pip" install --no-cache-dir -r "$REQ"
-
-echo
-echo "== model =="
-if [[ ! -d "$TARGET_MODEL" ]]; then
-    echo "downloading $ARGOS_PACKAGE via argospm (first run needs network)"
-    ARGOS_PACKAGES_DIR="$PACKAGES_DIR" "$VENV/bin/argospm" update
-    ARGOS_PACKAGES_DIR="$PACKAGES_DIR" "$VENV/bin/argospm" install "$ARGOS_PACKAGE"
-    [[ -d "$TARGET_MODEL" ]] || fail "argospm finished but $TARGET_MODEL is missing"
-else
-    echo "model already installed: $TARGET_MODEL"
-fi
 
 echo
 echo "== launchd =="
@@ -153,10 +139,10 @@ if [[ "$MACOS_MAJOR" -ge 15 ]] && command -v swiftc >/dev/null 2>&1; then
     if swiftc -O -o "$ROOT/bin/apple-translation-helper" "$ROOT/apple/TranslationHelper.swift"; then
         echo "apple engine ready: $ROOT/bin/apple-translation-helper"
     else
-        echo "WARN: apple helper build failed; apple engine unavailable (argos/volc unaffected)" >&2
+        echo "WARN: apple helper build failed; offline engine unavailable (volc cloud unaffected)" >&2
     fi
 else
-    echo "[skipping apple engine helper: needs macOS 15+ and swiftc]"
+    echo "[skipping apple engine helper: needs macOS 15+ and swiftc; configure volc.env to use the cloud engine]"
 fi
 
 echo

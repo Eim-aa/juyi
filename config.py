@@ -3,13 +3,11 @@
 Flat module of constants — no env-time magic, no I/O. Anything that depends on
 the user's HOME is computed at import time via pathlib.
 """
-import os
 from pathlib import Path
 
 # ---- Paths ----
 ROOT = Path.home() / ".local" / "share" / "argos-translator"
 VENV = ROOT / "venv"
-PACKAGES_DIR = ROOT / "packages"
 LOG_DIR = Path.home() / "Library" / "Logs"
 LOG_FILE = LOG_DIR / "argos-translator.log"
 
@@ -37,15 +35,10 @@ LATENCY_RING_SIZE = 1000
 LOG_MAX_BYTES = 10 * 1024 * 1024
 LOG_BACKUP_COUNT = 3
 
-# argostranslate reads this env var to locate installed model packages.
-# We set it eagerly so any import of argostranslate.* picks it up.
-os.environ.setdefault("ARGOS_PACKAGES_DIR", str(PACKAGES_DIR))
-
-
 # ---- Engine selection + Volcengine credentials ----
 # Creds live in a local, gitignored file. The committed repo ships no creds, so
-# ENGINE defaults to the fully-offline "argos". A local volc.env with valid keys
-# and ENGINE=volc switches this machine to the Volcengine cloud engine.
+# ENGINE defaults to the fully-offline "apple". A local volc.env with valid keys
+# and ENGINE=volc switches this machine's startup default to the cloud engine.
 def _load_env_file(path: Path) -> dict:
     out: dict[str, str] = {}
     try:
@@ -65,11 +58,14 @@ _volc_cfg = _load_env_file(_VOLC_ENV_FILE)
 VOLC_ACCESS_KEY = _volc_cfg.get("VOLC_ACCESS_KEY", "")
 VOLC_SECRET_KEY = _volc_cfg.get("VOLC_SECRET_KEY", "")
 
-# "argos" (offline, default), "volc" (Volcengine cloud) or "apple"
-# (macOS 15+ system on-device translation via bin/apple-translation-helper).
-ENGINE = _volc_cfg.get("ENGINE", "argos")
+# "apple" (default; macOS 15+ system on-device translation via
+# bin/apple-translation-helper) or "volc" (Volcengine cloud). The legacy
+# "argos" value from older configs maps to apple.
+ENGINE = _volc_cfg.get("ENGINE", "apple")
+if ENGINE not in ("apple", "volc"):
+    ENGINE = "apple"
 if ENGINE == "volc" and not (VOLC_ACCESS_KEY and VOLC_SECRET_KEY):
-    ENGINE = "argos"
+    ENGINE = "apple"
 
 # Helper binary for the apple engine; built by scripts/install.sh on macOS 15+
 # from apple/TranslationHelper.swift. Missing file = engine unavailable.

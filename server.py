@@ -51,8 +51,8 @@ class JsonFormatter(logging.Formatter):
 
 class _AppLogsFilter(logging.Filter):
     """Allow our own loggers (any level) and uvicorn startup messages;
-    suppress third-party INFO/DEBUG spam (argostranslate calls logging.info()
-    on root with positional args, polluting structured logs)."""
+    suppress third-party INFO/DEBUG spam on the root logger so the
+    structured JSONL stream stays clean."""
 
     _OURS = {"server", "translator", "uvicorn", "uvicorn.error"}
 
@@ -152,9 +152,8 @@ async def health():
         "model_loaded": True,
         "default_engine": config.ENGINE,
         "engines": {
-            "argos": True,
-            "volc": bool(config.VOLC_ACCESS_KEY and config.VOLC_SECRET_KEY),
             "apple": apple_engine.available(),
+            "volc": bool(config.VOLC_ACCESS_KEY and config.VOLC_SECRET_KEY),
         },
         **t.stats(),
     }

@@ -34,8 +34,8 @@ local sawOtherKey = false
 
 -- Engine selection: switched live via the menu bar, sent with each request.
 local ENGINE_STATE_PATH = os.getenv("HOME") .. "/.config/argos-translator/hs-engine"
-local ENGINE_SHORT = { argos = "本地", volc = "云端", apple = "苹果" }
-local ENGINE_SOURCE = { argos = "本地离线", volc = "火山云端", apple = "苹果端上翻译" }
+local ENGINE_SHORT = { volc = "云端", apple = "苹果" }
+local ENGINE_SOURCE = { volc = "火山云端", apple = "苹果端上翻译" }
 local currentEngine = "volc"
 local volcAvailable = true
 local appleAvailable = false
@@ -341,7 +341,8 @@ local function readPersistedEngine()
     local s = f:read("*l")
     f:close()
     if s then s = s:gsub("%s+", "") end
-    if s == "argos" or s == "volc" or s == "apple" then return s end
+    if s == "argos" then return "apple" end -- legacy engine, removed
+    if s == "volc" or s == "apple" then return s end
     return nil
 end
 
@@ -363,11 +364,6 @@ rebuildMenu = function()
             checked = (currentEngine == "apple"),
             disabled = (not appleAvailable),
             fn = function() setEngine("apple") end,
-        },
-        {
-            title = "本地 Argos（离线 · 兼容）",
-            checked = (currentEngine == "argos"),
-            fn = function() setEngine("argos") end,
         },
         {
             title = "云端（火山 · 更准）",
@@ -395,10 +391,9 @@ setEngine = function(eng)
     if eng == "volc" then
         hs.alert.show("已切到 火山云端", 1.0)
     else
-        local label = (eng == "apple") and "已切到 苹果端上翻译" or "已切到 本地 Argos（首次会加载模型…）"
-        hs.alert.show(label, 1.5)
-        -- Warm the offline engine in the background so the first real
-        -- translation after switching isn't slow.
+        hs.alert.show("已切到 苹果端上翻译", 1.2)
+        -- Warm the helper in the background so the first real translation
+        -- after switching isn't slow.
         hs.http.asyncPost(
             URL .. "/translate",
             hs.json.encode({ text = "warmup", engine = eng }),
@@ -429,9 +424,10 @@ local function initEngineState()
             end
         end
         if persisted then currentEngine = persisted end
-        if currentEngine == "volc" and not volcAvailable then currentEngine = "argos" end
-        if currentEngine == "apple" and not appleAvailable then
-            currentEngine = volcAvailable and "volc" or "argos"
+        if currentEngine == "argos" then currentEngine = "apple" end
+        if currentEngine == "volc" and not volcAvailable then currentEngine = "apple" end
+        if currentEngine == "apple" and not appleAvailable and volcAvailable then
+            currentEngine = "volc"
         end
         rebuildMenu()
     end)
