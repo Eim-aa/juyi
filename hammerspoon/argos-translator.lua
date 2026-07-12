@@ -176,8 +176,8 @@ end
 local function measureWrapped(text, style, inner)
     local total = 0
     for line in (text .. "\n"):gmatch("(.-)\n") do
-        if line == "" then line = " " end
-        local sz = hs.drawing.getTextDrawingSize(line, style) or { w = inner, h = 18 }
+        local seg = (line == "") and " " or line
+        local sz = hs.drawing.getTextDrawingSize(seg, style) or { w = inner, h = 18 }
         local wrapped = math.max(1, math.ceil(sz.w / math.max(1, inner)))
         total = total + math.ceil(sz.h * wrapped)
     end
