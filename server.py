@@ -13,7 +13,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
@@ -111,7 +111,13 @@ class TranslateRequest(BaseModel):
 
 
 @app.post("/translate")
-async def translate(req: TranslateRequest):
+async def translate(req: TranslateRequest, request: Request):
+    # JSON only. A non-JSON content type would make this endpoint reachable
+    # from any web page as a CORS "simple request" (no preflight), letting a
+    # malicious page fire translations (and burn cloud quota) blind.
+    ctype = (request.headers.get("content-type") or "").lower()
+    if "application/json" not in ctype:
+        return JSONResponse({"error": "unsupported_media_type"}, status_code=415)
     rid = uuid.uuid4().hex[:8]
     t = Translator.get_instance()
     result = await t.translate(req.text or "", engine=req.engine)

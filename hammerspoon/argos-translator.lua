@@ -169,6 +169,21 @@ local function dismiss()
     end
 end
 
+-- Estimate the wrapped height of `text` laid out in a column `inner` wide.
+-- Each hard line is measured on its own: multiplying the WHOLE text's natural
+-- height by a wrap factor double-counts explicit newlines and oversizes the
+-- popup for multiline translations.
+local function measureWrapped(text, style, inner)
+    local total = 0
+    for line in (text .. "\n"):gmatch("(.-)\n") do
+        if line == "" then line = " " end
+        local sz = hs.drawing.getTextDrawingSize(line, style) or { w = inner, h = 18 }
+        local wrapped = math.max(1, math.ceil(sz.w / math.max(1, inner)))
+        total = total + math.ceil(sz.h * wrapped)
+    end
+    return total
+end
+
 local function buildCanvas(mouseX, mouseY, body, subtitle)
     -- Measure: first an unconstrained pass to get the natural width.
     local mainStyle = {
@@ -188,17 +203,11 @@ local function buildCanvas(mouseX, mouseY, body, subtitle)
     local width = math.min(math.ceil(natural.w) + PADDING * 2, MAX_WIDTH)
     if width < 120 then width = 120 end
 
-    -- Re-measure body with the chosen width to compute wrapped height.
     local inner = width - PADDING * 2
-    local bodySize = hs.drawing.getTextDrawingSize(body, mainStyle) or { w = inner, h = 24 }
-    local bodyLines = math.max(1, math.ceil(bodySize.w / math.max(1, inner)))
-    local bodyHeight = math.ceil(bodySize.h * bodyLines)
-    local subSize = { w = 0, h = 0 }
+    local bodyHeight = measureWrapped(body, mainStyle, inner)
     local subHeight = 0
     if subtitle and #subtitle > 0 then
-        subSize = hs.drawing.getTextDrawingSize(subtitle, subStyle) or { w = inner, h = 14 }
-        local subLines = math.max(1, math.ceil(subSize.w / math.max(1, inner)))
-        subHeight = math.ceil(subSize.h * subLines)
+        subHeight = measureWrapped(subtitle, subStyle, inner)
     end
     local height = bodyHeight + subHeight + PADDING * 2 + (subtitle and 6 or 0)
 
@@ -552,7 +561,20 @@ local function onFlagsOrKey(event)
     return false
 end
 
+-- Python's side rotates via RotatingFileHandler; this log needs its own cap.
+local function rotateLogIfNeeded()
+    local f = io.open(LOG_PATH, "r")
+    if not f then return end
+    local size = f:seek("end")
+    f:close()
+    if size and size > 5 * 1024 * 1024 then
+        os.remove(LOG_PATH .. ".1")
+        os.rename(LOG_PATH, LOG_PATH .. ".1")
+    end
+end
+
 function M.start()
+    rotateLogIfNeeded()
     if tapWatcher then tapWatcher:stop() end
     tapWatcher = hs.eventtap.new(
         { hs.eventtap.event.types.flagsChanged, hs.eventtap.event.types.keyDown },

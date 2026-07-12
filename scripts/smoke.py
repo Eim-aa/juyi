@@ -8,11 +8,12 @@ import urllib.request
 URL = "http://127.0.0.1:54321"
 
 
-def _request(method: str, path: str, body=None, timeout: float = 30):
+def _request(method: str, path: str, body=None, timeout: float = 30,
+             content_type: str = "application/json"):
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(
         URL + path, data=data, method=method,
-        headers={"Content-Type": "application/json"} if data else {},
+        headers={"Content-Type": content_type} if data else {},
     )
     t0 = time.perf_counter()
     try:
@@ -99,6 +100,21 @@ def main() -> int:
         )
         mark = "PASS" if ok else "FAIL"
         print(f"[{mark}] [{code}] {rtt:6.1f}ms  {name:18s}  tail={short(text[-60:], 60)!r}")
+        if not ok:
+            failed.append(name)
+    except Exception as e:
+        print(f"[FAIL] [---]   ----ms  {name:18s}  EXC: {e}")
+        failed.append(name)
+
+    # Non-JSON content types must be rejected (blocks no-preflight cross-site
+    # posts from web pages).
+    name = "content_type_guard"
+    try:
+        code, raw, rtt = _request("POST", "/translate", {"text": "hi"},
+                                  content_type="text/plain")
+        ok = code == 415
+        mark = "PASS" if ok else "FAIL"
+        print(f"[{mark}] [{code}] {rtt:6.1f}ms  {name:18s}  {short(raw.decode('utf-8', 'replace'))}")
         if not ok:
             failed.append(name)
     except Exception as e:

@@ -74,15 +74,35 @@ def _spawn_locked() -> None:
     _kill_locked()
     if not available():
         raise RuntimeError("apple engine unavailable (needs macOS 15+ and a built helper)")
-    proc = subprocess.Popen(
-        [str(config.APPLE_HELPER_PATH)],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-        encoding="utf-8",
-        bufsize=1,
-    )
+    # Keep the helper's stderr (framework errors, e.g. missing language pack)
+    # instead of discarding it; without this a wedged helper is just a timeout.
+    stderr_file = None
+    stderr_target = subprocess.DEVNULL
+    try:
+        mode = "ab"
+        if (
+            config.HELPER_LOG_FILE.exists()
+            and config.HELPER_LOG_FILE.stat().st_size > 5 * 1024 * 1024
+        ):
+            mode = "wb"  # crude cap: start over past 5 MB
+        stderr_file = open(config.HELPER_LOG_FILE, mode)
+        stderr_target = stderr_file
+    except OSError:
+        pass
+    try:
+        proc = subprocess.Popen(
+            [str(config.APPLE_HELPER_PATH)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=stderr_target,
+            text=True,
+            encoding="utf-8",
+            bufsize=1,
+        )
+    finally:
+        # The child inherited the fd; drop the parent's copy.
+        if stderr_file is not None:
+            stderr_file.close()
     q: queue.Queue = queue.Queue()
     threading.Thread(
         target=_reader, args=(proc, q), daemon=True, name="apple-helper-reader"

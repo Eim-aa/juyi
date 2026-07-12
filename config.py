@@ -10,6 +10,8 @@ ROOT = Path.home() / ".local" / "share" / "argos-translator"
 VENV = ROOT / "venv"
 LOG_DIR = Path.home() / "Library" / "Logs"
 LOG_FILE = LOG_DIR / "argos-translator.log"
+# The apple helper's stderr (Translation framework errors) lands here.
+HELPER_LOG_FILE = LOG_DIR / "argos-translator-helper.log"
 
 # ---- HTTP transport (decision: HTTP loopback per IPC bench §6.1) ----
 HOST = "127.0.0.1"
