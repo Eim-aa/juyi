@@ -45,6 +45,49 @@ def _letter_count(text: str) -> int:
     return sum(1 for c in text if c.isalpha())
 
 
+def normalize_input(text: Optional[str]) -> str:
+    """Map None to "", unify line endings, strip surrounding whitespace."""
+    if text is None:
+        text = ""
+    return text.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def truncate_input(
+    text: str, limit: int = config.MAX_INPUT_CHARS
+) -> tuple[str, bool]:
+    """Hard-cap the input length. Truncation is metadata only (flag +
+    warning); a marker appended to the text would get translated with it."""
+    if len(text) > limit:
+        return text[:limit], True
+    return text, False
+
+
+def resolve_engine(
+    requested: Optional[str], default: str, volc_ok: bool, apple_ok: bool
+) -> tuple[str, list[str]]:
+    """Pick the engine for one request; returns (engine, warnings).
+
+    Clients may override the process default per call. Legacy "argos" maps
+    to apple, unknown names fall back to apple, and each engine falls back
+    to the other when it cannot run (volc without creds -> apple; apple
+    without a helper -> volc, but only if volc could run).
+    """
+    warnings: list[str] = []
+    eng = requested or default
+    if eng == "argos":
+        eng = "apple"
+        warnings.append("argos_engine_removed_using_apple")
+    if eng not in ("apple", "volc"):
+        eng = "apple"
+    if eng == "volc" and not volc_ok:
+        eng = "apple"
+        warnings.append("volc_unavailable_fallback_apple")
+    if eng == "apple" and not apple_ok and volc_ok:
+        eng = "volc"
+        warnings.append("apple_unavailable_fallback_volc")
+    return eng, warnings
+
+
 @dataclass
 class Result:
     result: str = ""
@@ -131,38 +174,21 @@ class Translator:
         t0 = time.perf_counter()
         r = Result()
 
-        # Resolve the engine for THIS request. Clients may override the
-        # process default per call. Legacy "argos" maps to apple, and each
-        # engine falls back to the other when it cannot run.
         volc_ok = bool(config.VOLC_ACCESS_KEY and config.VOLC_SECRET_KEY)
-        eng = engine or config.ENGINE
-        if eng == "argos":
-            eng = "apple"
-            r.warnings.append("argos_engine_removed_using_apple")
-        if eng not in ("apple", "volc"):
-            eng = "apple"
-        if eng == "volc" and not volc_ok:
-            eng = "apple"
-            r.warnings.append("volc_unavailable_fallback_apple")
-        if eng == "apple" and not apple_engine.available() and volc_ok:
-            eng = "volc"
-            r.warnings.append("apple_unavailable_fallback_volc")
+        apple_ok = apple_engine.available()
+        eng, eng_warnings = resolve_engine(engine, config.ENGINE, volc_ok, apple_ok)
+        r.warnings.extend(eng_warnings)
         r.engine = eng
 
-        if text is None:
-            text = ""
-        text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+        text = normalize_input(text)
 
         if not text:
             r.error = "empty_input"
             r.elapsed_ms = int((time.perf_counter() - t0) * 1000)
             return r
 
-        if len(text) > config.MAX_INPUT_CHARS:
-            # Truncation is metadata only (truncated flag + warning); a marker
-            # appended to the text would get translated along with it.
-            text = text[: config.MAX_INPUT_CHARS]
-            r.truncated = True
+        text, r.truncated = truncate_input(text)
+        if r.truncated:
             r.warnings.append("input_truncated")
 
         if _cjk_ratio(text) > config.CJK_THRESHOLD:
@@ -178,7 +204,7 @@ class Translator:
             return r
 
         # Neither engine can run (no helper on this OS and no cloud keys).
-        if eng == "apple" and not apple_engine.available():
+        if eng == "apple" and not apple_ok:
             r.error = "no_engine_available"
             r.warnings.append("needs macOS 15+ helper or volc.env credentials")
             r.result = text

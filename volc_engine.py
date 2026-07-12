@@ -29,27 +29,24 @@ def _hmac(key: bytes, msg: str) -> bytes:
     return hmac.new(key, msg.encode("utf-8"), hashlib.sha256).digest()
 
 
-def translate_text(
+def build_signed_request(
     text: str,
     ak: str,
     sk: str,
-    source: str = "en",
-    target: str = "zh",
-    timeout: int = 30,
-) -> str:
-    """Translate `text` via Volcengine. Returns the translated string.
+    source: str,
+    target: str,
+    now: datetime.datetime,
+) -> tuple[str, dict, bytes]:
+    """Build the AK/SK V4 signed TranslateText request for a fixed instant.
 
-    Raises RuntimeError on credential/transport/API error.
+    Pure function of its inputs — no clock, no network — so the signing
+    algorithm can be pinned by unit tests. Returns (url, headers, body).
     """
-    if not ak or not sk:
-        raise RuntimeError("volc credentials missing")
-
     body_obj = {"TargetLanguage": target, "TextList": [text]}
     if source:
         body_obj["SourceLanguage"] = source
     body = json.dumps(body_obj, ensure_ascii=False)
 
-    now = datetime.datetime.now(datetime.timezone.utc)
     x_date = now.strftime("%Y%m%dT%H%M%SZ")
     short_date = now.strftime("%Y%m%d")
     payload_hash = _sha256_hex(body)
@@ -88,9 +85,31 @@ def translate_text(
         "Authorization": authorization,
     }
     url = f"https://{_HOST}/?{_QUERY}"
+    return url, headers, body.encode("utf-8")
+
+
+def translate_text(
+    text: str,
+    ak: str,
+    sk: str,
+    source: str = "en",
+    target: str = "zh",
+    timeout: int = 30,
+) -> str:
+    """Translate `text` via Volcengine. Returns the translated string.
+
+    Raises RuntimeError on credential/transport/API error.
+    """
+    if not ak or not sk:
+        raise RuntimeError("volc credentials missing")
+
+    url, headers, body = build_signed_request(
+        text, ak, sk, source, target,
+        now=datetime.datetime.now(datetime.timezone.utc),
+    )
 
     try:
-        req = Request(url, data=body.encode("utf-8"), headers=headers, method="POST")
+        req = Request(url, data=body, headers=headers, method="POST")
         with urlopen(req, timeout=timeout) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
     except HTTPError as e:
