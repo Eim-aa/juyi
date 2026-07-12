@@ -493,7 +493,11 @@ local function onFlagsOrKey(event)
         local clean = (not sawOtherKey) and (now - optPressTime) <= TAP_MAX_HOLD_S
         if clean and (now - lastTapTime) <= DOUBLE_TAP_WINDOW_S then
             lastTapTime = 0
-            onHotkey()
+            -- Run capture outside the eventtap callback. The clipboard fallback
+            -- posts Cmd+C and waits for pasteboard changes; doing that while
+            -- still inside the flagsChanged callback can starve the synthetic
+            -- key event until after the wait has already timed out.
+            hs.timer.doAfter(0.01, onHotkey)
         elseif clean then
             lastTapTime = now
         else
