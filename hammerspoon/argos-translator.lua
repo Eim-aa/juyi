@@ -36,6 +36,18 @@ local sawOtherKey = false
 local ENGINE_STATE_PATH = os.getenv("HOME") .. "/.config/argos-translator/hs-engine"
 local ENGINE_SHORT = { volc = "云端", apple = "苹果" }
 local ENGINE_SOURCE = { volc = "火山云端", apple = "苹果端上翻译" }
+-- Engine failures come back as error codes with the source text echoed in
+-- `result`; they must render as errors, never as a translation.
+local ERROR_TITLE = {
+    apple_error = "苹果端上翻译出错",
+    volc_error = "云端翻译出错",
+    no_engine_available = "没有可用的翻译引擎",
+}
+local ERROR_HINT = {
+    apple_error = "检查语言包：bin/apple-translation-helper --status",
+    volc_error = "检查 volc.env 的 AK/SK 与机器翻译开通状态",
+    no_engine_available = "需 macOS 15+（离线）或配置火山 API Key（云端）",
+}
 local currentEngine = "volc"
 local volcAvailable = true
 local appleAvailable = false
@@ -51,6 +63,18 @@ local function appendLog(fields)
         f:write(line .. "\n")
         f:close()
     end
+end
+
+-- Truncate to at most maxBytes without splitting a UTF-8 sequence.
+local function utf8Truncate(s, maxBytes)
+    if #s <= maxBytes then return s end
+    local i = maxBytes + 1
+    while i > 1 do
+        local b = s:byte(i)
+        if not b or b < 0x80 or b >= 0xC0 then break end
+        i = i - 1
+    end
+    return s:sub(1, i - 1) .. "…"
 end
 
 -- ---------- text capture ---------- --
@@ -317,6 +341,23 @@ local function callTranslate(text, source)
             end
             if parsed.error == "src_lang_mismatch" then
                 update(parsed.result or "", "源语言看起来不是英文")
+                return
+            end
+            if parsed.error and parsed.error ~= "" then
+                local title = ERROR_TITLE[parsed.error]
+                    or ("翻译出错：" .. tostring(parsed.error))
+                local detail
+                if type(parsed.warnings) == "table" and type(parsed.warnings[1]) == "string" then
+                    detail = utf8Truncate(parsed.warnings[1], 120)
+                end
+                local hint = ERROR_HINT[parsed.error]
+                local sub = hint
+                if detail and hint then
+                    sub = detail .. " · " .. hint
+                elseif detail then
+                    sub = detail
+                end
+                update("⚠️ " .. title, sub)
                 return
             end
             local result = parsed.result or "(空结果)"

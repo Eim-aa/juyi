@@ -169,8 +169,8 @@ flowchart LR
 | 双击无反应          | 打开 Hammerspoon Console                                                                        | 在"系统设置 → 隐私与安全性 → 辅助功能"给 Hammerspoon 权限，然后 Reload Config；或调慢双击窗口 `DOUBLE_TAP_WINDOW_S` |
 | 服务无法访问        | `launchctl print gui/$(id -u)/io.github.Eim-aa.argos-translator`                          | 跑 `scripts/launchd_install.sh`                                                                 |
 | `/health` 失败      | `curl -s http://127.0.0.1:54321/health`                                                         | 看 `~/Library/Logs/argos-translator.err.log`                                                    |
-| 火山返回报错        | 看浮窗里的 `volc_error` 提示                                                                     | 确认 `volc.env` 的 AK/SK 正确、子用户已授 `TranslateFullAccess`、机器翻译已开通                 |
-| 苹果引擎报错        | 看浮窗里的 `apple_error` 提示；跑 `bin/apple-translation-helper --status`                        | 需 macOS 15+；若语言包未装，跑 `bin/apple-translation-helper --prepare` 并确认系统下载弹窗     |
+| 火山返回报错        | 浮窗显示「⚠️ 云端翻译出错」及原因                                                                | 确认 `volc.env` 的 AK/SK 正确、子用户已授 `TranslateFullAccess`、机器翻译已开通                 |
+| 苹果引擎报错        | 浮窗显示「⚠️ 苹果端上翻译出错」及原因；跑 `bin/apple-translation-helper --status`                | 需 macOS 15+；若语言包未装，跑 `bin/apple-translation-helper --prepare` 并确认系统下载弹窗     |
 | 剪贴板被改          | 手动跑 `pbpaste \| shasum`，双击 Option 前后对比                                                | 反馈给作者：源 app 名 + pasteboard type                                                         |
 
 ## 隐私（离线 vs 云端）

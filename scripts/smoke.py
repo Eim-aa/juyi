@@ -86,6 +86,25 @@ def main() -> int:
             print(f"[FAIL] [---]   ----ms  {name:18s}  EXC: {e}")
             failed.append(name)
 
+    # Truncation must be metadata-only: no marker text may leak into the body.
+    name = "trunc_purity"
+    try:
+        code, resp, rtt = post("/translate", {"text": "Hello world. " * 600})
+        text = resp.get("result") or ""
+        ok = (
+            code == 200
+            and resp.get("truncated") is True
+            and "truncated" not in text
+            and "截断" not in text
+        )
+        mark = "PASS" if ok else "FAIL"
+        print(f"[{mark}] [{code}] {rtt:6.1f}ms  {name:18s}  tail={short(text[-60:], 60)!r}")
+        if not ok:
+            failed.append(name)
+    except Exception as e:
+        print(f"[FAIL] [---]   ----ms  {name:18s}  EXC: {e}")
+        failed.append(name)
+
     print("\n=== /metrics (last 6 lines) ===")
     code, text, _ = get("/metrics")
     print("\n".join(text.strip().splitlines()[-6:]))
@@ -94,7 +113,7 @@ def main() -> int:
     if failed:
         print(f"FAILED: {failed}")
         return 1
-    print(f"all {len(cases)} cases passed")
+    print("all cases passed")
     return 0
 
 

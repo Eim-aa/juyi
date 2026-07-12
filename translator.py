@@ -138,7 +138,9 @@ class Translator:
             return r
 
         if len(text) > config.MAX_INPUT_CHARS:
-            text = text[: config.MAX_INPUT_CHARS] + "…[truncated]"
+            # Truncation is metadata only (truncated flag + warning); a marker
+            # appended to the text would get translated along with it.
+            text = text[: config.MAX_INPUT_CHARS]
             r.truncated = True
             r.warnings.append("input_truncated")
 

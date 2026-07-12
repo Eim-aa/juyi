@@ -47,7 +47,11 @@ def _load_env_file(path: Path) -> dict:
             if not line or line.startswith("#") or "=" not in line:
                 continue
             k, v = line.split("=", 1)
-            out[k.strip()] = v.strip()
+            v = v.strip()
+            # Tolerate shell-style quoting: VOLC_ACCESS_KEY="abc" == abc.
+            if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+                v = v[1:-1]
+            out[k.strip()] = v
     except OSError:
         pass
     return out

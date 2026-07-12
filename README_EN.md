@@ -185,8 +185,8 @@ flowchart LR
 | Double-tap does nothing | Open Hammerspoon Console                                                                      | Grant Accessibility permission, then Reload Config; or widen `DOUBLE_TAP_WINDOW_S`           |
 | Service unreachable   | `launchctl print gui/$(id -u)/io.github.Eim-aa.argos-translator`                         | Run `scripts/launchd_install.sh`                                                             |
 | Health fails          | `curl -s http://127.0.0.1:54321/health`                                                        | Check `~/Library/Logs/argos-translator.err.log`                                              |
-| Volcengine error      | See the `volc_error` note in the popup                                                         | Check the AK/SK in `volc.env`, that the sub-user has `TranslateFullAccess`, and that Machine Translation is enabled |
-| Apple engine error    | See the `apple_error` note in the popup; run `bin/apple-translation-helper --status`           | Needs macOS 15+; if the language pack is missing, run `bin/apple-translation-helper --prepare` and confirm the system download dialog |
+| Volcengine error      | The popup shows "⚠️ 云端翻译出错" (cloud engine error) with the reason                          | Check the AK/SK in `volc.env`, that the sub-user has `TranslateFullAccess`, and that Machine Translation is enabled |
+| Apple engine error    | The popup shows "⚠️ 苹果端上翻译出错" (apple engine error) with the reason; run `bin/apple-translation-helper --status` | Needs macOS 15+; if the language pack is missing, run `bin/apple-translation-helper --prepare` and confirm the system download dialog |
 | Clipboard changed     | Run manual `pbpaste \| shasum` before and after the double-tap                                 | Report the source app and pasteboard type                                                    |
 
 ## Privacy (offline vs cloud)
