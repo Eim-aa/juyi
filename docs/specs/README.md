@@ -7,8 +7,8 @@
 | - | ---- | ------ | ------ | ---- |
 | 1 | [菜单栏控制中心与首次运行向导](01-menubar-control-center.md) | 把菜单栏变成状态/配置/引导入口，消灭配置终端步骤 | ~4–6 人日 | 建议在 #3 之后 |
 | 2 | [安装门槛降低](02-install-friction.md) | 预编译 helper、双击安装入口、去 git/CLT 依赖 | ~2–3 人日 | **依赖 #5**（Release 产物） |
-| 3 | [错误可见性与健壮性修复](03-error-visibility-robustness.md) | 引擎错误不再被静默吞掉 + 一批健壮性小修 | ~2–3 人日 | 无 |
-| 4 | [Argos 残留清理](04-argos-cleanup.md) | 死配置、legacy 字段、plist 残留、uninstall.sh 重写 | ~1–2 人日 | 无 |
+| 3 | [错误可见性与健壮性修复](03-error-visibility-robustness.md) ✅ 已实现 | 引擎错误不再被静默吞掉 + 一批健壮性小修 | ~2–3 人日 | 无 |
+| 4 | [Argos 残留清理](04-argos-cleanup.md) ✅ 已实现 | 死配置、legacy 字段、plist 残留、uninstall.sh 重写 | ~1–2 人日 | 无 |
 | 5 | [CI 与发布流水线](05-ci-release.md) | GitHub Actions 检查 + helper 自动构建发布 | ~2 人日 | 无 |
 
 ## 建议实施顺序
