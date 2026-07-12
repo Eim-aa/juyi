@@ -73,6 +73,15 @@ def _translate_cached_apple(text: str) -> str:
     return apple_engine.translate_text(text)
 
 
+# One cached entry point per engine; adding an engine means adding a
+# _translate_cached_* function and a row here (plus availability wiring in
+# translate()'s resolution block).
+_ENGINE_FNS = {
+    "apple": _translate_cached_apple,
+    "volc": _translate_cached_volc,
+}
+
+
 class Translator:
     _instance: Optional["Translator"] = None
 
@@ -98,13 +107,28 @@ class Translator:
             },
         )
 
-    async def _infer_volc(self, text: str) -> str:
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, _translate_cached_volc, text)
+    async def _run_engine(self, eng: str, text: str, r: Result) -> None:
+        """Run one engine call, filling r.result/r.error/r.cached.
 
-    async def _infer_apple(self, text: str) -> str:
+        On failure the source text is echoed back and the error is recorded
+        as "<eng>_error". Cache hits are detected via lru_cache counter
+        deltas — approximate under concurrent requests, fine for a
+        single-user service.
+        """
+        fn = _ENGINE_FNS[eng]
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, _translate_cached_apple, text)
+        info_before = fn.cache_info()
+        try:
+            r.result = await loop.run_in_executor(None, fn, text)
+        except Exception as e:  # noqa: BLE001
+            r.error = f"{eng}_error"
+            r.warnings.append(str(e)[:200])
+            r.result = text
+        info_after = fn.cache_info()
+        r.cached = (
+            info_after.misses == info_before.misses
+            and info_after.hits > info_before.hits
+        )
 
     async def translate(self, text: str, engine: Optional[str] = None) -> Result:
         t0 = time.perf_counter()
@@ -164,38 +188,7 @@ class Translator:
             r.elapsed_ms = int((time.perf_counter() - t0) * 1000)
             return r
 
-        # ---- Apple engine: system on-device translation via the helper ----
-        if eng == "apple":
-            info_before = _translate_cached_apple.cache_info()
-            try:
-                r.result = await self._infer_apple(text)
-            except Exception as e:  # noqa: BLE001
-                r.error = "apple_error"
-                r.warnings.append(str(e)[:200])
-                r.result = text
-            info_after = _translate_cached_apple.cache_info()
-            r.cached = (
-                info_after.misses == info_before.misses
-                and info_after.hits > info_before.hits
-            )
-            r.elapsed_ms = int((time.perf_counter() - t0) * 1000)
-            self._count += 1
-            self._latencies.append(r.elapsed_ms)
-            return r
-
-        # ---- Cloud engine: one signed API call ----
-        info_before = _translate_cached_volc.cache_info()
-        try:
-            r.result = await self._infer_volc(text)
-        except Exception as e:  # noqa: BLE001
-            r.error = "volc_error"
-            r.warnings.append(str(e)[:200])
-            r.result = text
-        info_after = _translate_cached_volc.cache_info()
-        r.cached = (
-            info_after.misses == info_before.misses
-            and info_after.hits > info_before.hits
-        )
+        await self._run_engine(eng, text, r)
         r.elapsed_ms = int((time.perf_counter() - t0) * 1000)
         self._count += 1
         self._latencies.append(r.elapsed_ms)
