@@ -95,9 +95,6 @@ class Translator:
         self._latencies: deque[int] = deque(maxlen=config.LATENCY_RING_SIZE)
         self._started_at = time.time()
         self._count = 0
-        # Legacy field from the Argos era; nothing local needs warming now.
-        # The apple helper is spawned lazily by apple_engine on first use.
-        self.warmup_ms = 0
         log.info(
             "engines_ready",
             extra={
@@ -206,7 +203,6 @@ class Translator:
             "cache_misses": v.misses + ap.misses,
             "cache_size": v.currsize + ap.currsize,
             "uptime_s": round(time.time() - self._started_at, 1),
-            "warmup_ms": self.warmup_ms,
             "p50_ms": s[n // 2] if n else 0,
             "p95_ms": s[int(n * 0.95)] if n else 0,
         }

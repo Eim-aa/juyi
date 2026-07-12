@@ -7,13 +7,14 @@ from pathlib import Path
 
 # ---- Paths ----
 ROOT = Path.home() / ".local" / "share" / "argos-translator"
-VENV = ROOT / "venv"
 LOG_DIR = Path.home() / "Library" / "Logs"
 LOG_FILE = LOG_DIR / "argos-translator.log"
 # The apple helper's stderr (Translation framework errors) lands here.
 HELPER_LOG_FILE = LOG_DIR / "argos-translator-helper.log"
 
-# ---- HTTP transport (decision: HTTP loopback per IPC bench §6.1) ----
+# ---- HTTP transport ----
+# Loopback HTTP over a Unix socket: the RTT difference was negligible in
+# scripts/bench_ipc.py, and Hammerspoon's hs.http only speaks TCP.
 HOST = "127.0.0.1"
 PORT = 54321
 
@@ -21,19 +22,17 @@ PORT = 54321
 SRC_LANG = "en"
 TGT_LANG = "zh"
 
-# ---- Input policy (§6.6) ----
+# ---- Input policy ----
 MAX_INPUT_CHARS = 5000
-LONG_INPUT_CHARS = 1500
-LONG_INPUT_WORDS = 200
 CJK_THRESHOLD = 0.5
 
-# ---- Cache (§6.5) ----
+# ---- Cache ----
 CACHE_SIZE = 2000
 
 # ---- Stats ring buffer for p50/p95 ----
 LATENCY_RING_SIZE = 1000
 
-# ---- Log rotation (§8) ----
+# ---- Log rotation ----
 LOG_MAX_BYTES = 10 * 1024 * 1024
 LOG_BACKUP_COUNT = 3
 

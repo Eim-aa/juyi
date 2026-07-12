@@ -1,7 +1,7 @@
 """FastAPI HTTP service for argos-translator.
 
-Lifespan loads the Translator (which warmups the model) BEFORE uvicorn starts
-serving requests. Logging is JSONL on both stderr and a rotating file.
+Lifespan constructs the Translator BEFORE uvicorn starts serving requests.
+Logging is JSONL on both stderr and a rotating file.
 """
 from __future__ import annotations
 
@@ -86,18 +86,15 @@ def setup_logging() -> None:
 log = logging.getLogger("server")
 
 
-# ---- Lifespan: load model before serving --------------------------------------
+# ---- Lifespan: construct the Translator before serving ------------------------
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     log.info("startup_begin")
     loop = asyncio.get_running_loop()
-    # Run blocking model load in executor so the asyncio loop stays responsive
-    # for the lifespan protocol.
+    # Construct in an executor so the asyncio loop stays responsive for the
+    # lifespan protocol.
     await loop.run_in_executor(None, Translator.get_instance)
-    log.info(
-        "startup_complete",
-        extra={"warmup_ms": Translator.get_instance().warmup_ms},
-    )
+    log.info("startup_complete")
     yield
     log.info("shutdown")
 
@@ -155,7 +152,6 @@ async def health():
     t = Translator.get_instance()
     return {
         "ok": True,
-        "model_loaded": True,
         "default_engine": config.ENGINE,
         "engines": {
             "apple": apple_engine.available(),

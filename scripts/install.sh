@@ -95,8 +95,8 @@ echo "python: $PYTHON"
 "$PYTHON" --version
 
 avail_kb="$(df -k "$HOME" | awk 'NR==2 {print $4}')"
-if [[ "${avail_kb:-0}" -lt 1048576 ]]; then
-    hint "Free at least 1GB on the system volume, then rerun this script"
+if [[ "${avail_kb:-0}" -lt 204800 ]]; then
+    hint "Free at least 200MB on the system volume, then rerun this script"
     fail "not enough disk space"
 fi
 echo "disk: $((avail_kb / 1024)) MB available"

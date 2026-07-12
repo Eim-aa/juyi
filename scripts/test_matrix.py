@@ -80,7 +80,7 @@ def wait_for_health(timeout_s: float = 45.0) -> bool:
     while time.monotonic() < deadline:
         try:
             code, body, _ = get_json("/health")
-            if code == 200 and body.get("ok") and body.get("model_loaded"):
+            if code == 200 and body.get("ok") and isinstance(body.get("engines"), dict):
                 return True
         except Exception:
             pass
@@ -105,7 +105,7 @@ def run() -> int:
 
     print("== health ==")
     code, health, rtt = get_json("/health")
-    check("GET /health", code == 200 and health.get("ok") and health.get("model_loaded"),
+    check("GET /health", code == 200 and health.get("ok") and isinstance(health.get("engines"), dict),
           f"code={code} rtt={rtt:.1f}ms body={health}")
 
     print("\n== latency and behavior matrix ==")
