@@ -107,14 +107,24 @@ class TranslateRequest(BaseModel):
     engine: Optional[str] = None
 
 
+# JSON only, checked BEFORE body parsing. A non-JSON content type would make
+# /translate reachable from any web page as a CORS "simple request" (no
+# preflight), letting a malicious page fire translations (and burn cloud
+# quota) blind. FastAPI alone would 422 text/plain but happily parses a
+# missing content type as JSON; the middleware closes both with a proper 415.
+@app.middleware("http")
+async def require_json(request: Request, call_next):
+    if request.method == "POST" and request.url.path == "/translate":
+        ctype = (request.headers.get("content-type") or "").lower()
+        if "application/json" not in ctype:
+            return JSONResponse(
+                {"error": "unsupported_media_type"}, status_code=415
+            )
+    return await call_next(request)
+
+
 @app.post("/translate")
-async def translate(req: TranslateRequest, request: Request):
-    # JSON only. A non-JSON content type would make this endpoint reachable
-    # from any web page as a CORS "simple request" (no preflight), letting a
-    # malicious page fire translations (and burn cloud quota) blind.
-    ctype = (request.headers.get("content-type") or "").lower()
-    if "application/json" not in ctype:
-        return JSONResponse({"error": "unsupported_media_type"}, status_code=415)
+async def translate(req: TranslateRequest):
     rid = uuid.uuid4().hex[:8]
     t = Translator.get_instance()
     result = await t.translate(req.text or "", engine=req.engine)
