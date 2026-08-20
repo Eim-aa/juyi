@@ -11,15 +11,26 @@ import urllib.request
 URL = "http://127.0.0.1:54321/translate"
 HERE = pathlib.Path(__file__).resolve().parent
 SENTENCES = HERE / "benchmark_sentences.txt"
+TOKEN_PATH = pathlib.Path.home() / ".config" / "argos-translator" / "auth-token"
+
+
+def auth_headers() -> dict[str, str]:
+    try:
+        token = TOKEN_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return {}
+    return {"Authorization": f"Bearer {token}"} if token else {}
 
 
 def translate(text: str) -> dict:
     data = json.dumps({"text": text}).encode("utf-8")
+    headers = auth_headers()
+    headers["Content-Type"] = "application/json"
     req = urllib.request.Request(
         URL,
         data=data,
         method="POST",
-        headers={"Content-Type": "application/json"},
+        headers=headers,
     )
     t0 = time.perf_counter()
     with urllib.request.urlopen(req, timeout=30) as resp:

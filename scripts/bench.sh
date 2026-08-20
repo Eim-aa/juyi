@@ -4,7 +4,7 @@
 # closed-loop requests, prints p50/p95/p99, repeats for the other transport.
 set -euo pipefail
 
-ROOT="$HOME/.local/share/argos-translator"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 PY="$ROOT/venv/bin/python"
 SCRIPT="$ROOT/scripts/bench_ipc.py"
 

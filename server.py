@@ -6,6 +6,7 @@ Logging is JSONL on both stderr and a rotating file.
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import logging.handlers
@@ -19,7 +20,8 @@ from pydantic import BaseModel
 
 import apple_engine
 import config
-from translator import Translator
+import volc_engine
+from translator import Translator, classify_engine_error
 
 
 # ---- Structured JSONL logging --------------------------------------------------
@@ -107,6 +109,24 @@ class TranslateRequest(BaseModel):
     engine: Optional[str] = None
 
 
+_PROTECTED_PATHS = frozenset({"/translate", "/validate/volc-pending", "/metrics"})
+_ALLOWED_HOSTS = frozenset(
+    {f"127.0.0.1:{config.PORT}", f"localhost:{config.PORT}"}
+)
+
+
+def _has_valid_auth_header(header: Optional[str], token: str) -> bool:
+    """Compare the complete bearer value without logging either operand."""
+    if not token or header is None:
+        return False
+    try:
+        return hmac.compare_digest(header, f"Bearer {token}")
+    except TypeError:
+        # compare_digest rejects non-ASCII str input. Treat a malformed local
+        # header as unauthorized instead of turning it into a 500 response.
+        return False
+
+
 # JSON only, checked BEFORE body parsing. A non-JSON content type would make
 # /translate reachable from any web page as a CORS "simple request" (no
 # preflight), letting a malicious page fire translations (and burn cloud
@@ -114,6 +134,28 @@ class TranslateRequest(BaseModel):
 # missing content type as JSON; the middleware closes both with a proper 415.
 @app.middleware("http")
 async def require_json(request: Request, call_next):
+    # Reject DNS-rebinding and browser-originated requests before routing. The
+    # native app, Hammerspoon and diagnostics all address 127.0.0.1 directly
+    # and do not send an Origin header.
+    host = (request.headers.get("host") or "").lower()
+    if host not in _ALLOWED_HOSTS:
+        return JSONResponse({"error": "invalid_host"}, status_code=421)
+    if request.headers.get("origin") is not None:
+        return JSONResponse({"error": "browser_origin_not_allowed"}, status_code=403)
+
+    if request.url.path in _PROTECTED_PATHS:
+        if not config.AUTH_TOKEN and not config.ALLOW_UNAUTHENTICATED:
+            return JSONResponse(
+                {"error": "local_auth_not_configured"}, status_code=503
+            )
+        if config.AUTH_TOKEN and not _has_valid_auth_header(
+            request.headers.get("authorization"), config.AUTH_TOKEN
+        ):
+            return JSONResponse(
+                {"error": "unauthorized"},
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     if request.method == "POST" and request.url.path == "/translate":
         ctype = (request.headers.get("content-type") or "").lower()
         if "application/json" not in ctype:
@@ -126,6 +168,20 @@ async def require_json(request: Request, call_next):
 @app.post("/translate")
 async def translate(req: TranslateRequest):
     rid = uuid.uuid4().hex[:8]
+    requested_engine = req.engine or config.ENGINE
+    if requested_engine == "volc" and config.cloud_removal_blocks_volc():
+        log.warning(
+            "cloud_translation_blocked",
+            extra={"request_id": rid, "error": "cloud_removal_pending"},
+        )
+        return JSONResponse(
+            {
+                "error": "cloud_removal_pending",
+                "engine": "volc",
+                "warnings": ["cloud_removal_pending"],
+            },
+            status_code=409,
+        )
     t = Translator.get_instance()
     result = await t.translate(req.text or "", engine=req.engine)
     log.info(
@@ -157,17 +213,68 @@ async def translate(req: TranslateRequest):
     return body
 
 
+@app.post("/validate/volc-pending")
+async def validate_pending_volc():
+    """Validate the separate pending Keychain item without receiving secrets."""
+    if config.cloud_removal_blocks_volc():
+        return JSONResponse(
+            {
+                "error": "cloud_removal_pending",
+                "engine": "volc",
+                "warnings": ["cloud_removal_pending"],
+            },
+            status_code=409,
+        )
+    pending = config._load_keychain_credentials(
+        service=config.VOLC_PENDING_KEYCHAIN_SERVICE,
+        account=config.VOLC_PENDING_KEYCHAIN_ACCOUNT,
+    )
+    if pending.status != "found" or pending.credentials is None:
+        return JSONResponse(
+            {"error": "pending_credentials_unavailable", "engine": "volc"},
+            status_code=400,
+        )
+    access_key, secret_key = pending.credentials
+    loop = asyncio.get_running_loop()
+    try:
+        result = await loop.run_in_executor(
+            None,
+            lambda: volc_engine.translate_text(
+                "Good tools should feel effortless.",
+                access_key,
+                secret_key,
+                source=config.SRC_LANG,
+                target=config.TGT_LANG,
+            ),
+        )
+        return {"result": result, "engine": "volc", "elapsed_ms": 0}
+    except Exception as exc:  # noqa: BLE001
+        diagnostic = classify_engine_error("volc", exc)
+        log.warning("volc_pending_validation_failed", extra={"error": diagnostic})
+        return JSONResponse(
+            {"error": "volc_error", "engine": "volc", "warnings": [diagnostic]},
+            status_code=400,
+        )
+
+
 @app.get("/health")
 async def health():
-    t = Translator.get_instance()
+    auth_ready = bool(config.AUTH_TOKEN) or config.ALLOW_UNAUTHENTICATED
+    cloud_removal_pending = config.cloud_removal_blocks_volc()
     return {
-        "ok": True,
+        "ok": auth_ready,
+        "auth_required": bool(config.AUTH_TOKEN) or not config.ALLOW_UNAUTHENTICATED,
+        "auth_configured": bool(config.AUTH_TOKEN),
+        "cloud_removal_pending": cloud_removal_pending,
         "default_engine": config.ENGINE,
         "engines": {
             "apple": apple_engine.available(),
+            # This reports whether credentials are resident in this process,
+            # even while the removal kill switch blocks their use. The native
+            # app relies on the raw state to avoid clearing the transaction
+            # marker before an old credential-bearing process is gone.
             "volc": bool(config.VOLC_ACCESS_KEY and config.VOLC_SECRET_KEY),
         },
-        **t.stats(),
     }
 
 

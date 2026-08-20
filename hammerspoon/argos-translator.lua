@@ -26,14 +26,21 @@ local CLIPBOARD_KEY_DELAY_US = 100 * 1000
 
 local activeCanvas = nil
 local activeWatcher = nil
+local activePopup = nil
 local tapWatcher = nil
 local optDown = false
 local optPressTime = 0
 local lastTapTime = 0
 local sawOtherKey = false
+local requestGeneration = 0
+local activeRequest = nil
 
 -- Engine selection: switched live via the menu bar, sent with each request.
 local ENGINE_STATE_PATH = os.getenv("HOME") .. "/.config/argos-translator/hs-engine"
+local STATUS_PATH = os.getenv("HOME") .. "/.config/argos-translator/hs-status.json"
+local PAUSE_PATH = os.getenv("HOME") .. "/.config/argos-translator/hs-paused"
+local AUTH_TOKEN_PATH = os.getenv("HOME") .. "/.config/argos-translator/auth-token"
+local CLOUD_REMOVAL_MARKER_PATH = os.getenv("HOME") .. "/.config/argos-translator/cloud-removal-pending"
 local ENGINE_SHORT = { volc = "云端", apple = "苹果" }
 local ENGINE_SOURCE = { volc = "火山云端", apple = "苹果端上翻译" }
 -- Engine failures come back as error codes with the source text echoed in
@@ -44,15 +51,42 @@ local ERROR_TITLE = {
     no_engine_available = "没有可用的翻译引擎",
 }
 local ERROR_HINT = {
-    apple_error = "检查语言包：bin/apple-translation-helper --status",
-    volc_error = "检查 volc.env 的 AK/SK 与机器翻译开通状态",
-    no_engine_available = "需 macOS 15+（离线）或配置火山 API Key（云端）",
+    apple_error = "请打开句译，准备 Apple 离线翻译",
+    volc_error = "请打开句译，检查云端设置",
+    no_engine_available = "请打开句译，选择可用的翻译方式",
 }
-local currentEngine = "volc"
-local volcAvailable = true
+local DIAGNOSTIC_HINT = {
+    volc_credentials_or_permission = "请检查云端密钥和机器翻译权限",
+    volc_timeout = "云端连接超时，请稍后重试",
+    volc_network = "无法连接云端，请检查网络",
+    volc_http_error = "云端 HTTP 请求失败",
+    volc_api_error = "云端服务返回错误",
+    volc_service_error = "云端服务暂时不可用",
+    apple_timeout_or_language_pack = "Apple 翻译超时，请确认语言包已准备好",
+    apple_helper_unavailable = "Apple 离线组件不可用",
+    apple_helper_error = "Apple 离线组件异常退出",
+    apple_translation_error = "Apple 离线翻译失败",
+    engine_setup_required = "请打开句译，准备一种翻译方式",
+}
+local currentEngine = "apple"
+local volcAvailable = false
 local appleAvailable = false
 local menubar = nil
-local setEngine, rebuildMenu -- forward declarations (assigned below)
+local externalEngineWatcher = nil
+local setEngine, rebuildMenu, persistEngine -- forward declarations (assigned below)
+
+-- A cloud-removal transaction is a data-plane kill switch, not merely UI
+-- state. Any existing marker -- including one we cannot read -- must prevent
+-- selected text from being sent to the cloud. Only an explicit ENOENT means
+-- the marker is absent.
+local function cloudRemovalBlocksVolc()
+    local f, _, errno = io.open(CLOUD_REMOVAL_MARKER_PATH, "r")
+    if f then
+        f:close()
+        return true
+    end
+    return errno ~= 2
+end
 
 local function appendLog(fields)
     fields.ts = os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -62,6 +96,33 @@ local function appendLog(fields)
     if f then
         f:write(line .. "\n")
         f:close()
+    end
+end
+
+local function isPaused()
+    local f = io.open(PAUSE_PATH, "r")
+    if not f then return false end
+    local value = f:read("*l")
+    f:close()
+    return value == "1"
+end
+
+local function writeStatus(moduleLoaded)
+    local status = {
+        module_loaded = moduleLoaded and true or false,
+        accessibility = hs.accessibilityState(false) and true or false,
+        watcher_active = tapWatcher ~= nil and tapWatcher:isEnabled() or false,
+        paused = isPaused(),
+        updated_at = os.time(),
+    }
+    local ok, encoded = pcall(hs.json.encode, status)
+    if not ok then return end
+    local tempPath = STATUS_PATH .. ".tmp"
+    local f = io.open(tempPath, "w")
+    if f then
+        f:write(encoded .. "\n")
+        f:close()
+        os.rename(tempPath, STATUS_PATH)
     end
 end
 
@@ -75,6 +136,71 @@ local function utf8Truncate(s, maxBytes)
         i = i - 1
     end
     return s:sub(1, i - 1) .. "…"
+end
+
+-- Read the token for every request so an installer can add or rotate it
+-- without requiring the Hammerspoon config to be reloaded.  An absent token
+-- deliberately leaves out Authorization for source-tree development servers.
+local function readAuthToken()
+    local f = io.open(AUTH_TOKEN_PATH, "r")
+    if not f then return nil end
+    local token = f:read("*l")
+    f:close()
+    if not token then return nil end
+    token = token:match("^%s*(.-)%s*$") or ""
+    if #token ~= 64 or not token:match("^[0-9a-f]+$") then return nil end
+    return token
+end
+
+local function requestHeaders(extra)
+    local headers = {}
+    if extra then
+        for key, value in pairs(extra) do headers[key] = value end
+    end
+    local token = readAuthToken()
+    if token then headers["Authorization"] = "Bearer " .. token end
+    return headers
+end
+
+-- Server warnings can contain an upstream exception string.  Keep the useful
+-- diagnosis while removing common credential forms and local account names.
+local function sanitizeWarning(value)
+    if type(value) ~= "string" then return nil end
+    local warning = value:gsub("[%c]+", " "):gsub("%s+", " ")
+    warning = warning:gsub("([Bb][Ee][Aa][Rr][Ee][Rr]%s+)[^%s,;]+", "%1[已脱敏]")
+    warning = warning:gsub("([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]%s*[:=]%s*)[^%s,;]+", "%1[已脱敏]")
+    warning = warning:gsub("([Vv][Oo][Ll][Cc]_[Aa][Cc][Cc][Ee][Ss][Ss]_[Kk][Ee][Yy]%s*[:=]%s*)[^%s,;]+", "%1[已脱敏]")
+    warning = warning:gsub("([Vv][Oo][Ll][Cc]_[Ss][Ee][Cc][Rr][Ee][Tt]_[Kk][Ee][Yy]%s*[:=]%s*)[^%s,;]+", "%1[已脱敏]")
+    warning = warning:gsub("([Aa][Cc][Cc][Ee][Ss][Ss]_[Kk][Ee][Yy]%s*[:=]%s*)[^%s,;]+", "%1[已脱敏]")
+    warning = warning:gsub("([Ss][Ee][Cc][Rr][Ee][Tt]_[Kk][Ee][Yy]%s*[:=]%s*)[^%s,;]+", "%1[已脱敏]")
+    warning = warning:gsub("([Aa][Cc][Cc][Ee][Ss][Ss][Kk][Ee][Yy]%s*[:=]%s*)[^%s,;]+", "%1[已脱敏]")
+    warning = warning:gsub("([Ss][Ee][Cc][Rr][Ee][Tt][Kk][Ee][Yy]%s*[:=]%s*)[^%s,;]+", "%1[已脱敏]")
+    warning = warning:gsub("([Aa][Kk]%s*[:=]%s*)[^%s,;]+", "%1[已脱敏]")
+    warning = warning:gsub("([Ss][Kk]%s*[:=]%s*)[^%s,;]+", "%1[已脱敏]")
+    warning = warning:gsub("([Tt][Oo][Kk][Ee][Nn]%s*[:=]%s*)[^%s,;]+", "%1[已脱敏]")
+    warning = warning:gsub("[%w%._%+%-]+@[%w%.%-]+", "[邮箱已脱敏]")
+    warning = warning:gsub("/Users/[^/%s]+", "~")
+    warning = warning:gsub("[%w%+/%-_=%.]+", function(word)
+        if #word >= 24 and word:match("%a") and word:match("%d") then
+            return "[已脱敏]"
+        end
+        return word
+    end)
+    warning = warning:match("^%s*(.-)%s*$") or ""
+    if warning == "" then return nil end
+    return utf8Truncate(warning, 160)
+end
+
+local function warningDetail(warnings)
+    if type(warnings) ~= "table" then return nil end
+    for _, warning in ipairs(warnings) do
+        if type(warning) == "string" and DIAGNOSTIC_HINT[warning] then
+            return DIAGNOSTIC_HINT[warning]
+        end
+        local detail = sanitizeWarning(warning)
+        if detail then return detail end
+    end
+    return nil
 end
 
 -- ---------- text capture ---------- --
@@ -167,6 +293,7 @@ local function dismiss()
         activeCanvas:delete()
         activeCanvas = nil
     end
+    activePopup = nil
 end
 
 -- Estimate the wrapped height of `text` laid out in a column `inner` wide.
@@ -184,7 +311,32 @@ local function measureWrapped(text, style, inner)
     return total
 end
 
-local function buildCanvas(mouseX, mouseY, body, subtitle)
+local function fitTextToHeight(text, style, inner, maxHeight)
+    if maxHeight <= 0 then return "", 0, true end
+    local fullHeight = measureWrapped(text, style, inner)
+    if fullHeight <= maxHeight then return text, fullHeight, false end
+
+    -- Search on bytes and always pass candidates through utf8Truncate so a
+    -- multibyte Chinese character is never split.
+    local best = "…"
+    local bestHeight = measureWrapped(best, style, inner)
+    if bestHeight > maxHeight then return best, maxHeight, true end
+    local low, high = 0, math.max(0, #text - 1)
+    while low <= high do
+        local mid = math.floor((low + high) / 2)
+        local candidate = utf8Truncate(text, mid)
+        local candidateHeight = measureWrapped(candidate, style, inner)
+        if candidateHeight <= maxHeight then
+            best, bestHeight = candidate, candidateHeight
+            low = mid + 1
+        else
+            high = mid - 1
+        end
+    end
+    return best, bestHeight, true
+end
+
+local function buildCanvas(mouseX, mouseY, body, subtitle, options)
     -- Measure: first an unconstrained pass to get the natural width.
     local mainStyle = {
         font = FONT_NAME,
@@ -204,16 +356,45 @@ local function buildCanvas(mouseX, mouseY, body, subtitle)
     if width < 120 then width = 120 end
 
     local inner = width - PADDING * 2
-    local bodyHeight = measureWrapped(body, mainStyle, inner)
+    local displayBody = body
+    local displaySubtitle = subtitle
+    local bodyHeight = measureWrapped(displayBody, mainStyle, inner)
     local subHeight = 0
-    if subtitle and #subtitle > 0 then
-        subHeight = measureWrapped(subtitle, subStyle, inner)
+    if displaySubtitle and #displaySubtitle > 0 then
+        subHeight = measureWrapped(displaySubtitle, subStyle, inner)
     end
-    local height = bodyHeight + subHeight + PADDING * 2 + (subtitle and 6 or 0)
 
-    -- Edge clipping: keep inside current screen bounds.
+    -- `screen:frame()` is the usable area (menu bar and Dock excluded).  Keep
+    -- the popup strictly within it, clipping only the rendered copy: the full
+    -- translation remains in activePopup.copyText for click-to-copy.
     local screen = hs.mouse.getCurrentScreen() or hs.screen.mainScreen()
     local sf = screen:frame()
+    local maxHeight = math.max(1, math.floor(sf.h - 12))
+    local gap = subHeight > 0 and 6 or 0
+    local height = bodyHeight + subHeight + PADDING * 2 + gap
+    if height > maxHeight then
+        local overflowHint = "内容过长"
+        if options and options.kind == "success" and options.copyText then
+            overflowHint = "内容过长，点击复制完整译文"
+        end
+        if displaySubtitle and #displaySubtitle > 0 then
+            displaySubtitle = overflowHint .. " · " .. displaySubtitle
+        else
+            displaySubtitle = overflowHint
+        end
+
+        local contentBudget = math.max(0, maxHeight - PADDING * 2)
+        local minBodyHeight = measureWrapped("…", mainStyle, inner)
+        local desiredSubBudget = math.floor(contentBudget * 0.35)
+        local subBudget = math.max(0, math.min(desiredSubBudget, contentBudget - math.min(minBodyHeight, contentBudget)))
+        displaySubtitle, subHeight = fitTextToHeight(displaySubtitle, subStyle, inner, subBudget)
+        gap = subHeight > 0 and 6 or 0
+        local bodyBudget = math.max(0, contentBudget - subHeight - gap)
+        displayBody, bodyHeight = fitTextToHeight(displayBody, mainStyle, inner, bodyBudget)
+        height = math.min(maxHeight, bodyHeight + subHeight + PADDING * 2 + gap)
+    end
+
+    -- Edge clipping: keep inside current screen bounds.
     local x = math.max(sf.x + 6, math.min(mouseX + 10, sf.x + sf.w - width - 10))
     local y = math.max(sf.y + 6, math.min(mouseY + 10, sf.y + sf.h - height - 10))
 
@@ -227,24 +408,24 @@ local function buildCanvas(mouseX, mouseY, body, subtitle)
     c:appendElements({
         id = "body",
         type = "text",
-        text = body,
+        text = displayBody,
         textFont = FONT_NAME,
         textSize = FONT_SIZE,
         textColor = { white = 1 },
         textLineBreak = "wordWrap",
         frame = { x = PADDING, y = PADDING, w = inner, h = bodyHeight },
     })
-    if subtitle and #subtitle > 0 then
+    if displaySubtitle and #displaySubtitle > 0 and subHeight > 0 then
         c:appendElements({
             id = "sub",
             type = "text",
-            text = subtitle,
+            text = displaySubtitle,
             textFont = FONT_NAME,
             textSize = FONT_SIZE - 3,
             textColor = { white = 0.7 },
             frame = {
                 x = PADDING,
-                y = PADDING + bodyHeight + 6,
+                y = PADDING + bodyHeight + gap,
                 w = inner,
                 h = subHeight,
             },
@@ -253,85 +434,213 @@ local function buildCanvas(mouseX, mouseY, body, subtitle)
     return c
 end
 
-local function show(mouseX, mouseY, body, subtitle)
+local function pointInFrame(point, frame)
+    return point.x >= frame.x and point.x <= frame.x + frame.w
+        and point.y >= frame.y and point.y <= frame.y + frame.h
+end
+
+local function handlePopupClick()
+    local popup = activePopup
+    if not popup then return end
+    if popup.generation and (not activeRequest or popup.generation ~= activeRequest.generation) then
+        dismiss()
+        return
+    end
+    local kind = popup.kind
+    local copyText = popup.copyText
     dismiss()
-    activeCanvas = buildCanvas(mouseX, mouseY, body, subtitle)
+    if (kind == "success" or kind == "error") and copyText and #copyText > 0 then
+        local ok, copied = pcall(hs.pasteboard.setContents, copyText)
+        if ok and copied ~= false then
+            hs.alert.show(kind == "success" and "已复制译文" or "已复制错误详情", 0.8)
+        else
+            hs.alert.show("复制失败", 1.0)
+        end
+    end
+end
+
+local function show(mouseX, mouseY, body, subtitle, options)
+    dismiss()
+    options = options or { kind = "transition" }
+    activeCanvas = buildCanvas(mouseX, mouseY, body, subtitle, options)
+    activePopup = {
+        kind = options.kind or "transition",
+        copyText = options.copyText,
+        generation = options.generation,
+    }
     activeCanvas:show()
 
-    -- Click outside the canvas dismisses it. Don't consume the event so the
-    -- click still hits whatever is under the cursor.
+    -- Popup clicks are consumed so they do not click through into the current
+    -- app. Outside clicks only dismiss and continue to their original target.
     activeWatcher = hs.eventtap.new(
-        { hs.eventtap.event.types.leftMouseDown },
+        {
+            hs.eventtap.event.types.leftMouseDown,
+            hs.eventtap.event.types.rightMouseDown,
+            hs.eventtap.event.types.otherMouseDown,
+            hs.eventtap.event.types.keyDown,
+        },
         function(event)
             if not activeCanvas then return false end
+            local eventType = event:getType()
+            if eventType == hs.eventtap.event.types.keyDown then
+                local escapeKey = (hs.keycodes.map and hs.keycodes.map.escape) or 53
+                if event:getKeyCode() == escapeKey then
+                    dismiss()
+                    return true
+                end
+                return false
+            end
             local p = event:location()
             local f = activeCanvas:frame()
-            if p.x < f.x or p.x > f.x + f.w or p.y < f.y or p.y > f.y + f.h then
+            if not pointInFrame(p, f) then
                 dismiss()
+                return false
             end
-            return false
+            if eventType == hs.eventtap.event.types.leftMouseDown
+                and activePopup then
+                -- The overflow hint lives in the subtitle, so the entire
+                -- popup is clickable even though the primary target is body.
+                handlePopupClick()
+                return true
+            end
+            dismiss()
+            return true
         end
     )
     activeWatcher:start()
 end
 
-local function update(body, subtitle)
+local function update(body, subtitle, options)
     if not activeCanvas then return end
     -- Rebuild in-place rather than mutate fields (height may change).
     local f = activeCanvas:frame()
     local mx, my = f.x - 10, f.y - 10
-    show(mx, my, body, subtitle)
+    show(mx, my, body, subtitle, options)
 end
 
 -- ---------- translation call with progressive timeouts ---------- --
 
-local function callTranslate(text, source)
+local function stopRequestTimers(request)
+    if not request or not request.timers then return end
+    for _, timer in pairs(request.timers) do
+        if timer then timer:stop() end
+    end
+    request.timers = {}
+end
+
+local function beginRequest()
+    requestGeneration = requestGeneration + 1
+    if activeRequest then stopRequestTimers(activeRequest) end
+    activeRequest = { generation = requestGeneration, timers = {}, finished = false }
+    -- A new gesture owns the UI immediately, even while selection capture is
+    -- still in progress. This also prevents an old popup lingering on failure.
+    dismiss()
+    return activeRequest
+end
+
+local function requestIsCurrent(request)
+    return request ~= nil
+        and activeRequest == request
+        and request.generation == requestGeneration
+end
+
+local function popupOptions(request, kind, copyText)
+    return {
+        generation = request.generation,
+        kind = kind,
+        copyText = copyText,
+    }
+end
+
+local function showForRequest(request, mouseX, mouseY, body, subtitle, kind, copyText)
+    if not requestIsCurrent(request) then return end
+    show(mouseX, mouseY, body, subtitle, popupOptions(request, kind, copyText))
+end
+
+local function updateForRequest(request, body, subtitle, kind, copyText)
+    if not requestIsCurrent(request) or not activeCanvas then return end
+    update(body, subtitle, popupOptions(request, kind, copyText))
+end
+
+local function joinDetails(detail, hint)
+    if detail and hint then return detail .. " · " .. hint end
+    return detail or hint
+end
+
+local function errorCopyText(title, subtitle)
+    if subtitle and #subtitle > 0 then return title .. "\n" .. subtitle end
+    return title
+end
+
+local function showRequestError(request, title, subtitle)
+    updateForRequest(request, title, subtitle, "error", errorCopyText(title, subtitle))
+end
+
+local function callTranslate(text, source, request)
+    if not requestIsCurrent(request) then return end
     local mp = hs.mouse.absolutePosition()
     local frontApp = hs.application.frontmostApplication()
     local appName = frontApp and frontApp:name() or "unknown"
-    show(mp.x, mp.y, "翻译中…", nil)
+    showForRequest(request, mp.x, mp.y, "翻译中…", nil, "transition", nil)
     appendLog({ event = "trigger", app = appName, source = source or "unknown", input_len = #text })
 
-    local body = hs.json.encode({ text = text, engine = currentEngine })
+    local requestEngine = currentEngine
+    if requestEngine == "volc" and cloudRemovalBlocksVolc() then
+        -- Persist the safe choice as well as overriding this individual
+        -- request, so async health/watcher state cannot re-enable cloud on the
+        -- next gesture while removal is unfinished.
+        requestEngine = "apple"
+        currentEngine = "apple"
+        persistEngine("apple")
+        rebuildMenu()
+        appendLog({ event = "cloud_request_blocked", reason = "removal_pending" })
+    end
+    local body = hs.json.encode({ text = text, engine = requestEngine })
 
-    local t08, t15, t30
-    t08 = hs.timer.doAfter(0.8, function()
-        update("翻译中…(已 0.8s)", nil)
+    request.timers.t08 = hs.timer.doAfter(0.8, function()
+        if not requestIsCurrent(request) then return end
+        updateForRequest(request, "翻译中…(已 0.8s)", nil, "transition", nil)
     end)
-    t15 = hs.timer.doAfter(1.5, function()
-        update("服务无响应,检查中…", nil)
-        hs.http.asyncGet(URL .. "/health", nil, function(code, _, _)
-            if not activeCanvas then return end
+    request.timers.t15 = hs.timer.doAfter(1.5, function()
+        if not requestIsCurrent(request) then return end
+        updateForRequest(request, "服务无响应,检查中…", nil, "transition", nil)
+        hs.http.asyncGet(URL .. "/health", requestHeaders(), function(code, _, _)
+            if not requestIsCurrent(request) or request.finished or not activeCanvas then return end
             if code ~= 200 then
-                update(string.format("服务异常 (HTTP %s)", tostring(code)), nil)
+                showRequestError(request, "翻译组件没有响应", "请打开句译自动修复")
             end
         end)
     end)
-    t30 = hs.timer.doAfter(3.0, function()
-        update(
+    request.timers.t30 = hs.timer.doAfter(3.0, function()
+        if not requestIsCurrent(request) then return end
+        showRequestError(
+            request,
             "失败:超时",
-            "运行 ~/.local/share/argos-translator/scripts/test.sh 诊断"
+            "请打开句译，前往“诊断与帮助”"
         )
     end)
 
     hs.http.asyncPost(
         URL .. "/translate",
         body,
-        { ["Content-Type"] = "application/json" },
+        requestHeaders({ ["Content-Type"] = "application/json" }),
         function(status, response, _)
-            if t08 then t08:stop() end
-            if t15 then t15:stop() end
-            if t30 then t30:stop() end
-            if not activeCanvas then return end -- user dismissed
+            stopRequestTimers(request)
+            request.finished = true
+            if not requestIsCurrent(request) or not activeCanvas then return end
             if status == nil or status == 0 then
                 appendLog({ event = "translate_done", app = appName, source = source or "unknown", status = status or 0, error = "connect_failed" })
-                update("失败:无法连接 127.0.0.1:54321", "确认 launchd 服务在运行")
+                showRequestError(request, "翻译组件没有响应", "请打开句译自动修复")
                 return
             end
             local ok, parsed = pcall(hs.json.decode, response or "")
             if not ok or type(parsed) ~= "table" then
                 appendLog({ event = "translate_done", app = appName, source = source or "unknown", status = status, error = "json_decode" })
-                update(string.format("响应解析失败 (HTTP %d)", status), nil)
+                showRequestError(
+                    request,
+                    string.format("响应解析失败 (HTTP %d)", tonumber(status) or 0),
+                    "请打开句译，前往“诊断与帮助”"
+                )
                 return
             end
             appendLog({
@@ -344,41 +653,60 @@ local function callTranslate(text, source)
                 cached = parsed.cached or false,
                 error = parsed.error or "",
             })
+            local detail = warningDetail(parsed.warnings) or sanitizeWarning(parsed.detail)
+            local httpStatus = tonumber(status) or 0
             if parsed.error == "empty_input" then
-                update("(空输入)", nil)
+                local hint = joinDetails(detail, "请重新选择英文文本")
+                showRequestError(request, "(空输入)", hint)
+                return
+            end
+            if httpStatus < 200 or httpStatus >= 300 then
+                local hint = httpStatus == 401
+                    and "请打开句译自动修复本地认证"
+                    or "请打开句译，前往“诊断与帮助”"
+                showRequestError(
+                    request,
+                    string.format("翻译请求失败 (HTTP %d)", httpStatus),
+                    joinDetails(detail, hint)
+                )
                 return
             end
             if parsed.error == "src_lang_mismatch" then
-                update(parsed.result or "", "源语言看起来不是英文")
+                local hint = joinDetails(detail, "源语言看起来不是英文，请重新选择英文文本")
+                updateForRequest(
+                    request,
+                    type(parsed.result) == "string" and parsed.result or "未识别到英文文本",
+                    hint,
+                    "error",
+                    errorCopyText("未识别到英文文本", hint)
+                )
                 return
             end
             if parsed.error and parsed.error ~= "" then
                 local title = ERROR_TITLE[parsed.error]
                     or ("翻译出错：" .. tostring(parsed.error))
-                local detail
-                if type(parsed.warnings) == "table" and type(parsed.warnings[1]) == "string" then
-                    detail = utf8Truncate(parsed.warnings[1], 120)
-                end
                 local hint = ERROR_HINT[parsed.error]
-                local sub = hint
-                if detail and hint then
-                    sub = detail .. " · " .. hint
-                elseif detail then
-                    sub = detail
-                end
-                update("⚠️ " .. title, sub)
+                    or "请打开句译，前往“诊断与帮助”"
+                local subtitle = joinDetails(detail, hint)
+                showRequestError(request, "⚠️ " .. title, subtitle)
                 return
             end
-            local result = parsed.result or "(空结果)"
+            local result = type(parsed.result) == "string" and parsed.result or "(空结果)"
             local engUsed = parsed.engine or currentEngine
             local subParts = {
                 "来自 " .. (ENGINE_SOURCE[engUsed] or engUsed),
-                string.format("%d ms", parsed.elapsed_ms or 0),
+                string.format("%d ms", tonumber(parsed.elapsed_ms) or 0),
             }
             if parsed.cached then table.insert(subParts, "cached") end
             if parsed.truncated then table.insert(subParts, "已截断") end
             if parsed.skipped then table.insert(subParts, "未翻译") end
-            update(result, table.concat(subParts, " · "))
+            updateForRequest(
+                request,
+                result,
+                table.concat(subParts, " · "),
+                "success",
+                result
+            )
         end
     )
 end
@@ -396,7 +724,7 @@ local function readPersistedEngine()
     return nil
 end
 
-local function persistEngine(eng)
+persistEngine = function(eng)
     local f = io.open(ENGINE_STATE_PATH, "w")
     if f then
         f:write(eng .. "\n")
@@ -416,7 +744,7 @@ rebuildMenu = function()
             fn = function() setEngine("apple") end,
         },
         {
-            title = "云端（火山 · 更准）",
+            title = "云端（火山 · 需联网）",
             checked = (currentEngine == "volc"),
             disabled = (not volcAvailable),
             fn = function() setEngine("volc") end,
@@ -427,6 +755,13 @@ rebuildMenu = function()
 end
 
 setEngine = function(eng)
+    if eng == "volc" and cloudRemovalBlocksVolc() then
+        currentEngine = "apple"
+        persistEngine("apple")
+        rebuildMenu()
+        hs.alert.show("云端配置正在移除，已保持离线模式", 1.8)
+        return
+    end
     if eng == "volc" and not volcAvailable then
         hs.alert.show("云端不可用：未配置火山 API Key", 1.5)
         return
@@ -447,7 +782,7 @@ setEngine = function(eng)
         hs.http.asyncPost(
             URL .. "/translate",
             hs.json.encode({ text = "warmup", engine = eng }),
-            { ["Content-Type"] = "application/json" },
+            requestHeaders({ ["Content-Type"] = "application/json" }),
             function() end
         )
     end
@@ -455,8 +790,11 @@ setEngine = function(eng)
 end
 
 local function initEngineState()
-    local persisted = readPersistedEngine()
-    hs.http.asyncGet(URL .. "/health", nil, function(code, bodyStr, _)
+    hs.http.asyncGet(URL .. "/health", requestHeaders(), function(code, bodyStr, _)
+        -- Re-read at callback time. A user may switch from cloud back to
+        -- offline while this health request is in flight; a stale callback
+        -- must never re-enable cloud uploads.
+        local persisted = readPersistedEngine()
         if code == 200 then
             local ok, h = pcall(hs.json.decode, bodyStr or "")
             if ok and type(h) == "table" then
@@ -475,17 +813,66 @@ local function initEngineState()
         end
         if persisted then currentEngine = persisted end
         if currentEngine == "argos" then currentEngine = "apple" end
-        if currentEngine == "volc" and not volcAvailable then currentEngine = "apple" end
-        if currentEngine == "apple" and not appleAvailable and volcAvailable then
-            currentEngine = "volc"
+        if currentEngine == "volc" and cloudRemovalBlocksVolc() then
+            currentEngine = "apple"
+            persistEngine("apple")
         end
+        -- Keep the user's explicit choice even when it is temporarily
+        -- unavailable. In particular, never turn an offline choice into a
+        -- cloud upload without prior consent.
         rebuildMenu()
+    end)
+end
+
+local function startExternalEngineWatcher()
+    if externalEngineWatcher then externalEngineWatcher:stop() end
+    externalEngineWatcher = hs.timer.doEvery(1.0, function()
+        local paused = isPaused()
+        if tapWatcher then
+            if paused and tapWatcher:isEnabled() then tapWatcher:stop() end
+            if not paused and not tapWatcher:isEnabled() then tapWatcher:start() end
+        end
+        writeStatus(true)
+        local requested = readPersistedEngine()
+        if (requested == "volc" or currentEngine == "volc")
+            and cloudRemovalBlocksVolc() then
+            currentEngine = "apple"
+            persistEngine("apple")
+            rebuildMenu()
+            appendLog({ event = "cloud_request_blocked", reason = "removal_pending" })
+            requested = "apple"
+        end
+        if requested and requested ~= currentEngine then
+            if (requested == "apple" and appleAvailable) or (requested == "volc" and volcAvailable) then
+                currentEngine = requested
+                rebuildMenu()
+                appendLog({ event = "engine_switch_external", engine = requested })
+            else
+                -- Availability can change after the native app saves cloud
+                -- credentials and restarts the service. Refresh rather than
+                -- requiring a Hammerspoon config reload.
+                hs.http.asyncGet(URL .. "/health", requestHeaders(), function(code, bodyStr, _)
+                    if code ~= 200 then return end
+                    if readPersistedEngine() ~= requested then return end
+                    local ok, h = pcall(hs.json.decode, bodyStr or "")
+                    if not ok or type(h) ~= "table" or type(h.engines) ~= "table" then return end
+                    appleAvailable = h.engines.apple and true or false
+                    volcAvailable = h.engines.volc and true or false
+                    if (requested == "apple" and appleAvailable) or (requested == "volc" and volcAvailable) then
+                        currentEngine = requested
+                        rebuildMenu()
+                        appendLog({ event = "engine_switch_external", engine = requested })
+                    end
+                end)
+            end
+        end
     end)
 end
 
 -- ---------- hotkey entry ---------- --
 
 local function onHotkey()
+    local request = beginRequest()
     local text, src, diag = getSelectedText()
     if not text or #text == 0 then
         local frontApp = hs.application.frontmostApplication()
@@ -510,7 +897,7 @@ local function onHotkey()
         hs.alert.show("未检测到选中文本", 1.2)
         return
     end
-    callTranslate(text, src)
+    callTranslate(text, src, request)
 end
 
 -- ---------- double-tap Option detection ---------- --
@@ -581,24 +968,20 @@ function M.start()
         onFlagsOrKey
     )
     tapWatcher:start()
-
-    -- Menu-bar engine switch (本地 ⇄ 云端). It is optional UI: never let an
-    -- error here abort module load and take the core hotkey down with it.
-    local ok, err = pcall(function()
-        if menubar then menubar:delete() end
-        menubar = hs.menubar.new()
-        if menubar then
-            menubar:setTitle("句译…")
-            rebuildMenu()
-            initEngineState()
-        end
-    end)
-    if not ok then
-        appendLog({ event = "menubar_init_failed", error = tostring(err) })
-    end
+    if isPaused() then tapWatcher:stop() end
+    startExternalEngineWatcher()
+    -- The native app is the single Juyi menu-bar surface. Hammerspoon keeps
+    -- only the hotkey, popup and engine watcher.
+    if menubar then menubar:delete(); menubar = nil end
+    initEngineState()
+    writeStatus(true)
+    hs.accessibilityStateCallback = function() writeStatus(true) end
 end
 
 function M.stop()
+    if activeRequest then stopRequestTimers(activeRequest) end
+    activeRequest = nil
+    requestGeneration = requestGeneration + 1
     if tapWatcher then
         tapWatcher:stop()
         tapWatcher = nil
@@ -607,6 +990,8 @@ function M.stop()
         menubar:delete()
         menubar = nil
     end
+    if externalEngineWatcher then externalEngineWatcher:stop(); externalEngineWatcher = nil end
+    writeStatus(false)
     dismiss()
 end
 
