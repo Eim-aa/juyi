@@ -1,6 +1,6 @@
 # Spec 5：CI 与发布流水线
 
-状态：待评审 · 工作量：~2 人日 · 依赖：无（Spec 2 依赖本 spec 的产物）
+状态：**CI 检查已实现；Release 发布未完成**。当前 workflow 覆盖 Python 测试/静态检查、Swift 编译与策略测试、Lua/Bash 语法；Developer ID、Apple 公证和 Release 产物仍是发布阻断。
 
 ## 问题陈述
 

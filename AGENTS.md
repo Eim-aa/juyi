@@ -4,7 +4,7 @@ Instructions for an AI coding agent (Claude Code, OpenHands, Codex, etc.) asked
 to install or deploy **juyi** (句译) on the user's behalf.
 
 This is a macOS-only, English→Chinese, selection-translation tool: select English
-text in any app, double-tap the Option key, a popup shows the Chinese. It runs a
+text in a compatible app, double-tap the Option key, and a popup shows Chinese. It runs a
 local FastAPI service on `127.0.0.1:54321` and a Hammerspoon Lua client.
 
 Read this whole file before acting. Most steps you can run yourself; **two steps
@@ -28,9 +28,11 @@ curl -fsSL https://raw.githubusercontent.com/Eim-aa/juyi/main/scripts/bootstrap.
 ```
 
 The installer creates a venv, installs `requirements.txt` (FastAPI/uvicorn only),
-compiles the Apple on-device translation helper on macOS 15+ (no model
-download), loads a LaunchAgent on `127.0.0.1:54321`, and wires the Hammerspoon
-module into `~/.hammerspoon/init.lua`.
+compiles the Apple on-device translation helper on macOS 15+, loads a
+LaunchAgent on `127.0.0.1:54321`, generates an owner-only local API token, and
+wires the Hammerspoon module into a managed block in `~/.hammerspoon/init.lua`.
+The app itself does not bundle a model; macOS may download the en-zh language
+pack on first use.
 
 ## Step 2 — Install Hammerspoon (you can do this)
 
@@ -55,14 +57,15 @@ Do not attempt to edit the TCC database or otherwise bypass this.
 
 Two modes (see the "Local vs Cloud" section in README for the trade-off):
 
-- **Apple on-device (default, `apple`, macOS 15+)** — offline, no keys, text
-  stays on the machine. The helper is compiled automatically by the installer
+- **Apple on-device (default and recommended, `apple`, macOS 15+)** — offline,
+  no keys, and text stays on the machine. The helper is compiled automatically
   when macOS 15+ and `swiftc` are present (`bin/apple-translation-helper`). The
   first use may require the human to confirm the system language-pack download
   dialog (`bin/apple-translation-helper --prepare` triggers it manually). If the
   user only wants this, you are done after Step 3. Verify (Step 6).
-- **Cloud (`ENGINE=volc`, recommended for long/complex sentences)** — higher
-  accuracy via the Volcengine API. Continue to Step 5.
+- **Cloud (`ENGINE=volc`, optional)** — sends selected text to the Volcengine
+  API. Use it only after the human explicitly chooses it and evaluates it on
+  their own content. Continue to Step 5.
 
 ## Step 5 — Configure the Volcengine cloud engine (only if chosen)
 
@@ -71,38 +74,31 @@ Two modes (see the "Local vs Cloud" section in README for the trade-off):
 The human must, in the [Volcengine console](https://console.volcengine.com/):
 enable "Machine Translation", grant their (sub-)user `TranslateFullAccess`, and
 create an Access Key / Secret Key pair. Account signup and key creation require a
-real account and cannot be automated. Ask the human to paste you the AK and SK.
+real account and cannot be automated. **Do not ask the human to paste the Secret
+Key into chat or a shell command.**
 
-### 5b. Write the key file (you can do this)
+### 5b. Save the credential in Juyi `HUMAN STEP`
 
-Put the credentials **only** in this local, gitignored file — never in source,
-never in the repo:
+Ask the human to open `/Applications/句译.app`, select **火山云端**, and enter the
+AK/SK in the native secure form. Juyi validates the candidate before replacing
+the existing credential and stores it in macOS Keychain under the service
+`io.github.Eim-aa.juyi.volc`. The Secret Key must not be written to source,
+shell history, logs, or the repository.
 
-```bash
-mkdir -p ~/.config/argos-translator
-cat > ~/.config/argos-translator/volc.env <<EOF
-VOLC_ACCESS_KEY=<AccessKeyID the human gave you>
-VOLC_SECRET_KEY=<SecretAccessKey the human gave you>
-ENGINE=volc
-EOF
-chmod 600 ~/.config/argos-translator/volc.env
-```
-
-Then restart the service so it picks up the new engine:
-
-```bash
-launchctl kickstart -k gui/$(id -u)/io.github.Eim-aa.argos-translator
-```
+Legacy installations may still contain AK/SK values in
+`~/.config/argos-translator/volc.env`. On first native-app launch they are
+migrated to Keychain and removed from the file; `ENGINE=volc` may remain because
+it is not a secret. Do not create a new plaintext credential file.
 
 ## Step 6 — Verify (you can do this)
 
 ```bash
 # Service is up:
 curl -s http://127.0.0.1:54321/health
-# Real translation round-trip:
-curl -s -X POST http://127.0.0.1:54321/translate \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"The central bank held interest rates steady, citing easing inflation."}'
+# Authenticated translation and edge-case checks (reads the token without
+# placing it in shell history or a command-line argument):
+JUYI_INSTALL_ROOT="${DEST:-$HOME/.local/share/argos-translator}"
+"$JUYI_INSTALL_ROOT/venv/bin/python" "$JUYI_INSTALL_ROOT/scripts/smoke.py"
 ```
 
 A non-empty Chinese `result` means the service works. The end-to-end hotkey
@@ -113,8 +109,11 @@ Full diagnostics: `~/.local/share/argos-translator/scripts/test.sh`.
 
 ## Security rules (do not violate)
 
-- API keys live **only** in `~/.config/argos-translator/volc.env` (gitignored,
-  `chmod 600`, outside the repo). Never hardcode a key in any source file.
+- Volcengine credentials live in **macOS Keychain**, not source files or the
+  repository. A legacy `volc.env` may be read only for migration; never create
+  a new plaintext key file.
+- The local API token lives at
+  `~/.config/argos-translator/auth-token` (`chmod 600`). Never print or commit it.
 - Never `git add`/`commit`/`push` a credential. If you ever see a key in a diff,
   stop and remove it.
 - Do not echo the user's secret key back in full in your messages.
