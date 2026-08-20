@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Install or refresh the local argos-translator service.
 set -euo pipefail
+umask 077
 
-ROOT="$HOME/.local/share/argos-translator"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 VENV="$ROOT/venv"
 REQ="$ROOT/requirements.txt"
 BREW_BIN="${BREW_BIN:-}"
@@ -80,6 +81,10 @@ find_python() {
 
 echo "== preflight =="
 
+# Refuse a conflicting Hammerspoon module before installing dependencies or
+# changing launchd state. The helper also validates any existing managed block.
+"$ROOT/scripts/hammerspoon_hook.sh" check
+
 BREW="$(find_brew)" || {
     hint '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
     fail "Homebrew not found"
@@ -104,6 +109,10 @@ echo "disk: $((avail_kb / 1024)) MB available"
 [[ -f "$REQ" ]] || fail "missing requirements.txt at $REQ"
 
 echo
+echo "== local authentication =="
+PYTHON_BIN="$PYTHON" "$ROOT/scripts/ensure_auth_token.sh"
+
+echo
 echo "== directories =="
 mkdir -p "$ROOT" "$ROOT/scripts" "$ROOT/launchd" "$ROOT/hammerspoon" "$HOME/Library/Logs"
 ln -sfn "$HOME/Library/Logs" "$ROOT/logs"
@@ -123,13 +132,12 @@ echo "== launchd =="
 
 echo
 echo "== hammerspoon files =="
-mkdir -p "$HOME/.hammerspoon"
-ln -sfn "$ROOT/hammerspoon/argos-translator.lua" "$HOME/.hammerspoon/argos-translator.lua"
-if [[ ! -f "$HOME/.hammerspoon/init.lua" ]]; then
-    printf '%s\n' 'require("argos-translator")' > "$HOME/.hammerspoon/init.lua"
-elif ! grep -Fq 'require("argos-translator")' "$HOME/.hammerspoon/init.lua"; then
-    printf '\n%s\n' 'require("argos-translator")' >> "$HOME/.hammerspoon/init.lua"
+if [[ ! -d "/Applications/Hammerspoon.app" && ! -d "$HOME/Applications/Hammerspoon.app" ]]; then
+    echo "[installing the shortcut helper]"
+    "$BREW" install --cask hammerspoon
 fi
+"$ROOT/scripts/hammerspoon_hook.sh" install
+"$ROOT/scripts/hammerspoon_hook.sh" reload
 
 # Optional apple engine: compile the system-translation helper on macOS 15+.
 MACOS_MAJOR="$(sw_vers -productVersion | cut -d. -f1)"
@@ -142,14 +150,22 @@ if [[ "$MACOS_MAJOR" -ge 15 ]] && command -v swiftc >/dev/null 2>&1; then
         echo "WARN: apple helper build failed; offline engine unavailable (volc cloud unaffected)" >&2
     fi
 else
-    echo "[skipping apple engine helper: needs macOS 15+ and swiftc; configure volc.env to use the cloud engine]"
+    echo "[skipping apple engine helper: needs macOS 15+ and swiftc; configure the Volcengine cloud option in the 句译 app]"
+fi
+
+echo
+echo "== native app =="
+if command -v swiftc >/dev/null 2>&1; then
+    "$ROOT/scripts/install_macos_app.sh"
+else
+    echo "WARN: swiftc not found; native app was not built. Install Xcode Command Line Tools and run scripts/install_macos_app.sh" >&2
 fi
 
 echo
 echo "== required next steps =="
-echo "1. Install Hammerspoon if needed: brew install --cask hammerspoon"
-echo "2. Open Hammerspoon and grant Accessibility permission in System Settings."
-echo "3. Ensure ~/.hammerspoon/init.lua contains: require(\"argos-translator\")"
+echo "1. Open 句译 from Applications or Launchpad."
+echo "2. Follow its guide to install Hammerspoon and grant Accessibility permission."
+echo "3. Ensure ~/.hammerspoon/init.lua contains the argos-translator managed block."
 echo "4. Reload Hammerspoon config, select English text, double-tap Option."
 echo
 echo "Run diagnostics any time with:"

@@ -7,24 +7,26 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/__USER__/.local/share/argos-translator/venv/bin/python</string>
-        <string>/Users/__USER__/.local/share/argos-translator/server.py</string>
+        <string>__ROOT__/venv/bin/python</string>
+        <string>__ROOT__/server.py</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/__USER__/.local/share/argos-translator</string>
+    <string>__ROOT__</string>
 
     <key>EnvironmentVariables</key>
     <dict>
+        <key>JUYI_ROOT</key>
+        <string>__ROOT__</string>
         <key>PATH</key>
-        <string>/Users/__USER__/.local/share/argos-translator/venv/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+        <string>__ROOT__/venv/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/__USER__/Library/Logs/argos-translator.out.log</string>
+    <string>__HOME__/Library/Logs/argos-translator.out.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/__USER__/Library/Logs/argos-translator.err.log</string>
+    <string>__HOME__/Library/Logs/argos-translator.err.log</string>
 
     <key>RunAtLoad</key>
     <true/>

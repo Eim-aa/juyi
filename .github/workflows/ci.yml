@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip -r requirements-dev.txt
+      - name: Ruff
+        run: python -m ruff check .
+      - name: Pytest
+        run: python -m pytest
+      - name: Compile Python sources
+        run: >-
+          python -m compileall -q
+          apple_engine.py config.py server.py translator.py volc_engine.py
+          eval scripts tests
+
+  swift:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Type-check native app
+        run: >-
+          swiftc -typecheck -parse-as-library
+          -framework AppKit -framework ServiceManagement -framework SwiftUI
+          macos/OnboardingPolicy.swift macos/WindowFramePolicy.swift
+          macos/JuyiMenuBar.swift
+      - name: Build universal native app bundle
+        run: scripts/build_macos_app.sh
+      - name: Compile Apple Translation helper
+        run: swiftc -O -o "$RUNNER_TEMP/apple-translation-helper" apple/TranslationHelper.swift
+      - name: Run Onboarding policy tests
+        run: |
+          swiftc -parse-as-library macos/OnboardingPolicy.swift tests/OnboardingPolicyTests.swift -o "$RUNNER_TEMP/onboarding-policy-tests"
+          "$RUNNER_TEMP/onboarding-policy-tests"
+      - name: Run window-frame policy tests
+        run: |
+          swiftc -parse-as-library macos/WindowFramePolicy.swift tests/WindowFramePolicyTests.swift -o "$RUNNER_TEMP/window-frame-policy-tests"
+          "$RUNNER_TEMP/window-frame-policy-tests"
+
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua compiler
+        run: sudo apt-get update && sudo apt-get install --yes lua5.4
+      - name: Check Lua syntax
+        run: luac5.4 -p hammerspoon/argos-translator.lua
+      - name: Run Hammerspoon behavior contracts
+        run: lua5.4 tests/hammerspoon_runtime_test.lua hammerspoon/argos-translator.lua
+      - name: Check Bash syntax
+        run: |
+          shopt -s nullglob
+          for script in scripts/*.sh scripts/*.command; do
+            bash -n "$script"
+          done
