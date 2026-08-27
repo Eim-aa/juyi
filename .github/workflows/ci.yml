@@ -49,6 +49,13 @@ jobs:
           CODE_SIGNING_ALLOWED=NO
           SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_OVERLAY'
           build
+      - name: Build explicit Debug native translation domain
+        run: >-
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiTranslationDomain"
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN'
+          build
       - name: Build Xcode Release configuration
         run: >-
           xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
@@ -60,6 +67,13 @@ jobs:
           -configuration Release -derivedDataPath "$RUNNER_TEMP/JuyiReleaseOverlayFlag"
           CODE_SIGNING_ALLOWED=NO
           SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_TRANSLATION_OVERLAY'
+          build
+      - name: Build Release with translation-domain flag injected
+        run: >-
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Release -derivedDataPath "$RUNNER_TEMP/JuyiReleaseTranslationDomainFlag"
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_TRANSLATION_DOMAIN'
           build
       - name: Verify overlay compile-time gate
         run: |
@@ -73,6 +87,22 @@ jobs:
           if grep -Fq 'NativeTranslationOverlayController' "$RUNNER_TEMP/overlay-release.strings"; then exit 1; fi
           if grep -Fq 'NativeTranslationOverlayController' "$RUNNER_TEMP/overlay-release-flag.strings"; then exit 1; fi
           if grep -Fq 'juyi-native-overlay-fixed-fixture-v1' "$RUNNER_TEMP/overlay-release-flag.strings"; then exit 1; fi
+      - name: Verify native translation domain compile-time gate
+        run: |
+          find "$RUNNER_TEMP/JuyiTranslationDomain/Build/Products/Debug/Juyi.app/Contents/MacOS" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/domain-opt-in-debug.strings"
+          find "$RUNNER_TEMP/JuyiDebug/Build/Products/Debug/Juyi.app/Contents/MacOS" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/domain-default-debug.strings"
+          find "$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/MacOS" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/domain-release.strings"
+          find "$RUNNER_TEMP/JuyiReleaseTranslationDomainFlag/Build/Products/Release/Juyi.app/Contents/MacOS" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/domain-release-flag.strings"
+          grep -Fq 'juyi-native-translation-domain-v1' "$RUNNER_TEMP/domain-opt-in-debug.strings"
+          grep -Fq 'translate.volcengineapi.com' "$RUNNER_TEMP/domain-opt-in-debug.strings"
+          grep -Fq 'VolcV4RequestBuilder' "$RUNNER_TEMP/domain-opt-in-debug.strings"
+          grep -Fq 'VolcTranslationResponseParser' "$RUNNER_TEMP/domain-opt-in-debug.strings"
+          for artifact in domain-default-debug domain-release domain-release-flag; do
+            if grep -Fq 'juyi-native-translation-domain-v1' "$RUNNER_TEMP/$artifact.strings"; then exit 1; fi
+            if grep -Fq 'translate.volcengineapi.com' "$RUNNER_TEMP/$artifact.strings"; then exit 1; fi
+            if grep -Fq 'VolcV4RequestBuilder' "$RUNNER_TEMP/$artifact.strings"; then exit 1; fi
+            if grep -Fq 'VolcTranslationResponseParser' "$RUNNER_TEMP/$artifact.strings"; then exit 1; fi
+          done
       - name: Verify Xcode Release products
         run: |
           scripts/verify_macos_binary.sh "$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/MacOS/Juyi" 15.0
@@ -123,6 +153,18 @@ jobs:
         run: |
           swiftc -parse-as-library macos/NativeTranslationOverlayInteractionPolicy.swift tests/NativeTranslationOverlayInteractionPolicyTests.swift -o "$RUNNER_TEMP/native-translation-overlay-interaction-tests"
           "$RUNNER_TEMP/native-translation-overlay-interaction-tests"
+      - name: Run native translation domain tests
+        run: |
+          swiftc -swift-version 5 -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -framework CryptoKit macos/VolcV4RequestBuilder.swift macos/NativeTranslationDomain.swift tests/NativeTranslationDomainTests.swift -o "$RUNNER_TEMP/native-translation-domain-tests"
+          "$RUNNER_TEMP/native-translation-domain-tests"
+      - name: Run Volc V4 deterministic request-builder tests
+        run: |
+          swiftc -swift-version 5 -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -framework CryptoKit macos/VolcV4RequestBuilder.swift tests/VolcV4RequestBuilderTests.swift -o "$RUNNER_TEMP/volc-v4-request-builder-tests"
+          "$RUNNER_TEMP/volc-v4-request-builder-tests"
+      - name: Run Volc pure response-parser tests
+        run: |
+          swiftc -swift-version 5 -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -framework CryptoKit macos/VolcV4RequestBuilder.swift macos/NativeTranslationDomain.swift macos/VolcTranslationResponseParser.swift tests/VolcTranslationResponseParserTests.swift -o "$RUNNER_TEMP/volc-response-parser-tests"
+          "$RUNNER_TEMP/volc-response-parser-tests"
 
   syntax:
     runs-on: ubuntu-latest
