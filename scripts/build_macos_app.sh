@@ -18,7 +18,7 @@ MINIMUM_MACOS="$("$SETTING_READER" "$SHARED_CONFIG" MACOSX_DEPLOYMENT_TARGET)"
 [[ "$MINIMUM_MACOS" =~ ^[0-9]+([.][0-9]+){1,2}$ ]] || { echo "invalid MACOSX_DEPLOYMENT_TARGET" >&2; exit 1; }
 
 case "$CONFIGURATION" in
-    Debug) SWIFT_FLAGS=(-Onone -g) ;;
+    Debug) SWIFT_FLAGS=(-Onone -g -D DEBUG) ;;
     Release) SWIFT_FLAGS=(-O) ;;
     *) echo "unsupported CONFIGURATION: $CONFIGURATION (expected Debug or Release)" >&2; exit 2 ;;
 esac
@@ -31,11 +31,17 @@ for arch in arm64 x86_64; do
         -module-cache-path "$MODULE_CACHE" \
         -sdk "$SDK" \
         -target "$arch-apple-macos$MINIMUM_MACOS" \
+        -framework ApplicationServices \
         -framework AppKit \
+        -framework CoreGraphics \
         -framework CryptoKit \
         -framework ServiceManagement \
         -framework SwiftUI \
         -o "$ROOT/build/Juyi-$arch" \
+        "$ROOT/macos/AccessibilityController.swift" \
+        "$ROOT/macos/DoubleOptionStateMachine.swift" \
+        "$ROOT/macos/NativeOptionMonitor.swift" \
+        "$ROOT/macos/NativeOptionFeature.swift" \
         "$ROOT/macos/OnboardingPolicy.swift" \
         "$ROOT/macos/WindowFramePolicy.swift" \
         "$ROOT/macos/JuyiMenuBar.swift"

@@ -2334,16 +2334,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private var window: NSWindow!
     private var lastOnboardingMode: Bool?
+    #if DEBUG
+    private let nativeOptionDevelopmentHarness = NativeOptionDevelopmentHarness()
+    #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let isLoginLaunch = launchedFromLogin
         NSApp.setActivationPolicy(.regular); installMainMenu(); createWindow()
         model.onChange = { [weak self] in self?.updateChrome() }; updateChrome()
+        #if DEBUG
+        nativeOptionDevelopmentHarness.startIfEnabled()
+        #endif
         if !isLoginLaunch { showWindow() }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     func applicationDidBecomeActive(_ notification: Notification) { model.applicationBecameActive() }
     func applicationWillTerminate(_ notification: Notification) {
+        #if DEBUG
+        nativeOptionDevelopmentHarness.stop()
+        #endif
         if model.onboardingPresented { model.deferOnboarding() }
     }
     func windowWillClose(_ notification: Notification) {

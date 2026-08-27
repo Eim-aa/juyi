@@ -65,6 +65,10 @@ jobs:
         run: |
           swiftc -parse-as-library macos/WindowFramePolicy.swift tests/WindowFramePolicyTests.swift -o "$RUNNER_TEMP/window-frame-policy-tests"
           "$RUNNER_TEMP/window-frame-policy-tests"
+      - name: Run double-Option state-machine tests
+        run: |
+          swiftc -parse-as-library macos/DoubleOptionStateMachine.swift tests/DoubleOptionStateMachineTests.swift -o "$RUNNER_TEMP/double-option-state-machine-tests"
+          "$RUNNER_TEMP/double-option-state-machine-tests"
 
   syntax:
     runs-on: ubuntu-latest

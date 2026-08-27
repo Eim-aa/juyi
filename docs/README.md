@@ -2,6 +2,10 @@
 
 Assets used by the project README.
 
+Engineering note: [NATIVE_OPTION_MONITOR.md](NATIVE_OPTION_MONITOR.md) records
+the disabled, development-only native double-Option foundation. The active
+product trigger remains Hammerspoon.
+
 ## demo.gif
 
 The workflow in a real TextEdit window: a sentence is selected, the Option key
