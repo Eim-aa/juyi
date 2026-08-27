@@ -42,11 +42,37 @@ jobs:
           xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
           -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiDebug"
           CODE_SIGNING_ALLOWED=NO build
+      - name: Build explicit Debug native overlay preview
+        run: >-
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiOverlayPreview"
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_OVERLAY'
+          build
       - name: Build Xcode Release configuration
         run: >-
           xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
           -configuration Release -derivedDataPath "$RUNNER_TEMP/JuyiRelease"
           CODE_SIGNING_ALLOWED=NO build
+      - name: Build Release with overlay flag injected
+        run: >-
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Release -derivedDataPath "$RUNNER_TEMP/JuyiReleaseOverlayFlag"
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_TRANSLATION_OVERLAY'
+          build
+      - name: Verify overlay compile-time gate
+        run: |
+          find "$RUNNER_TEMP/JuyiOverlayPreview/Build/Products/Debug/Juyi.app/Contents/MacOS" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/overlay-preview.strings"
+          find "$RUNNER_TEMP/JuyiDebug/Build/Products/Debug/Juyi.app/Contents/MacOS" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/overlay-default-debug.strings"
+          find "$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/MacOS" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/overlay-release.strings"
+          find "$RUNNER_TEMP/JuyiReleaseOverlayFlag/Build/Products/Release/Juyi.app/Contents/MacOS" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/overlay-release-flag.strings"
+          grep -Fq 'NativeTranslationOverlayController' "$RUNNER_TEMP/overlay-preview.strings"
+          grep -Fq 'juyi-native-overlay-fixed-fixture-v1' "$RUNNER_TEMP/overlay-preview.strings"
+          if grep -Fq 'NativeTranslationOverlayController' "$RUNNER_TEMP/overlay-default-debug.strings"; then exit 1; fi
+          if grep -Fq 'NativeTranslationOverlayController' "$RUNNER_TEMP/overlay-release.strings"; then exit 1; fi
+          if grep -Fq 'NativeTranslationOverlayController' "$RUNNER_TEMP/overlay-release-flag.strings"; then exit 1; fi
+          if grep -Fq 'juyi-native-overlay-fixed-fixture-v1' "$RUNNER_TEMP/overlay-release-flag.strings"; then exit 1; fi
       - name: Verify Xcode Release products
         run: |
           scripts/verify_macos_binary.sh "$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/MacOS/Juyi" 15.0
@@ -85,6 +111,18 @@ jobs:
         run: |
           swiftc -parse-as-library -framework AppKit -framework ApplicationServices macos/AccessibilityController.swift macos/DoubleOptionStateMachine.swift macos/NativeOptionEventAdapter.swift macos/NativeSelectionReader.swift macos/NativeSelectionCaptureCoordinator.swift macos/NativeOptionMonitor.swift tests/NativeOptionMonitorTests.swift -o "$RUNNER_TEMP/native-option-monitor-tests"
           "$RUNNER_TEMP/native-option-monitor-tests"
+      - name: Run native translation overlay model tests
+        run: |
+          swiftc -parse-as-library macos/NativeTranslationOverlayModel.swift tests/NativeTranslationOverlayModelTests.swift -o "$RUNNER_TEMP/native-translation-overlay-model-tests"
+          "$RUNNER_TEMP/native-translation-overlay-model-tests"
+      - name: Run native translation overlay anchor tests
+        run: |
+          swiftc -parse-as-library macos/NativeTranslationOverlayAnchorPolicy.swift tests/NativeTranslationOverlayAnchorPolicyTests.swift -o "$RUNNER_TEMP/native-translation-overlay-anchor-tests"
+          "$RUNNER_TEMP/native-translation-overlay-anchor-tests"
+      - name: Run native translation overlay interaction tests
+        run: |
+          swiftc -parse-as-library macos/NativeTranslationOverlayInteractionPolicy.swift tests/NativeTranslationOverlayInteractionPolicyTests.swift -o "$RUNNER_TEMP/native-translation-overlay-interaction-tests"
+          "$RUNNER_TEMP/native-translation-overlay-interaction-tests"
 
   syntax:
     runs-on: ubuntu-latest

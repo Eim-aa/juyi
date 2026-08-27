@@ -35,6 +35,7 @@ for arch in arm64 x86_64; do
         -framework AppKit \
         -framework CoreGraphics \
         -framework CryptoKit \
+        -framework QuartzCore \
         -framework ServiceManagement \
         -framework SwiftUI \
         -o "$ROOT/build/Juyi-$arch" \
@@ -45,6 +46,10 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/NativeSelectionCaptureCoordinator.swift" \
         "$ROOT/macos/NativeOptionMonitor.swift" \
         "$ROOT/macos/NativeOptionFeature.swift" \
+        "$ROOT/macos/NativeTranslationOverlayModel.swift" \
+        "$ROOT/macos/NativeTranslationOverlayAnchorPolicy.swift" \
+        "$ROOT/macos/NativeTranslationOverlayInteractionPolicy.swift" \
+        "$ROOT/macos/NativeTranslationOverlayController.swift" \
         "$ROOT/macos/OnboardingPolicy.swift" \
         "$ROOT/macos/WindowFramePolicy.swift" \
         "$ROOT/macos/JuyiMenuBar.swift"

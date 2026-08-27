@@ -2337,6 +2337,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     #if DEBUG
     private let nativeOptionDevelopmentHarness = NativeOptionDevelopmentHarness()
     #endif
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
+    private var nativeOverlayPreviewMenuItem: NSMenuItem?
+    #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let isLoginLaunch = launchedFromLogin
@@ -2345,6 +2348,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         #if DEBUG
         nativeOptionDevelopmentHarness.setPaused(model.paused)
         nativeOptionDevelopmentHarness.startIfEnabled()
+        #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
+        NativeTranslationOverlayController.shared.configureNavigation {
+            [weak self] cta in self?.handleNativeOverlayCTA(cta)
+        }
+        NativeTranslationOverlayController.shared.setPaused(model.paused)
         #endif
         if !isLoginLaunch { showWindow() }
     }
@@ -2358,6 +2367,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         #if DEBUG
         nativeOptionDevelopmentHarness.stop()
+        #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
+        NativeTranslationOverlayController.shared.shutdown()
         #endif
         if model.onboardingPresented { model.deferOnboarding() }
     }
@@ -2381,6 +2393,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func installMainMenu() {
         let main = NSMenu(), app = NSMenuItem(), submenu = NSMenu()
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
+        let preview = NSMenuItem(title: NativeTranslationOverlayController.shared.nextFixturePreviewTitle, action: #selector(previewNativeOverlay), keyEquivalent: ""); preview.target = self; nativeOverlayPreviewMenuItem = preview; submenu.addItem(preview)
+        let focus = NSMenuItem(title: "聚焦当前译文", action: #selector(focusNativeOverlay), keyEquivalent: ""); focus.target = self; submenu.addItem(focus)
+        submenu.addItem(.separator())
+        #endif
         let quit = NSMenuItem(title: "退出句译", action: #selector(terminate), keyEquivalent: "q"); quit.target = self; submenu.addItem(quit)
         app.submenu = submenu; main.addItem(app); NSApp.mainMenu = main
     }
@@ -2399,6 +2416,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func updateChrome() {
         #if DEBUG
         nativeOptionDevelopmentHarness.setPaused(model.paused)
+        #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
+        NativeTranslationOverlayController.shared.setPaused(model.paused)
         #endif
         updateMenu()
         guard window != nil else { return }
@@ -2440,6 +2460,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         showWindow()
     }
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
+    @objc private func previewNativeOverlay() {
+        NativeTranslationOverlayController.shared.showFixturePreview()
+        nativeOverlayPreviewMenuItem?.title = NativeTranslationOverlayController.shared
+            .nextFixturePreviewTitle
+    }
+    @objc private func focusNativeOverlay() {
+        NativeTranslationOverlayController.shared.focusCurrentOverlay()
+    }
+    private func handleNativeOverlayCTA(_ cta: NativeTranslationOverlayCTA) {
+        switch cta {
+        case .openJuyi:
+            showWindow()
+        case .openDiagnostics:
+            model.showDiagnostics = true
+            showWindow()
+        case .prepareAppleLanguages:
+            showWindow()
+        case .checkCloudSettings:
+            model.cloudError = ""
+            model.showCloudSetup = true
+            showWindow()
+        case .chooseEngine:
+            showWindow()
+        }
+    }
+    #endif
     @objc private func apple() { model.chooseApple() }; @objc private func cloud() { model.chooseCloud(); showWindow() }; @objc private func pause() { model.togglePause() }; @objc private func diagnostics() { model.showDiagnostics = true; showWindow() }; @objc private func terminate() { NSApp.terminate(nil) }
 }
 
