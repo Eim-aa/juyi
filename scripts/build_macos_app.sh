@@ -40,6 +40,9 @@ for arch in arm64 x86_64; do
         -o "$ROOT/build/Juyi-$arch" \
         "$ROOT/macos/AccessibilityController.swift" \
         "$ROOT/macos/DoubleOptionStateMachine.swift" \
+        "$ROOT/macos/NativeOptionEventAdapter.swift" \
+        "$ROOT/macos/NativeSelectionReader.swift" \
+        "$ROOT/macos/NativeSelectionCaptureCoordinator.swift" \
         "$ROOT/macos/NativeOptionMonitor.swift" \
         "$ROOT/macos/NativeOptionFeature.swift" \
         "$ROOT/macos/OnboardingPolicy.swift" \

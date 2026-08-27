@@ -2343,12 +2343,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.setActivationPolicy(.regular); installMainMenu(); createWindow()
         model.onChange = { [weak self] in self?.updateChrome() }; updateChrome()
         #if DEBUG
+        nativeOptionDevelopmentHarness.setPaused(model.paused)
         nativeOptionDevelopmentHarness.startIfEnabled()
         #endif
         if !isLoginLaunch { showWindow() }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
-    func applicationDidBecomeActive(_ notification: Notification) { model.applicationBecameActive() }
+    func applicationDidBecomeActive(_ notification: Notification) {
+        model.applicationBecameActive()
+        #if DEBUG
+        nativeOptionDevelopmentHarness.applicationBecameActive()
+        #endif
+    }
     func applicationWillTerminate(_ notification: Notification) {
         #if DEBUG
         nativeOptionDevelopmentHarness.stop()
@@ -2391,6 +2397,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(.separator()); menu.addItem(item(model.paused ? "恢复句译" : "暂停句译", action: #selector(pause))); menu.addItem(item("诊断与帮助…", action: #selector(diagnostics))); menu.addItem(.separator()); menu.addItem(item("退出句译", action: #selector(terminate))); statusItem.menu = menu
     }
     private func updateChrome() {
+        #if DEBUG
+        nativeOptionDevelopmentHarness.setPaused(model.paused)
+        #endif
         updateMenu()
         guard window != nil else { return }
         let mode = model.onboardingPresented

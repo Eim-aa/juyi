@@ -69,6 +69,22 @@ jobs:
         run: |
           swiftc -parse-as-library macos/DoubleOptionStateMachine.swift tests/DoubleOptionStateMachineTests.swift -o "$RUNNER_TEMP/double-option-state-machine-tests"
           "$RUNNER_TEMP/double-option-state-machine-tests"
+      - name: Run native Option event-adapter tests
+        run: |
+          swiftc -parse-as-library macos/DoubleOptionStateMachine.swift macos/NativeOptionEventAdapter.swift tests/NativeOptionEventAdapterTests.swift -o "$RUNNER_TEMP/native-option-event-adapter-tests"
+          "$RUNNER_TEMP/native-option-event-adapter-tests"
+      - name: Run native AX selection-reader tests
+        run: |
+          swiftc -parse-as-library -framework AppKit -framework ApplicationServices macos/AccessibilityController.swift macos/NativeSelectionReader.swift tests/NativeSelectionReaderTests.swift -o "$RUNNER_TEMP/native-selection-reader-tests"
+          "$RUNNER_TEMP/native-selection-reader-tests"
+      - name: Run native selection capture-coordinator tests
+        run: |
+          swiftc -parse-as-library -framework AppKit -framework ApplicationServices macos/AccessibilityController.swift macos/NativeSelectionReader.swift macos/NativeSelectionCaptureCoordinator.swift tests/NativeSelectionCaptureCoordinatorTests.swift -o "$RUNNER_TEMP/native-selection-capture-coordinator-tests"
+          "$RUNNER_TEMP/native-selection-capture-coordinator-tests"
+      - name: Run native Option monitor lifecycle tests
+        run: |
+          swiftc -parse-as-library -framework AppKit -framework ApplicationServices macos/AccessibilityController.swift macos/DoubleOptionStateMachine.swift macos/NativeOptionEventAdapter.swift macos/NativeSelectionReader.swift macos/NativeSelectionCaptureCoordinator.swift macos/NativeOptionMonitor.swift tests/NativeOptionMonitorTests.swift -o "$RUNNER_TEMP/native-option-monitor-tests"
+          "$RUNNER_TEMP/native-option-monitor-tests"
 
   syntax:
     runs-on: ubuntu-latest

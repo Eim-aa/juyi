@@ -25,6 +25,9 @@
 		A00000000000000000000057 /* Translation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000045 /* Translation.framework */; };
 		A00000000000000000000058 /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000046 /* ApplicationServices.framework */; };
 		A00000000000000000000059 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000047 /* CoreGraphics.framework */; };
+		A00000000000000000000062 /* NativeOptionEventAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000060 /* NativeOptionEventAdapter.swift */; };
+		A00000000000000000000063 /* NativeSelectionReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000061 /* NativeSelectionReader.swift */; };
+		A00000000000000000000065 /* NativeSelectionCaptureCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000064 /* NativeSelectionCaptureCoordinator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -53,6 +56,9 @@
 		A00000000000000000000045 /* Translation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Translation.framework; path = System/Library/Frameworks/Translation.framework; sourceTree = SDKROOT; };
 		A00000000000000000000046 /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = System/Library/Frameworks/ApplicationServices.framework; sourceTree = SDKROOT; };
 		A00000000000000000000047 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		A00000000000000000000060 /* NativeOptionEventAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOptionEventAdapter.swift; sourceTree = "<group>"; };
+		A00000000000000000000061 /* NativeSelectionReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSelectionReader.swift; sourceTree = "<group>"; };
+		A00000000000000000000064 /* NativeSelectionCaptureCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSelectionCaptureCoordinator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -110,7 +116,10 @@
 				A00000000000000000000023 /* WindowFramePolicy.swift */,
 				A0000000000000000000002D /* AccessibilityController.swift */,
 				A0000000000000000000002E /* DoubleOptionStateMachine.swift */,
+				A00000000000000000000060 /* NativeOptionEventAdapter.swift */,
 				A0000000000000000000002F /* NativeOptionMonitor.swift */,
+				A00000000000000000000061 /* NativeSelectionReader.swift */,
+				A00000000000000000000064 /* NativeSelectionCaptureCoordinator.swift */,
 				A00000000000000000000030 /* NativeOptionFeature.swift */,
 				A00000000000000000000024 /* Info.plist */,
 				A00000000000000000000025 /* AppIcon.png */,
@@ -245,8 +254,11 @@
 				A00000000000000000000036 /* AccessibilityController.swift in Sources */,
 				A00000000000000000000037 /* DoubleOptionStateMachine.swift in Sources */,
 				A00000000000000000000031 /* JuyiMenuBar.swift in Sources */,
+				A00000000000000000000062 /* NativeOptionEventAdapter.swift in Sources */,
 				A00000000000000000000039 /* NativeOptionFeature.swift in Sources */,
 				A00000000000000000000038 /* NativeOptionMonitor.swift in Sources */,
+				A00000000000000000000063 /* NativeSelectionReader.swift in Sources */,
+				A00000000000000000000065 /* NativeSelectionCaptureCoordinator.swift in Sources */,
 				A00000000000000000000032 /* OnboardingPolicy.swift in Sources */,
 				A00000000000000000000033 /* WindowFramePolicy.swift in Sources */,
 			);

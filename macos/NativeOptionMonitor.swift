@@ -1,229 +1,248 @@
-import CoreGraphics
+import AppKit
 import Foundation
 
-private func nativeOptionEventTapCallback(
-    proxy _: CGEventTapProxy,
-    type: CGEventType,
-    event: CGEvent,
-    userInfo: UnsafeMutableRawPointer?
-) -> Unmanaged<CGEvent>? {
-    guard let userInfo else { return Unmanaged.passUnretained(event) }
-    let monitor = Unmanaged<NativeOptionMonitor>.fromOpaque(userInfo).takeUnretainedValue()
-    return monitor.handleTapEvent(type: type, event: event)
+@MainActor
+protocol NativeOptionEventSource: AnyObject {
+    var optionIsCurrentlyDown: Bool { get }
+
+    func addGlobalMonitor(
+        handler: @escaping (NativeOptionEventSnapshot) -> Void
+    ) -> Any?
+    func removeMonitor(_ monitor: Any)
 }
 
-/// Listen-only CGEvent adapter for `DoubleOptionStateMachine`.
+/// AppKit adapter for the production experiment. A global NSEvent monitor only
+/// observes events sent to other applications and cannot alter their delivery.
+/// There is intentionally no app-wide local monitor in this phase.
+@MainActor
+final class NSEventNativeOptionEventSource: NativeOptionEventSource {
+    private static let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown]
+
+    var optionIsCurrentlyDown: Bool {
+        NSEvent.modifierFlags.contains(.option)
+    }
+
+    func addGlobalMonitor(
+        handler: @escaping (NativeOptionEventSnapshot) -> Void
+    ) -> Any? {
+        NSEvent.addGlobalMonitorForEvents(matching: Self.mask) { event in
+            MainActor.assumeIsolated {
+                handler(Self.snapshot(from: event))
+            }
+        }
+    }
+
+    func removeMonitor(_ monitor: Any) {
+        NSEvent.removeMonitor(monitor)
+    }
+
+    private static func snapshot(from event: NSEvent) -> NativeOptionEventSnapshot {
+        let kind: NativeOptionEventSnapshot.Kind = event.type == .keyDown
+            ? .keyDown
+            : .flagsChanged
+        return NativeOptionEventSnapshot(
+            kind: kind,
+            keyCode: event.keyCode,
+            modifiers: relevantModifiers(from: event.modifierFlags),
+            timestamp: event.timestamp,
+            isAutoRepeat: kind == .keyDown && event.isARepeat
+        )
+    }
+
+    private static func relevantModifiers(
+        from flags: NSEvent.ModifierFlags
+    ) -> DoubleOptionStateMachine.Modifiers {
+        let flags = flags.intersection(.deviceIndependentFlagsMask)
+        var modifiers: DoubleOptionStateMachine.Modifiers = []
+        if flags.contains(.option) { modifiers.insert(.option) }
+        if flags.contains(.command) { modifiers.insert(.command) }
+        if flags.contains(.control) { modifiers.insert(.control) }
+        if flags.contains(.shift) { modifiers.insert(.shift) }
+        if flags.contains(.function) { modifiers.insert(.function) }
+        // Caps Lock is intentionally not represented in the gesture policy.
+        return modifiers
+    }
+}
+
+/// Disabled-by-default native recognizer host.
 ///
-/// It never suppresses an event and never performs translation work in the
-/// tap callback. Recognition is delivered asynchronously on the main queue.
+/// The NSEvent callback only updates gesture state and captures the frontmost
+/// process identity. AX selection work belongs to a later serial worker and is
+/// never performed here.
+@MainActor
 final class NativeOptionMonitor {
     enum StartResult: Equatable {
         case started
         case alreadyRunning
-        /// The event tap could not be created. This intentionally does not
-        /// guess whether permission, session state, or another system limit
-        /// was responsible.
-        case tapUnavailable
+        case accessibilityRequired
+        case monitorUnavailable
     }
 
-    private static let leftOptionKeyCode: CGKeyCode = 58
-    private static let rightOptionKeyCode: CGKeyCode = 61
-    private static let capsLockKeyCode: CGKeyCode = 57
+    typealias DeliveryScheduler = (
+        _ delay: TimeInterval,
+        _ action: @escaping () -> Void
+    ) -> Void
 
-    private let lock = NSLock()
-    private let recognitionHandler: () -> Void
+    private let eventSource: NativeOptionEventSource
+    private let accessibilityStatus: () -> AccessibilityAuthorizationStatus
+    private let frontmostApplication: () -> NativeSelectionTarget?
+    private let currentProcessIdentifier: pid_t
+    private let recognitionInvalidationHandler: () -> Void
+    private let recognitionHandler: (NativeSelectionTarget) -> Void
+    private let deliveryScheduler: DeliveryScheduler
+
     private var stateMachine: DoubleOptionStateMachine
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-    private var runLoop: CFRunLoop?
+    private var eventAdapter = NativeOptionEventAdapter()
+    private var globalMonitor: Any?
     private var paused = false
     private var generation = 0
 
     init(
+        eventSource: NativeOptionEventSource? = nil,
+        accessibilityStatus: @escaping () -> AccessibilityAuthorizationStatus = {
+            AccessibilityController.status
+        },
+        frontmostApplication: @escaping () -> NativeSelectionTarget? = {
+            guard let application = NSWorkspace.shared.frontmostApplication else {
+                return nil
+            }
+            return NativeSelectionTarget(
+                processIdentifier: application.processIdentifier,
+                bundleIdentifier: application.bundleIdentifier
+            )
+        },
+        currentProcessIdentifier: pid_t = ProcessInfo.processInfo.processIdentifier,
         stateMachine: DoubleOptionStateMachine = DoubleOptionStateMachine(),
-        recognitionHandler: @escaping () -> Void
+        deliveryScheduler: @escaping DeliveryScheduler = { delay, action in
+            let workItem = DispatchWorkItem(block: action)
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + delay,
+                execute: workItem
+            )
+        },
+        recognitionInvalidationHandler: @escaping () -> Void = {},
+        recognitionHandler: @escaping (NativeSelectionTarget) -> Void
     ) {
+        self.eventSource = eventSource ?? NSEventNativeOptionEventSource()
+        self.accessibilityStatus = accessibilityStatus
+        self.frontmostApplication = frontmostApplication
+        self.currentProcessIdentifier = currentProcessIdentifier
         self.stateMachine = stateMachine
+        self.deliveryScheduler = deliveryScheduler
+        self.recognitionInvalidationHandler = recognitionInvalidationHandler
         self.recognitionHandler = recognitionHandler
     }
 
-    deinit {
-        stop()
-    }
+    var isRunning: Bool { globalMonitor != nil }
 
     @discardableResult
     func start() -> StartResult {
-        lock.lock()
-        stateMachine.reset()
-        if eventTap != nil {
-            generation += 1
-            lock.unlock()
-            return .alreadyRunning
+        guard accessibilityStatus() == .authorized else {
+            invalidatePendingGesture()
+            removeGlobalMonitorIfNeeded()
+            return .accessibilityRequired
         }
+        if globalMonitor != nil { return .alreadyRunning }
+        invalidatePendingGesture()
 
-        let eventMask = (CGEventMask(1) << CGEventType.flagsChanged.rawValue)
-            | (CGEventMask(1) << CGEventType.keyDown.rawValue)
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .listenOnly,
-            eventsOfInterest: eventMask,
-            callback: nativeOptionEventTapCallback,
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else {
-            lock.unlock()
-            return .tapUnavailable
+        guard let monitor = eventSource.addGlobalMonitor(handler: { [weak self] event in
+            self?.receive(event)
+        }) else {
+            return .monitorUnavailable
         }
-        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
-            CFMachPortInvalidate(tap)
-            lock.unlock()
-            return .tapUnavailable
-        }
-
-        let targetRunLoop = CFRunLoopGetMain()
-        eventTap = tap
-        runLoopSource = source
-        runLoop = targetRunLoop
-        generation += 1
-        let shouldEnable = !paused
-        lock.unlock()
-
-        CFRunLoopAddSource(targetRunLoop, source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: shouldEnable)
+        globalMonitor = monitor
         return .started
     }
 
     func setPaused(_ shouldPause: Bool) {
-        lock.lock()
+        guard paused != shouldPause else { return }
         paused = shouldPause
-        stateMachine.reset()
-        generation += 1
-        let tap = eventTap
-        lock.unlock()
-
-        if let tap {
-            CGEvent.tapEnable(tap: tap, enable: !shouldPause)
+        invalidatePendingGesture()
+        if !shouldPause, accessibilityStatus() != .authorized {
+            removeGlobalMonitorIfNeeded()
         }
     }
 
     func stop() {
-        lock.lock()
-        stateMachine.reset()
-        guard let tap = eventTap else {
-            lock.unlock()
+        invalidatePendingGesture(optionInitiallyDown: false)
+        removeGlobalMonitorIfNeeded()
+    }
+
+    /// Called from an ordinary app lifecycle boundary, never from the NSEvent
+    /// handler. Revocation invalidates pending delivery and removes the token.
+    @discardableResult
+    func refreshAuthorizationStatus() -> Bool {
+        guard accessibilityStatus() == .authorized else {
+            invalidatePendingGesture()
+            removeGlobalMonitorIfNeeded()
+            return false
+        }
+        return true
+    }
+
+    private func receive(_ event: NativeOptionEventSnapshot) {
+        guard globalMonitor != nil, !paused else { return }
+        guard let input = eventAdapter.input(for: event) else { return }
+        guard case let .trigger(delay)? = stateMachine.process(
+            input,
+            at: event.timestamp
+        ) else { return }
+
+        // Every recognized second release supersedes older selection work,
+        // even if this new recognition later fails identity/permission checks.
+        generation += 1
+        let deliveryGeneration = generation
+        recognitionInvalidationHandler()
+
+        // Snapshot both PID and bundle identity at the second Option release.
+        // NSEvent global monitoring does not observe this app, and the explicit
+        // PID check provides a second fail-closed boundary.
+        guard let target = frontmostApplication(),
+              target.processIdentifier > 0,
+              target.processIdentifier != currentProcessIdentifier else {
             return
         }
-        let source = runLoopSource
-        let targetRunLoop = runLoop
-        eventTap = nil
-        runLoopSource = nil
-        runLoop = nil
+
+        deliveryScheduler(delay) { [weak self] in
+            self?.deliver(
+                target: target,
+                ifGenerationIs: deliveryGeneration
+            )
+        }
+    }
+
+    private func deliver(
+        target: NativeSelectionTarget,
+        ifGenerationIs expectedGeneration: Int
+    ) {
+        guard globalMonitor != nil,
+              !paused,
+              generation == expectedGeneration else { return }
+        guard accessibilityStatus() == .authorized else {
+            invalidatePendingGesture()
+            removeGlobalMonitorIfNeeded()
+            return
+        }
+        guard target.processIdentifier != currentProcessIdentifier,
+              frontmostApplication()?.processIdentifier
+                == target.processIdentifier else { return }
+        recognitionHandler(target)
+    }
+
+    private func invalidatePendingGesture(
+        optionInitiallyDown: Bool? = nil
+    ) {
         generation += 1
-        lock.unlock()
-
-        CGEvent.tapEnable(tap: tap, enable: false)
-        if let source, let targetRunLoop {
-            CFRunLoopRemoveSource(targetRunLoop, source, .commonModes)
-            CFRunLoopSourceInvalidate(source)
-        }
-        CFMachPortInvalidate(tap)
+        stateMachine.reset()
+        eventAdapter.reset(
+            optionInitiallyDown: optionInitiallyDown
+                ?? eventSource.optionIsCurrentlyDown
+        )
     }
 
-    fileprivate func handleTapEvent(
-        type: CGEventType,
-        event: CGEvent
-    ) -> Unmanaged<CGEvent>? {
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            lock.lock()
-            stateMachine.reset()
-            generation += 1
-            let tap = eventTap
-            let shouldRestart = tap != nil && !paused
-            lock.unlock()
-            if let tap, shouldRestart {
-                CGEvent.tapEnable(tap: tap, enable: true)
-            }
-            return Unmanaged.passUnretained(event)
-        }
-
-        guard let input = Self.input(for: type, event: event) else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        let timestamp = TimeInterval(event.timestamp) / 1_000_000_000
-        lock.lock()
-        guard eventTap != nil, !paused else {
-            lock.unlock()
-            return Unmanaged.passUnretained(event)
-        }
-        let effect = stateMachine.process(input, at: timestamp)
-        let deliveryGeneration = generation
-        lock.unlock()
-
-        if case let .trigger(delay)? = effect {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                self?.deliverRecognition(ifGenerationIs: deliveryGeneration)
-            }
-        }
-        return Unmanaged.passUnretained(event)
-    }
-
-    private func deliverRecognition(ifGenerationIs expectedGeneration: Int) {
-        lock.lock()
-        let shouldDeliver = eventTap != nil
-            && !paused
-            && generation == expectedGeneration
-        let handler = recognitionHandler
-        lock.unlock()
-        if shouldDeliver { handler() }
-    }
-
-    private static func input(
-        for type: CGEventType,
-        event: CGEvent
-    ) -> DoubleOptionStateMachine.Input? {
-        switch type {
-        case .keyDown:
-            let rawKeyCode = event.getIntegerValueField(.keyboardEventKeycode)
-            if rawKeyCode == Int64(capsLockKeyCode) {
-                // Some synthetic event sources represent Caps Lock as keyDown.
-                // Treat it like its flagsChanged form so it remains irrelevant.
-                return .modifiersChanged(relevantModifiers(from: event.flags))
-            }
-            let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-            return .keyDown(isAutoRepeat: isRepeat)
-
-        case .flagsChanged:
-            let modifiers = relevantModifiers(from: event.flags)
-            let rawKeyCode = event.getIntegerValueField(.keyboardEventKeycode)
-            guard rawKeyCode >= 0, rawKeyCode <= Int64(CGKeyCode.max) else {
-                return .modifiersChanged(modifiers)
-            }
-            let keyCode = CGKeyCode(rawKeyCode)
-            let side: DoubleOptionStateMachine.OptionSide
-            switch keyCode {
-            case leftOptionKeyCode: side = .left
-            case rightOptionKeyCode: side = .right
-            default: return .modifiersChanged(modifiers)
-            }
-            let isDown = CGEventSource.keyState(.combinedSessionState, key: keyCode)
-            return .optionChanged(side: side, isDown: isDown, modifiers: modifiers)
-
-        default:
-            return nil
-        }
-    }
-
-    private static func relevantModifiers(
-        from flags: CGEventFlags
-    ) -> DoubleOptionStateMachine.Modifiers {
-        var modifiers: DoubleOptionStateMachine.Modifiers = []
-        if flags.contains(.maskAlternate) { modifiers.insert(.option) }
-        if flags.contains(.maskCommand) { modifiers.insert(.command) }
-        if flags.contains(.maskControl) { modifiers.insert(.control) }
-        if flags.contains(.maskShift) { modifiers.insert(.shift) }
-        if flags.contains(.maskSecondaryFn) { modifiers.insert(.function) }
-        // Caps Lock is intentionally not mapped, matching the product policy.
-        return modifiers
+    private func removeGlobalMonitorIfNeeded() {
+        guard let monitor = globalMonitor else { return }
+        globalMonitor = nil
+        eventSource.removeMonitor(monitor)
     }
 }

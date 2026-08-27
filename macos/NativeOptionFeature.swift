@@ -12,28 +12,74 @@ enum NativeOptionFeature {
 }
 
 #if DEBUG
-/// Internal-only harness. Recognition increments a private counter and never
-/// invokes selection capture, the backend, Hammerspoon or translation UI.
+/// Internal-only harness. Recognition exercises AX selection capture into
+/// private memory, but never invokes the backend, Hammerspoon or translation UI.
+@MainActor
 final class NativeOptionDevelopmentHarness {
     private(set) var recognitionCount = 0
+    private(set) var lastCaptureResult: NativeSelectionResult?
     private var monitor: NativeOptionMonitor?
+    private var captureCoordinator: NativeSelectionCaptureCoordinator?
+    private var isPaused = false
 
     func startIfEnabled() {
         guard NativeOptionFeature.isEnabled, monitor == nil else { return }
-        let candidate = NativeOptionMonitor { [weak self] in
+        let captureCoordinator = NativeSelectionCaptureCoordinator()
+        let candidate = NativeOptionMonitor(
+            recognitionInvalidationHandler: { [weak self, weak captureCoordinator] in
+                captureCoordinator?.cancelAll()
+                self?.lastCaptureResult = nil
+            }
+        ) { [weak self, weak captureCoordinator] target in
             self?.recognitionCount += 1
+            captureCoordinator?.capture(target: target) { [weak self] result in
+                MainActor.assumeIsolated {
+                    self?.lastCaptureResult = result
+                }
+            }
         }
         switch candidate.start() {
         case .started, .alreadyRunning:
+            candidate.setPaused(isPaused)
             monitor = candidate
-        case .tapUnavailable:
+            self.captureCoordinator = captureCoordinator
+        case .accessibilityRequired, .monitorUnavailable:
+            captureCoordinator.cancelAll()
             break
+        }
+    }
+
+    func applicationBecameActive() {
+        guard NativeOptionFeature.isEnabled else { return }
+        if let monitor {
+            if monitor.refreshAuthorizationStatus() {
+                if !monitor.isRunning { _ = monitor.start() }
+                return
+            }
+            captureCoordinator?.cancelAll()
+            captureCoordinator = nil
+            lastCaptureResult = nil
+            self.monitor = nil
+        }
+        startIfEnabled()
+    }
+
+    func setPaused(_ paused: Bool) {
+        guard NativeOptionFeature.isEnabled else { return }
+        isPaused = paused
+        monitor?.setPaused(paused)
+        if paused {
+            captureCoordinator?.cancelAll()
+            lastCaptureResult = nil
         }
     }
 
     func stop() {
         monitor?.stop()
+        captureCoordinator?.cancelAll()
         monitor = nil
+        captureCoordinator = nil
+        lastCaptureResult = nil
     }
 }
 #endif

@@ -73,9 +73,9 @@ struct DoubleOptionStateMachine {
         }
 
         if let lastObservedTime, timestamp < lastObservedTime {
-            // CGEvent timestamps are monotonic, but reset defensively if an
-            // injected/test clock moves backwards so a negative gap can never
-            // be mistaken for a fast tap.
+            // Native event timestamps are monotonic, but reset defensively if
+            // an injected/test clock moves backwards so a negative gap can
+            // never be mistaken for a fast tap.
             resetGestureState()
         }
         lastObservedTime = timestamp
