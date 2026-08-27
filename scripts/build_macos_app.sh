@@ -2,24 +2,64 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD="$ROOT/build/Juyi.app"
-ICONSET="$ROOT/build/AppIcon.iconset"
 MODULE_CACHE="$ROOT/build/ModuleCache"
+ASSET_INFO="$ROOT/build/assetcatalog-info.plist"
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
-rm -rf "$BUILD" "$ICONSET"
-mkdir -p "$BUILD/Contents/MacOS" "$BUILD/Contents/Resources" "$ICONSET" "$MODULE_CACHE"
+CONFIGURATION="${CONFIGURATION:-Release}"
+SETTING_READER="$ROOT/scripts/read_xcconfig_value.sh"
+VERSION_CONFIG="$ROOT/Config/Version.xcconfig"
+SHARED_CONFIG="$ROOT/Config/Shared.xcconfig"
+MARKETING_VERSION="$("$SETTING_READER" "$VERSION_CONFIG" MARKETING_VERSION)"
+CURRENT_PROJECT_VERSION="$("$SETTING_READER" "$VERSION_CONFIG" CURRENT_PROJECT_VERSION)"
+MINIMUM_MACOS="$("$SETTING_READER" "$SHARED_CONFIG" MACOSX_DEPLOYMENT_TARGET)"
 
-swiftc -parse-as-library -O -module-cache-path "$MODULE_CACHE" -sdk "$SDK" -target arm64-apple-macos13.0 -framework AppKit -framework ServiceManagement -framework SwiftUI -o "$ROOT/build/Juyi-arm64" "$ROOT/macos/OnboardingPolicy.swift" "$ROOT/macos/WindowFramePolicy.swift" "$ROOT/macos/JuyiMenuBar.swift"
-swiftc -parse-as-library -O -module-cache-path "$MODULE_CACHE" -sdk "$SDK" -target x86_64-apple-macos13.0 -framework AppKit -framework ServiceManagement -framework SwiftUI -o "$ROOT/build/Juyi-x86_64" "$ROOT/macos/OnboardingPolicy.swift" "$ROOT/macos/WindowFramePolicy.swift" "$ROOT/macos/JuyiMenuBar.swift"
+[[ "$MARKETING_VERSION" =~ ^[0-9]+([.][0-9]+){1,2}$ ]] || { echo "invalid MARKETING_VERSION" >&2; exit 1; }
+[[ "$CURRENT_PROJECT_VERSION" =~ ^[0-9]+$ ]] || { echo "invalid CURRENT_PROJECT_VERSION" >&2; exit 1; }
+[[ "$MINIMUM_MACOS" =~ ^[0-9]+([.][0-9]+){1,2}$ ]] || { echo "invalid MACOSX_DEPLOYMENT_TARGET" >&2; exit 1; }
+
+case "$CONFIGURATION" in
+    Debug) SWIFT_FLAGS=(-Onone -g) ;;
+    Release) SWIFT_FLAGS=(-O) ;;
+    *) echo "unsupported CONFIGURATION: $CONFIGURATION (expected Debug or Release)" >&2; exit 2 ;;
+esac
+
+rm -rf "$BUILD"
+mkdir -p "$BUILD/Contents/MacOS" "$BUILD/Contents/Resources" "$MODULE_CACHE"
+
+for arch in arm64 x86_64; do
+    swiftc -parse-as-library "${SWIFT_FLAGS[@]}" \
+        -module-cache-path "$MODULE_CACHE" \
+        -sdk "$SDK" \
+        -target "$arch-apple-macos$MINIMUM_MACOS" \
+        -framework AppKit \
+        -framework CryptoKit \
+        -framework ServiceManagement \
+        -framework SwiftUI \
+        -o "$ROOT/build/Juyi-$arch" \
+        "$ROOT/macos/OnboardingPolicy.swift" \
+        "$ROOT/macos/WindowFramePolicy.swift" \
+        "$ROOT/macos/JuyiMenuBar.swift"
+done
 lipo -create "$ROOT/build/Juyi-arm64" "$ROOT/build/Juyi-x86_64" -output "$BUILD/Contents/MacOS/Juyi"
 
-for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" "$ROOT/macos/AppIcon.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
-    double=$((size * 2))
-    sips -z "$double" "$double" "$ROOT/macos/AppIcon.png" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
-done
-iconutil -c icns "$ICONSET" -o "$BUILD/Contents/Resources/AppIcon.icns"
+xcrun actool "$ROOT/macos/Assets.xcassets" \
+    --compile "$BUILD/Contents/Resources" \
+    --platform macosx \
+    --minimum-deployment-target "$MINIMUM_MACOS" \
+    --app-icon AppIcon \
+    --output-partial-info-plist "$ASSET_INFO" >/dev/null
 
 cp "$ROOT/macos/Info.plist" "$BUILD/Contents/Info.plist"
-codesign --force --sign - "$BUILD"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING_VERSION" "$BUILD/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $CURRENT_PROJECT_VERSION" "$BUILD/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion $MINIMUM_MACOS" "$BUILD/Contents/Info.plist"
+
+SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}"
+SIGN_ARGS=(--force --options runtime --entitlements "$ROOT/macos/Juyi.entitlements" --sign "$SIGN_IDENTITY")
+if [[ "$SIGN_IDENTITY" != "-" ]]; then SIGN_ARGS+=(--timestamp); fi
+codesign "${SIGN_ARGS[@]}" "$BUILD"
+
+"$ROOT/scripts/verify_macos_binary.sh" "$BUILD/Contents/MacOS/Juyi" "$MINIMUM_MACOS"
 plutil -lint "$BUILD/Contents/Info.plist"
-echo "Built $BUILD"
+"$ROOT/scripts/verify_macos_signature.sh" "$BUILD"
+echo "Built $BUILD ($MARKETING_VERSION, build $CURRENT_PROJECT_VERSION, $CONFIGURATION, macOS $MINIMUM_MACOS+)"

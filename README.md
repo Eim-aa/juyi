@@ -11,6 +11,8 @@ English: [README_EN.md](README_EN.md)
 
 > **原生 macOS App**：运行 `scripts/install_macos_app.sh` 可安装 `/Applications/句译.app`。简洁的首次设置会检查后台组件、引导辅助功能授权并让用户实际试用 ⌥⌥；主界面可选择 Apple 离线或火山云端、验证云端密钥、测试翻译和自动恢复错误。技术细节默认隐藏。详见 [docs/MENU_BAR_APP.md](docs/MENU_BAR_APP.md)。
 
+公开版工程基线要求 macOS 15.0，并通过共享 Xcode scheme 构建 Universal 2 App 与 helper；版本、签名基线和当前尚未完成的公证/打包边界见 [docs/RELEASE_BASELINE.md](docs/RELEASE_BASELINE.md)。
+
 ![demo](docs/demo.gif)
 
 ## 为什么用这个？

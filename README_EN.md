@@ -11,6 +11,8 @@
 
 > **Native macOS app:** run `scripts/install_macos_app.sh` to install `/Applications/句译.app`. Its focused first-run setup checks the background components, guides Accessibility permission, and includes a real ⌥⌥ exercise. The main window offers Apple offline or Volcengine cloud, credential validation, translation testing, and actionable recovery while hiding technical details by default. See [docs/MENU_BAR_APP.md](docs/MENU_BAR_APP.md).
 
+The public-release project baseline targets macOS 15.0 and builds a Universal 2 app and helper through a shared Xcode scheme. Versioning, signing boundaries, and the remaining notarization/packaging work are documented in [docs/RELEASE_BASELINE.md](docs/RELEASE_BASELINE.md).
+
 ![demo](docs/demo.gif)
 
 ## Why this?

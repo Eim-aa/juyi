@@ -12,8 +12,9 @@ require the human** and are marked `HUMAN STEP`. Do not try to automate those.
 
 ## Prerequisites (verify, don't assume)
 
-- macOS (the tool is macOS-only; bail out otherwise). macOS 15+ enables the
-  default offline engine; older macOS works cloud-only with Volcengine keys.
+- macOS 15.0 or newer (the current native app and installer baseline). On an
+  older macOS release, stop before changing the service, Hammerspoon, or App;
+  the current installer intentionally does not offer a cloud-only fallback.
 - A shell you can run commands in.
 - Homebrew and Python >= 3.10. The installer checks these and prints a fix hint
   if missing; install Homebrew first if it is absent.

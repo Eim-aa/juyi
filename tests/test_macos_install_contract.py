@@ -8,10 +8,52 @@ ROOT = Path(__file__).parents[1]
 INSTALLER_PATH = ROOT / "scripts" / "install_macos_app.sh"
 INSTALLER = INSTALLER_PATH.read_text(encoding="utf-8")
 INSTALL_ALL = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+BOOTSTRAP = (ROOT / "scripts" / "bootstrap.sh").read_text(encoding="utf-8")
 BUILD = (ROOT / "scripts" / "build_macos_app.sh").read_text(encoding="utf-8")
 SWIFT = (ROOT / "macos" / "JuyiMenuBar.swift").read_text(encoding="utf-8")
 FRAME_POLICY = (ROOT / "macos" / "WindowFramePolicy.swift").read_text(encoding="utf-8")
 CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+
+def test_all_install_entries_reject_pre_macos_15_before_any_state_change():
+    bootstrap_guard = BOOTSTRAP.index("\nrequire_macos_15\n")
+    for operation in (
+        'command -v git',
+        'git -C "$DEST" fetch',
+        'git -C "$DEST" checkout',
+        'git -C "$DEST" merge',
+        'mkdir -p "$(dirname "$DEST")"',
+        'git clone --depth=1',
+        'exec "$DEST/scripts/install.sh"',
+    ):
+        assert bootstrap_guard < BOOTSTRAP.index(operation, bootstrap_guard)
+    assert "未更新源码、服务、Hammerspoon 或 App；现有安装已保留" in BOOTSTRAP
+
+    full_guard = INSTALL_ALL.index("\nrequire_macos_15\n")
+    for operation in (
+        '"$ROOT/scripts/hammerspoon_hook.sh" check',
+        '"$ROOT/scripts/ensure_auth_token.sh"',
+        'mkdir -p "$ROOT"',
+        '"$PYTHON" -m venv',
+        '"$ROOT/scripts/launchd_install.sh"',
+        '"$ROOT/scripts/hammerspoon_hook.sh" install',
+        '"$ROOT/scripts/build_apple_helper.sh"',
+        '"$ROOT/scripts/install_macos_app.sh"',
+    ):
+        assert full_guard < INSTALL_ALL.index(operation)
+    assert "现有安装已保留" in INSTALL_ALL
+    assert "configure the Volcengine cloud option" not in INSTALL_ALL
+
+    app_guard = INSTALLER.index("\nrequire_macos_15\n")
+    for operation in (
+        'if [[ "${1:-}" == "--install-helper" ]]',
+        '"$ROOT/scripts/build_macos_app.sh"',
+        "STAGING_ROOT=",
+        "quit_running_app",
+        'install_verified_app "$STAGED_APP"',
+    ):
+        assert app_guard < INSTALLER.index(operation, app_guard)
+    assert "现有 App 与服务已保留" in INSTALLER
 
 
 def test_native_installer_targets_system_applications_and_is_executable():
@@ -161,11 +203,12 @@ def test_login_item_launch_stays_quiet_but_manual_launch_opens_window():
 
 
 def test_build_links_service_management_and_keeps_dock_and_menu_bar():
-    assert BUILD.count("-framework ServiceManagement") == 2
-    assert BUILD.count('"$ROOT/macos/WindowFramePolicy.swift"') == 2
+    assert BUILD.count("-framework ServiceManagement") == 1
+    assert BUILD.count('"$ROOT/macos/WindowFramePolicy.swift"') == 1
     info = (ROOT / "macos" / "Info.plist").read_text(encoding="utf-8")
-    assert "<key>CFBundleShortVersionString</key><string>0.3.3</string>" in info
-    assert "<key>CFBundleVersion</key><string>7</string>" in info
+    assert "$(MARKETING_VERSION)" in info
+    assert "$(CURRENT_PROJECT_VERSION)" in info
+    assert "$(MACOSX_DEPLOYMENT_TARGET)" in info
     assert "LSUIElement" not in info
     assert "NSApp.setActivationPolicy(.regular)" in SWIFT
     assert "applicationShouldTerminateAfterLastWindowClosed" in SWIFT
@@ -174,8 +217,12 @@ def test_build_links_service_management_and_keeps_dock_and_menu_bar():
 
 def test_ci_builds_the_native_app_and_apple_translation_helper():
     assert "runs-on: macos-15" in CI
+    assert "xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi" in CI
+    assert "-configuration Debug" in CI
+    assert "-configuration Release" in CI
+    assert "scripts/verify_macos_binary.sh" in CI
     assert "scripts/build_macos_app.sh" in CI
-    assert "apple/TranslationHelper.swift" in CI
+    assert "scripts/build_apple_helper.sh" in CI
 
 
 def test_window_frame_policy_preserves_valid_positions_and_repairs_before_show():

@@ -65,11 +65,12 @@ Dock 与菜单栏会同时保留句译入口。关闭窗口只关闭控制窗口
 ## 开发与发布
 
 ```bash
-scripts/build_macos_app.sh
-open build/Juyi.app
+xcodebuild -project Juyi.xcodeproj -scheme Juyi \
+  -configuration Debug -derivedDataPath /tmp/JuyiDebug build
+open /tmp/JuyiDebug/Build/Products/Debug/Juyi.app
 ```
 
-构建产物是带图标的 Universal 2 App（Apple Silicon + Intel），最低支持 macOS 13；Apple 离线翻译仍要求 macOS 15+。本地源码构建使用 ad-hoc 签名。公开下载版本在发布前仍必须配置 Developer ID 签名与 Apple 公证。
+正式工程构建 App 与 Apple Translation helper，二者都是 Universal 2（Apple Silicon + Intel），最低支持 macOS 15.0。现有 `scripts/build_macos_app.sh` 仍可用于安装脚本兼容路径，并读取与 Xcode 相同的版本和 deployment target。本地源码构建使用 ad-hoc 签名；公开下载版本在发布前仍必须配置 Developer ID 签名与 Apple 公证。完整构建契约见 [RELEASE_BASELINE.md](RELEASE_BASELINE.md)。
 
 当前阶段的原生 App 是现有 Python 后端和 Hammerspoon 之上的产品界面。安装脚本成功完成以后，日常启动、状态查看、权限引导、引擎切换、密钥设置和错误恢复均在图形界面中完成。将后端运行时封装进签名、公证的 DMG/PKG 属于后续发行工程，本阶段不伪装为已经完成。
 

@@ -17,6 +17,18 @@ hint() {
     echo "FIX: $*" >&2
 }
 
+require_macos_15() {
+    local platform product_version major
+    platform="$(/usr/bin/uname -s 2>/dev/null || true)"
+    [[ "$platform" == "Darwin" ]] || fail "句译公开版只能安装在 macOS 15.0 或更高版本。未做任何更改。"
+    product_version="$(/usr/bin/sw_vers -productVersion 2>/dev/null || true)"
+    major="${product_version%%.*}"
+    if [[ ! "$major" =~ ^[0-9]+$ || "$major" -lt 15 ]]; then
+        fail "句译公开版需要 macOS 15.0 或更高版本（当前：${product_version:-未知}）。未修改服务、Hammerspoon 或 App；现有安装已保留。"
+    fi
+    echo "macOS: $product_version"
+}
+
 find_brew() {
     if [[ -n "$BREW_BIN" && -x "$BREW_BIN" ]]; then
         echo "$BREW_BIN"
@@ -81,6 +93,10 @@ find_python() {
 
 echo "== preflight =="
 
+# This must remain the first preflight action. A rejected macOS version must
+# not create a token/venv, touch launchd or Hammerspoon, build, or replace App.
+require_macos_15
+
 # Refuse a conflicting Hammerspoon module before installing dependencies or
 # changing launchd state. The helper also validates any existing managed block.
 "$ROOT/scripts/hammerspoon_hook.sh" check
@@ -139,18 +155,17 @@ fi
 "$ROOT/scripts/hammerspoon_hook.sh" install
 "$ROOT/scripts/hammerspoon_hook.sh" reload
 
-# Optional apple engine: compile the system-translation helper on macOS 15+.
-MACOS_MAJOR="$(sw_vers -productVersion | cut -d. -f1)"
-if [[ "$MACOS_MAJOR" -ge 15 ]] && command -v swiftc >/dev/null 2>&1; then
+# Compile the system-translation helper on the supported macOS baseline.
+if command -v swiftc >/dev/null 2>&1; then
     echo "[building apple-translation-helper (macOS on-device translation engine)]"
     mkdir -p "$ROOT/bin"
-    if swiftc -O -o "$ROOT/bin/apple-translation-helper" "$ROOT/apple/TranslationHelper.swift"; then
+    if "$ROOT/scripts/build_apple_helper.sh" "$ROOT/bin/apple-translation-helper"; then
         echo "apple engine ready: $ROOT/bin/apple-translation-helper"
     else
         echo "WARN: apple helper build failed; offline engine unavailable (volc cloud unaffected)" >&2
     fi
 else
-    echo "[skipping apple engine helper: needs macOS 15+ and swiftc; configure the Volcengine cloud option in the 句译 app]"
+    echo "WARN: apple engine helper was not built because swiftc is unavailable; install Xcode Command Line Tools and rerun this installer" >&2
 fi
 
 echo

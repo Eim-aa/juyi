@@ -1,0 +1,343 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A00000000000000000000031 /* JuyiMenuBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000021 /* JuyiMenuBar.swift */; };
+		A00000000000000000000032 /* OnboardingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000022 /* OnboardingPolicy.swift */; };
+		A00000000000000000000033 /* WindowFramePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000023 /* WindowFramePolicy.swift */; };
+		A00000000000000000000034 /* TranslationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000027 /* TranslationHelper.swift */; };
+		A00000000000000000000035 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002C /* Assets.xcassets */; };
+		A00000000000000000000051 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000041 /* AppKit.framework */; };
+		A00000000000000000000052 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000042 /* ServiceManagement.framework */; };
+		A00000000000000000000053 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000043 /* SwiftUI.framework */; };
+		A00000000000000000000054 /* CryptoKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000044 /* CryptoKit.framework */; };
+		A00000000000000000000055 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000041 /* AppKit.framework */; };
+		A00000000000000000000056 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000043 /* SwiftUI.framework */; };
+		A00000000000000000000057 /* Translation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000045 /* Translation.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A0000000000000000000000A /* Juyi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Juyi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A0000000000000000000000B /* apple-translation-helper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "apple-translation-helper"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000021 /* JuyiMenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JuyiMenuBar.swift; sourceTree = "<group>"; };
+		A00000000000000000000022 /* OnboardingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPolicy.swift; sourceTree = "<group>"; };
+		A00000000000000000000023 /* WindowFramePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowFramePolicy.swift; sourceTree = "<group>"; };
+		A00000000000000000000024 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A00000000000000000000025 /* AppIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon.png; sourceTree = "<group>"; };
+		A00000000000000000000026 /* Juyi.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Juyi.entitlements; sourceTree = "<group>"; };
+		A00000000000000000000027 /* TranslationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationHelper.swift; sourceTree = "<group>"; };
+		A00000000000000000000028 /* Version.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Version.xcconfig; sourceTree = "<group>"; };
+		A00000000000000000000029 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
+		A0000000000000000000002A /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		A0000000000000000000002B /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		A0000000000000000000002C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A00000000000000000000041 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		A00000000000000000000042 /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
+		A00000000000000000000043 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		A00000000000000000000044 /* CryptoKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CryptoKit.framework; path = System/Library/Frameworks/CryptoKit.framework; sourceTree = SDKROOT; };
+		A00000000000000000000045 /* Translation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Translation.framework; path = System/Library/Frameworks/Translation.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A0000000000000000000000E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000051 /* AppKit.framework in Frameworks */,
+				A00000000000000000000054 /* CryptoKit.framework in Frameworks */,
+				A00000000000000000000052 /* ServiceManagement.framework in Frameworks */,
+				A00000000000000000000053 /* SwiftUI.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A0000000000000000000000F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000055 /* AppKit.framework in Frameworks */,
+				A00000000000000000000056 /* SwiftUI.framework in Frameworks */,
+				A00000000000000000000057 /* Translation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A00000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000004 /* macos */,
+				A00000000000000000000005 /* apple */,
+				A00000000000000000000006 /* Config */,
+				A00000000000000000000007 /* Frameworks */,
+				A00000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A00000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A0000000000000000000000A /* Juyi.app */,
+				A0000000000000000000000B /* apple-translation-helper */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000004 /* macos */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000021 /* JuyiMenuBar.swift */,
+				A00000000000000000000022 /* OnboardingPolicy.swift */,
+				A00000000000000000000023 /* WindowFramePolicy.swift */,
+				A00000000000000000000024 /* Info.plist */,
+				A00000000000000000000025 /* AppIcon.png */,
+				A0000000000000000000002C /* Assets.xcassets */,
+				A00000000000000000000026 /* Juyi.entitlements */,
+			);
+			path = macos;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000005 /* apple */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000027 /* TranslationHelper.swift */,
+			);
+			path = apple;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000006 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000028 /* Version.xcconfig */,
+				A00000000000000000000029 /* Shared.xcconfig */,
+				A0000000000000000000002A /* Debug.xcconfig */,
+				A0000000000000000000002B /* Release.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000007 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000041 /* AppKit.framework */,
+				A00000000000000000000044 /* CryptoKit.framework */,
+				A00000000000000000000042 /* ServiceManagement.framework */,
+				A00000000000000000000043 /* SwiftUI.framework */,
+				A00000000000000000000045 /* Translation.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A00000000000000000000008 /* Juyi */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000015 /* Build configuration list for PBXNativeTarget "Juyi" */;
+			buildPhases = (
+				A0000000000000000000000C /* Sources */,
+				A0000000000000000000000E /* Frameworks */,
+				A00000000000000000000010 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Juyi;
+			productName = Juyi;
+			productReference = A0000000000000000000000A /* Juyi.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A00000000000000000000009 /* AppleTranslationHelper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000016 /* Build configuration list for PBXNativeTarget "AppleTranslationHelper" */;
+			buildPhases = (
+				A0000000000000000000000D /* Sources */,
+				A0000000000000000000000F /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AppleTranslationHelper;
+			productName = "apple-translation-helper";
+			productReference = A0000000000000000000000B /* apple-translation-helper */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A00000000000000000000008 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					A00000000000000000000009 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = A00000000000000000000014 /* Build configuration list for PBXProject "Juyi" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A00000000000000000000002;
+			productRefGroup = A00000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A00000000000000000000008 /* Juyi */,
+				A00000000000000000000009 /* AppleTranslationHelper */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A00000000000000000000010 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000035 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A0000000000000000000000C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000031 /* JuyiMenuBar.swift in Sources */,
+				A00000000000000000000032 /* OnboardingPolicy.swift in Sources */,
+				A00000000000000000000033 /* WindowFramePolicy.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A0000000000000000000000D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000034 /* TranslationHelper.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000017 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		A00000000000000000000018 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		A00000000000000000000019 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A0000000000000000000002A /* Debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = macos/Juyi.entitlements;
+				EXECUTABLE_NAME = Juyi;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = macos/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.Eim-aa.Juyi;
+				PRODUCT_MODULE_NAME = Juyi;
+				PRODUCT_NAME = Juyi;
+				SKIP_INSTALL = NO;
+			};
+			name = Debug;
+		};
+		A0000000000000000000001A /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A0000000000000000000002B /* Release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = macos/Juyi.entitlements;
+				EXECUTABLE_NAME = Juyi;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = macos/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.Eim-aa.Juyi;
+				PRODUCT_MODULE_NAME = Juyi;
+				PRODUCT_NAME = Juyi;
+				SKIP_INSTALL = NO;
+			};
+			name = Release;
+		};
+		A0000000000000000000001B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A0000000000000000000002A /* Debug.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = macos/Juyi.entitlements;
+				EXECUTABLE_NAME = "apple-translation-helper";
+				MACH_O_TYPE = mh_execute;
+				PRODUCT_NAME = "apple-translation-helper";
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		A0000000000000000000001C /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A0000000000000000000002B /* Release.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = macos/Juyi.entitlements;
+				EXECUTABLE_NAME = "apple-translation-helper";
+				MACH_O_TYPE = mh_execute;
+				PRODUCT_NAME = "apple-translation-helper";
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A00000000000000000000014 /* Build configuration list for PBXProject "Juyi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000017 /* Debug */,
+				A00000000000000000000018 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A00000000000000000000015 /* Build configuration list for PBXNativeTarget "Juyi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000019 /* Debug */,
+				A0000000000000000000001A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A00000000000000000000016 /* Build configuration list for PBXNativeTarget "AppleTranslationHelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A0000000000000000000001B /* Debug */,
+				A0000000000000000000001C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A00000000000000000000001 /* Project object */;
+}

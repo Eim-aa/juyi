@@ -20,7 +20,7 @@
 //   --prepare       show a small window and ask the system to download the
 //                   en -> zh-Hans language pack (user confirmation dialog).
 //
-// Build: swiftc -O -o bin/apple-translation-helper apple/TranslationHelper.swift
+// Build: scripts/build_apple_helper.sh
 
 import AppKit
 import Foundation
@@ -225,25 +225,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - Entry point
 
-let mode = parseMode()
+@main
+enum TranslationHelperMain {
+    static func main() {
+        let mode = parseMode()
 
-if case .status = mode {
-    // No UI needed: query availability and exit.
-    Task {
-        let status = await LanguageAvailability().status(from: sourceLanguage, to: targetLanguage)
-        print(statusString(status))
-        exit(0)
+        if case .status = mode {
+            // No UI needed: query availability and exit.
+            Task {
+                let status = await LanguageAvailability().status(from: sourceLanguage, to: targetLanguage)
+                print(statusString(status))
+                exit(0)
+            }
+            dispatchMain()
+        }
+
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let delegate = AppDelegate(mode: mode)
+        app.delegate = delegate
+
+        if case .serve = mode {
+            startStdinReader()
+        }
+
+        app.run()
     }
-    dispatchMain()
 }
-
-let app = NSApplication.shared
-app.setActivationPolicy(.accessory)
-let delegate = AppDelegate(mode: mode)
-app.delegate = delegate
-
-if case .serve = mode {
-    startStdinReader()
-}
-
-app.run()

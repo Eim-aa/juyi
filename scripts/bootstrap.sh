@@ -12,6 +12,25 @@ REPO_URL="${REPO_URL:-https://github.com/Eim-aa/juyi.git}"
 DEST="${DEST:-$HOME/.local/share/argos-translator}"
 BRANCH="${BRANCH:-main}"
 
+require_macos_15() {
+    local platform product_version major
+    platform="$(/usr/bin/uname -s 2>/dev/null || true)"
+    if [[ "$platform" != "Darwin" ]]; then
+        echo "ERROR: 句译公开版只能安装在 macOS 15.0 或更高版本。未下载或修改任何安装文件。" >&2
+        exit 1
+    fi
+    product_version="$(/usr/bin/sw_vers -productVersion 2>/dev/null || true)"
+    major="${product_version%%.*}"
+    if [[ ! "$major" =~ ^[0-9]+$ || "$major" -lt 15 ]]; then
+        echo "ERROR: 句译公开版需要 macOS 15.0 或更高版本（当前：${product_version:-未知}）。未更新源码、服务、Hammerspoon 或 App；现有安装已保留。" >&2
+        exit 1
+    fi
+}
+
+# Keep this before git discovery/fetch/checkout/clone and destination mkdir so
+# an unsupported Mac cannot partially update a service's live checkout.
+require_macos_15
+
 echo "== argos-translator bootstrap =="
 echo "  repo:   $REPO_URL"
 echo "  dest:   $DEST"

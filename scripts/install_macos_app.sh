@@ -9,6 +9,25 @@ LEGACY_DEST="$HOME/Applications/句译.app"
 APP_BUNDLE_ID="io.github.Eim-aa.Juyi"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
+require_macos_15() {
+    local platform product_version major
+    platform="$(/usr/bin/uname -s 2>/dev/null || true)"
+    if [[ "$platform" != "Darwin" ]]; then
+        echo "ERROR: 句译公开版只能安装在 macOS 15.0 或更高版本。未构建、退出或替换任何 App。" >&2
+        exit 1
+    fi
+    product_version="$(/usr/bin/sw_vers -productVersion 2>/dev/null || true)"
+    major="${product_version%%.*}"
+    if [[ ! "$major" =~ ^[0-9]+$ || "$major" -lt 15 ]]; then
+        echo "ERROR: 句译公开版需要 macOS 15.0 或更高版本（当前：${product_version:-未知}）。未构建、退出或替换任何 App；现有 App 与服务已保留。" >&2
+        exit 1
+    fi
+}
+
+# Also protects the privileged --install-helper entry. Keep this before every
+# build, quit request, staging write, registration, or replacement operation.
+require_macos_15
+
 app_is_owned() {
     local app="$1"
     [[ -d "$app" && ! -L "$app" ]] || return 1

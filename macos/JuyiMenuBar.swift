@@ -1867,8 +1867,8 @@ private struct OnboardingView: View {
         .frame(minWidth: 580, minHeight: 480)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { focusAndAnnouncePage() }
-        .onChange(of: model.onboardingScreen) { _ in focusAndAnnouncePage() }
-        .onChange(of: model.hotkeyProblem) { _ in
+        .onChange(of: model.onboardingScreen) { focusAndAnnouncePage() }
+        .onChange(of: model.hotkeyProblem) {
             guard model.onboardingScreen == .permission else { return }
             let state = shortcutStatus
             announce("快捷键状态：\(state.title)。\(state.detail)")

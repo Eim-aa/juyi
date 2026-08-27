@@ -35,16 +35,28 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Type-check native app
+      - name: Report Xcode toolchain
+        run: xcodebuild -version
+      - name: Build Xcode Debug configuration
         run: >-
-          swiftc -typecheck -parse-as-library
-          -framework AppKit -framework ServiceManagement -framework SwiftUI
-          macos/OnboardingPolicy.swift macos/WindowFramePolicy.swift
-          macos/JuyiMenuBar.swift
-      - name: Build universal native app bundle
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiDebug"
+          CODE_SIGNING_ALLOWED=NO build
+      - name: Build Xcode Release configuration
+        run: >-
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Release -derivedDataPath "$RUNNER_TEMP/JuyiRelease"
+          CODE_SIGNING_ALLOWED=NO build
+      - name: Verify Xcode Release products
+        run: |
+          scripts/verify_macos_binary.sh "$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/MacOS/Juyi" 15.0
+          scripts/verify_macos_binary.sh "$RUNNER_TEMP/JuyiRelease/Build/Products/Release/apple-translation-helper" 15.0
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/Info.plist")" = "$(scripts/read_xcconfig_value.sh Config/Version.xcconfig MARKETING_VERSION)"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/Info.plist")" = "$(scripts/read_xcconfig_value.sh Config/Version.xcconfig CURRENT_PROJECT_VERSION)"
+      - name: Build legacy universal native app bundle
         run: scripts/build_macos_app.sh
-      - name: Compile Apple Translation helper
-        run: swiftc -O -o "$RUNNER_TEMP/apple-translation-helper" apple/TranslationHelper.swift
+      - name: Build legacy universal Apple Translation helper
+        run: scripts/build_apple_helper.sh "$RUNNER_TEMP/apple-translation-helper"
       - name: Run Onboarding policy tests
         run: |
           swiftc -parse-as-library macos/OnboardingPolicy.swift tests/OnboardingPolicyTests.swift -o "$RUNNER_TEMP/onboarding-policy-tests"

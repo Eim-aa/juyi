@@ -1,8 +1,7 @@
 """Static contract checks for the dependency-free native macOS shell.
 
-The app is compiled directly with swiftc rather than an Xcode test target, so
-these checks guard the onboarding invariants that are easy to regress while the
-build script provides the Swift type/build verification.
+The policy has executable Swift tests, while these checks protect the complete
+product flow from accidental removal in both Xcode and legacy-script builds.
 """
 
 from pathlib import Path
