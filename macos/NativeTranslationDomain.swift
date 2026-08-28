@@ -135,6 +135,7 @@ enum NativeAppleTranslationReadiness: Equatable, Sendable {
     case installed
     case supportedNeedsPreparation
     case unsupported
+    case temporarilyUnavailable
 }
 
 enum NativeVolcRemovalMarkerState: Equatable, Sendable {
@@ -232,6 +233,8 @@ enum NativeTranslationPrivacyRouter {
                 return .failure(.appleNeedsPreparation)
             case .unsupported:
                 return .failure(.appleUnsupported)
+            case .temporarilyUnavailable:
+                return .failure(.appleTemporarilyUnavailable)
             }
 
         case .volc:
@@ -273,6 +276,7 @@ enum NativeTranslationFailure: Error, Equatable, Sendable, CustomStringConvertib
     case sourceLanguageMismatch
     case appleNeedsPreparation
     case appleUnsupported
+    case appleTemporarilyUnavailable
     case appleExecutionFailed
     case cloudConsentRequired
     case cloudRemovalPresent
@@ -294,6 +298,7 @@ enum NativeTranslationFailure: Error, Equatable, Sendable, CustomStringConvertib
         case .sourceLanguageMismatch: return "source_language_mismatch"
         case .appleNeedsPreparation: return "apple_needs_preparation"
         case .appleUnsupported: return "apple_unsupported"
+        case .appleTemporarilyUnavailable: return "apple_temporarily_unavailable"
         case .appleExecutionFailed: return "apple_execution_failed"
         case .cloudConsentRequired: return "cloud_consent_required"
         case .cloudRemovalPresent: return "cloud_removal_present"

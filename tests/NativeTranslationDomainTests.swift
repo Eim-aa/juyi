@@ -238,6 +238,7 @@ enum NativeTranslationDomainTests {
             (.installed, .execute(.apple)),
             (.supportedNeedsPreparation, .failure(.appleNeedsPreparation)),
             (.unsupported, .failure(.appleUnsupported)),
+            (.temporarilyUnavailable, .failure(.appleTemporarilyUnavailable)),
         ]
         for (readiness, expected) in appleStates {
             let context = NativeTranslationRequestContext(

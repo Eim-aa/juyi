@@ -36,6 +36,8 @@
 		A00000000000000000000079 /* NativeTranslationDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000076 /* NativeTranslationDomain.swift */; };
 		A0000000000000000000007A /* VolcV4RequestBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000077 /* VolcV4RequestBuilder.swift */; };
 		A0000000000000000000007B /* VolcTranslationResponseParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000078 /* VolcTranslationResponseParser.swift */; };
+		A0000000000000000000007E /* NativeAppleTranslationAdapterModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000007C /* NativeAppleTranslationAdapterModel.swift */; };
+		A0000000000000000000007F /* NativeAppleTranslationAdapterHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000007D /* NativeAppleTranslationAdapterHost.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -75,6 +77,8 @@
 		A00000000000000000000076 /* NativeTranslationDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationDomain.swift; sourceTree = "<group>"; };
 		A00000000000000000000077 /* VolcV4RequestBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolcV4RequestBuilder.swift; sourceTree = "<group>"; };
 		A00000000000000000000078 /* VolcTranslationResponseParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolcTranslationResponseParser.swift; sourceTree = "<group>"; };
+		A0000000000000000000007C /* NativeAppleTranslationAdapterModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAppleTranslationAdapterModel.swift; sourceTree = "<group>"; };
+		A0000000000000000000007D /* NativeAppleTranslationAdapterHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAppleTranslationAdapterHost.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -145,6 +149,8 @@
 				A00000000000000000000076 /* NativeTranslationDomain.swift */,
 				A00000000000000000000077 /* VolcV4RequestBuilder.swift */,
 				A00000000000000000000078 /* VolcTranslationResponseParser.swift */,
+				A0000000000000000000007C /* NativeAppleTranslationAdapterModel.swift */,
+				A0000000000000000000007D /* NativeAppleTranslationAdapterHost.swift */,
 				A00000000000000000000024 /* Info.plist */,
 				A00000000000000000000025 /* AppIcon.png */,
 				A0000000000000000000002C /* Assets.xcassets */,
@@ -291,6 +297,8 @@
 				A00000000000000000000079 /* NativeTranslationDomain.swift in Sources */,
 				A0000000000000000000007A /* VolcV4RequestBuilder.swift in Sources */,
 				A0000000000000000000007B /* VolcTranslationResponseParser.swift in Sources */,
+				A0000000000000000000007E /* NativeAppleTranslationAdapterModel.swift in Sources */,
+				A0000000000000000000007F /* NativeAppleTranslationAdapterHost.swift in Sources */,
 				A00000000000000000000032 /* OnboardingPolicy.swift in Sources */,
 				A00000000000000000000033 /* WindowFramePolicy.swift in Sources */,
 			);

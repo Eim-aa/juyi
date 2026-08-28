@@ -23,6 +23,27 @@ case "$CONFIGURATION" in
     *) echo "unsupported CONFIGURATION: $CONFIGURATION (expected Debug or Release)" >&2; exit 2 ;;
 esac
 
+# The native Apple Translation adapter remains a compile-time-only development
+# slice. The standard Xcode conditions variable is accepted only for Debug and
+# only when both required feature conditions are present; Release ignores it.
+FRAMEWORK_FLAGS=(
+    -framework ApplicationServices
+    -framework AppKit
+    -framework CoreGraphics
+    -framework CryptoKit
+    -framework QuartzCore
+    -framework ServiceManagement
+    -framework SwiftUI
+)
+if [[ "$CONFIGURATION" == "Debug" ]]; then
+    ACTIVE_CONDITIONS=" ${SWIFT_ACTIVE_COMPILATION_CONDITIONS:-} "
+    if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_TRANSLATION_DOMAIN "* \
+        && "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER "* ]]; then
+        SWIFT_FLAGS+=(-D JUYI_NATIVE_TRANSLATION_DOMAIN -D JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER)
+        FRAMEWORK_FLAGS+=(-framework Translation)
+    fi
+fi
+
 rm -rf "$BUILD"
 mkdir -p "$BUILD/Contents/MacOS" "$BUILD/Contents/Resources" "$MODULE_CACHE"
 
@@ -31,13 +52,7 @@ for arch in arm64 x86_64; do
         -module-cache-path "$MODULE_CACHE" \
         -sdk "$SDK" \
         -target "$arch-apple-macos$MINIMUM_MACOS" \
-        -framework ApplicationServices \
-        -framework AppKit \
-        -framework CoreGraphics \
-        -framework CryptoKit \
-        -framework QuartzCore \
-        -framework ServiceManagement \
-        -framework SwiftUI \
+        "${FRAMEWORK_FLAGS[@]}" \
         -o "$ROOT/build/Juyi-$arch" \
         "$ROOT/macos/AccessibilityController.swift" \
         "$ROOT/macos/DoubleOptionStateMachine.swift" \
@@ -49,6 +64,8 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/NativeTranslationDomain.swift" \
         "$ROOT/macos/VolcV4RequestBuilder.swift" \
         "$ROOT/macos/VolcTranslationResponseParser.swift" \
+        "$ROOT/macos/NativeAppleTranslationAdapterModel.swift" \
+        "$ROOT/macos/NativeAppleTranslationAdapterHost.swift" \
         "$ROOT/macos/NativeTranslationOverlayModel.swift" \
         "$ROOT/macos/NativeTranslationOverlayAnchorPolicy.swift" \
         "$ROOT/macos/NativeTranslationOverlayInteractionPolicy.swift" \

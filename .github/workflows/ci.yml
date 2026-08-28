@@ -56,6 +56,13 @@ jobs:
           CODE_SIGNING_ALLOWED=NO
           SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN'
           build
+      - name: Build explicit Debug native Apple Translation adapter
+        run: >-
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiAppleTranslationAdapter"
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER'
+          build
       - name: Build Xcode Release configuration
         run: >-
           xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
@@ -74,6 +81,13 @@ jobs:
           -configuration Release -derivedDataPath "$RUNNER_TEMP/JuyiReleaseTranslationDomainFlag"
           CODE_SIGNING_ALLOWED=NO
           SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_TRANSLATION_DOMAIN'
+          build
+      - name: Build Release with Apple adapter flags injected
+        run: >-
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Release -derivedDataPath "$RUNNER_TEMP/JuyiReleaseAppleAdapterFlags"
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER'
           build
       - name: Verify overlay compile-time gate
         run: |
@@ -103,6 +117,35 @@ jobs:
             if grep -Fq 'VolcV4RequestBuilder' "$RUNNER_TEMP/$artifact.strings"; then exit 1; fi
             if grep -Fq 'VolcTranslationResponseParser' "$RUNNER_TEMP/$artifact.strings"; then exit 1; fi
           done
+      - name: Verify native Apple Translation adapter compile-time gate
+        run: |
+          opt_in_dir="$RUNNER_TEMP/JuyiAppleTranslationAdapter/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          default_debug_dir="$RUNNER_TEMP/JuyiDebug/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          domain_only_dir="$RUNNER_TEMP/JuyiTranslationDomain/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          release_dir="$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/MacOS"
+          release_flags_dir="$RUNNER_TEMP/JuyiReleaseAppleAdapterFlags/Build/Products/Release/Juyi.app/Contents/MacOS"
+          find "$opt_in_dir" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/apple-adapter-opt-in-debug.strings"
+          find "$default_debug_dir" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/apple-adapter-default-debug.strings"
+          find "$domain_only_dir" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/apple-adapter-domain-only-debug.strings"
+          find "$release_dir" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/apple-adapter-release.strings"
+          find "$release_flags_dir" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/apple-adapter-release-flags.strings"
+          grep -Fq 'juyi-native-apple-translation-adapter-v1' "$RUNNER_TEMP/apple-adapter-opt-in-debug.strings"
+          grep -Fq 'The weather is pleasant today.' "$RUNNER_TEMP/apple-adapter-opt-in-debug.strings"
+          grep -Fq 'NativeAppleTranslationAdapterCoordinator' "$RUNNER_TEMP/apple-adapter-opt-in-debug.strings"
+          LC_ALL=C grep -aFq '开发：测试 Apple 离线翻译…' "$opt_in_dir"/*
+          find "$opt_in_dir" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/apple-adapter-opt-in-debug.loads"
+          grep -Fq '/Translation.framework/' "$RUNNER_TEMP/apple-adapter-opt-in-debug.loads"
+          for artifact in apple-adapter-default-debug apple-adapter-domain-only-debug apple-adapter-release apple-adapter-release-flags; do
+            if grep -Fq 'juyi-native-apple-translation-adapter-v1' "$RUNNER_TEMP/$artifact.strings"; then exit 1; fi
+            if grep -Fq 'The weather is pleasant today.' "$RUNNER_TEMP/$artifact.strings"; then exit 1; fi
+            if grep -Fq 'NativeAppleTranslationAdapterCoordinator' "$RUNNER_TEMP/$artifact.strings"; then exit 1; fi
+          done
+          for directory in "$default_debug_dir" "$domain_only_dir" "$release_dir" "$release_flags_dir"; do
+            if LC_ALL=C grep -aFq '开发：测试 Apple 离线翻译…' "$directory"/*; then exit 1; fi
+            find "$directory" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/apple-adapter-off.loads"
+            if grep -Fq '/Translation.framework/' "$RUNNER_TEMP/apple-adapter-off.loads"; then exit 1; fi
+            if grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/apple-adapter-off.loads"; then exit 1; fi
+          done
       - name: Verify Xcode Release products
         run: |
           scripts/verify_macos_binary.sh "$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/MacOS/Juyi" 15.0
@@ -110,7 +153,24 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/Info.plist")" = "$(scripts/read_xcconfig_value.sh Config/Version.xcconfig MARKETING_VERSION)"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/Info.plist")" = "$(scripts/read_xcconfig_value.sh Config/Version.xcconfig CURRENT_PROJECT_VERSION)"
       - name: Build legacy universal native app bundle
-        run: scripts/build_macos_app.sh
+        run: |
+          scripts/build_macos_app.sh
+          find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/legacy-default-release.strings"
+          if grep -Fq 'juyi-native-apple-translation-adapter-v1' "$RUNNER_TEMP/legacy-default-release.strings"; then exit 1; fi
+          if grep -Fq 'The weather is pleasant today.' "$RUNNER_TEMP/legacy-default-release.strings"; then exit 1; fi
+          if LC_ALL=C grep -aFq '开发：测试 Apple 离线翻译…' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-default-release.loads"
+          if grep -Fq '/Translation.framework/' "$RUNNER_TEMP/legacy-default-release.loads"; then exit 1; fi
+          if grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/legacy-default-release.loads"; then exit 1; fi
+      - name: Build explicit legacy Debug Apple Translation adapter
+        run: |
+          CONFIGURATION=Debug SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER' scripts/build_macos_app.sh
+          find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/legacy-apple-adapter-debug.strings"
+          grep -Fq 'juyi-native-apple-translation-adapter-v1' "$RUNNER_TEMP/legacy-apple-adapter-debug.strings"
+          grep -Fq 'The weather is pleasant today.' "$RUNNER_TEMP/legacy-apple-adapter-debug.strings"
+          LC_ALL=C grep -aFq '开发：测试 Apple 离线翻译…' build/Juyi.app/Contents/MacOS/*
+          find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-apple-adapter-debug.loads"
+          grep -Fq '/Translation.framework/' "$RUNNER_TEMP/legacy-apple-adapter-debug.loads"
       - name: Build legacy universal Apple Translation helper
         run: scripts/build_apple_helper.sh "$RUNNER_TEMP/apple-translation-helper"
       - name: Run Onboarding policy tests
@@ -157,6 +217,10 @@ jobs:
         run: |
           swiftc -swift-version 5 -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -framework CryptoKit macos/VolcV4RequestBuilder.swift macos/NativeTranslationDomain.swift tests/NativeTranslationDomainTests.swift -o "$RUNNER_TEMP/native-translation-domain-tests"
           "$RUNNER_TEMP/native-translation-domain-tests"
+      - name: Run native Apple Translation adapter model tests
+        run: |
+          swiftc -swift-version 5 -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -D JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER -framework CryptoKit -framework Combine macos/VolcV4RequestBuilder.swift macos/NativeTranslationDomain.swift macos/NativeAppleTranslationAdapterModel.swift tests/NativeAppleTranslationAdapterTests.swift -o "$RUNNER_TEMP/native-apple-translation-adapter-tests"
+          "$RUNNER_TEMP/native-apple-translation-adapter-tests"
       - name: Run Volc V4 deterministic request-builder tests
         run: |
           swiftc -swift-version 5 -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -framework CryptoKit macos/VolcV4RequestBuilder.swift tests/VolcV4RequestBuilderTests.swift -o "$RUNNER_TEMP/volc-v4-request-builder-tests"

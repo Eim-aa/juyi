@@ -1193,7 +1193,11 @@ final class AppModel: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             try "\(engine)\n".write(to: engineFile, atomically: true, encoding: .utf8)
-            selectedEngine = engine; onChange?()
+            selectedEngine = engine
+            #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+            NativeAppleTranslationAdapterCoordinator.shared.invalidate(.engineChanged)
+            #endif
+            onChange?()
             return true
         } catch {
             notice = "暂时无法保存选择，请稍后重试。"
@@ -1752,13 +1756,20 @@ final class AppModel: ObservableObject {
         onChange?()
     }
     func togglePause() {
+        let previous = paused
         paused.toggle()
         do { try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true); try (paused ? "1\n" : "0\n").write(to: pauseFile, atomically: true, encoding: .utf8) }
         catch { paused.toggle(); notice = "暂时无法更改状态。" }
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+        if paused != previous { NativeAppleTranslationAdapterCoordinator.shared.invalidate(.pause) }
+        #endif
         onChange?()
     }
     func stopService() {
         guard serviceReady && !serviceBusy && !cloudBusy else { return }; serviceBusy = true
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+        NativeAppleTranslationAdapterCoordinator.shared.invalidate(.stop)
+        #endif
         Task { _ = await Task.detached { AppModel.launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"]) }.value; try? await Task.sleep(for: .milliseconds(600)); await refresh(); serviceBusy = false; notice = "后台翻译组件已停止。需要时可点“自动修复”重新启动。" }
     }
     func openLogs() {
@@ -2314,6 +2325,10 @@ private struct AppView: View {
 
 private struct RootView: View {
     @ObservedObject var model: AppModel
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+    @ObservedObject private var nativeAppleTranslationAdapter =
+        NativeAppleTranslationAdapterCoordinator.shared
+    #endif
     var body: some View {
         Group {
             if model.onboardingPresented { OnboardingView(model: model) }
@@ -2321,6 +2336,20 @@ private struct RootView: View {
         }
         .sheet(isPresented: $model.showCloudSetup) { CloudSetupView(model: model) }
         .sheet(isPresented: $model.showDiagnostics) { DiagnosticsView(model: model) }
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+        .sheet(
+            isPresented: Binding(
+                get: { nativeAppleTranslationAdapter.isPresented },
+                set: { presented in
+                    if !presented { nativeAppleTranslationAdapter.close() }
+                }
+            )
+        ) {
+            NativeAppleTranslationAdapterSheet(
+                coordinator: nativeAppleTranslationAdapter
+            )
+        }
+        #endif
     }
 }
 
@@ -2371,9 +2400,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
         NativeTranslationOverlayController.shared.shutdown()
         #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+        NativeAppleTranslationAdapterCoordinator.shared.invalidate(.terminate)
+        #endif
         if model.onboardingPresented { model.deferOnboarding() }
     }
     func windowWillClose(_ notification: Notification) {
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+        NativeAppleTranslationAdapterCoordinator.shared.close()
+        #endif
         if model.onboardingPresented { model.deferOnboarding() }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -2396,6 +2431,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
         let preview = NSMenuItem(title: NativeTranslationOverlayController.shared.nextFixturePreviewTitle, action: #selector(previewNativeOverlay), keyEquivalent: ""); preview.target = self; nativeOverlayPreviewMenuItem = preview; submenu.addItem(preview)
         let focus = NSMenuItem(title: "聚焦当前译文", action: #selector(focusNativeOverlay), keyEquivalent: ""); focus.target = self; submenu.addItem(focus)
+        submenu.addItem(.separator())
+        #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+        let appleAdapter = NSMenuItem(
+            title: "开发：测试 Apple 离线翻译…",
+            action: #selector(testNativeAppleTranslationAdapter),
+            keyEquivalent: ""
+        )
+        appleAdapter.target = self
+        submenu.addItem(appleAdapter)
         submenu.addItem(.separator())
         #endif
         let quit = NSMenuItem(title: "退出句译", action: #selector(terminate), keyEquivalent: "q"); quit.target = self; submenu.addItem(quit)
@@ -2485,6 +2530,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         case .chooseEngine:
             showWindow()
         }
+    }
+    #endif
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+    @objc private func testNativeAppleTranslationAdapter() {
+        showWindow()
+        NativeAppleTranslationAdapterCoordinator.shared.open()
     }
     #endif
     @objc private func apple() { model.chooseApple() }; @objc private func cloud() { model.chooseCloud(); showWindow() }; @objc private func pause() { model.togglePause() }; @objc private func diagnostics() { model.showDiagnostics = true; showWindow() }; @objc private func terminate() { NSApp.terminate(nil) }

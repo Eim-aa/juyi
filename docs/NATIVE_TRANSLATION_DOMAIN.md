@@ -12,7 +12,7 @@
 
 ## 安全与行为边界
 
-Domain 只有 `.apple` 与 `.volc` 两个可请求引擎；unknown、missing、旧 `argos` 字符串不属于其 API，旧值迁移留在未来单独的 legacy boundary。请求的引擎和成功引擎必须相同，Apple 与火山之间都没有自动切换。Apple 只有 `.installed` 可进入 fake effect；`.supportedNeedsPreparation` 和 `.unsupported` 均直接产生无正文的 typed failure。
+Domain 只有 `.apple` 与 `.volc` 两个可请求引擎；unknown、missing、旧 `argos` 字符串不属于其 API，旧值迁移留在未来单独的 legacy boundary。请求的引擎和成功引擎必须相同，Apple 与火山之间都没有自动切换。Apple 只有 `.installed` 可进入 fake effect；`.supportedNeedsPreparation`、`.unsupported` 和 `.temporarilyUnavailable` 均直接产生无正文的 typed failure。临时不可用状态供另一个独立编译门内的 Apple Translation 开发适配器在无法按时确认系统状态时 fail closed。
 
 火山正文执行必须同时满足：用户已明确同意云端、删除标记已被确认不存在、当前凭据状态为 active、active fingerprint 与已验证 fingerprint 完全一致。任一条件缺失都会在读取凭据快照和执行 fake effect 之前失败；pending 凭据永远不会进入正文请求。4A 不实现任何正文/译文缓存，相同输入连续请求会执行两次。
 

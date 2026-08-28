@@ -33,13 +33,24 @@ def test_every_domain_file_has_one_exact_outer_debug_gate():
 
 
 def test_domain_has_no_runtime_entry_or_runtime_switch():
-    assert "JUYI_NATIVE_TRANSLATION_DOMAIN" not in APP
+    app_gate = (
+        "#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN "
+        "&& JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER"
+    )
+    domain_flag_lines = [
+        line.strip()
+        for line in APP.splitlines()
+        if "JUYI_NATIVE_TRANSLATION_DOMAIN" in line
+    ]
+    assert domain_flag_lines
+    assert all(line == app_gate for line in domain_flag_lines)
     assert "NativeTranslationDomain" not in APP
     assert "VolcV4RequestBuilder" not in APP
     assert "VolcTranslationResponseParser" not in APP
     for config in (DEBUG_CONFIG, RELEASE_CONFIG, SHARED_CONFIG):
         assert "JUYI_NATIVE_TRANSLATION_DOMAIN" not in config
-    assert "JUYI_NATIVE_TRANSLATION_DOMAIN" not in LEGACY
+    assert 'if [[ "$CONFIGURATION" == "Debug" ]]' in LEGACY
+    assert "JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER" in LEGACY
     assert "UserDefaults" not in ALL_SOURCE
     assert "ProcessInfo" not in ALL_SOURCE
     assert "public let nativeTranslationDomainBuildSentinel" in ALL_SOURCE
