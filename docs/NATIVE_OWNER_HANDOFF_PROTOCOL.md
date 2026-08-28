@@ -6,7 +6,7 @@ This slice closes the legacy half of the single-owner problem without enabling
 the native double-Option monitor. When no owner request exists, Hammerspoon
 continues to be the only production trigger exactly as before. The store is
 compiled only for the isolated Debug `JUYI_NATIVE_OWNER_HANDOFF_LAB` slice and
-has no App action, coordinator, status reader, or monitor, so default Debug and
+has no App action, live status reader, timer, or monitor, so default Debug and
 every supported Release build still create no request.
 
 ## Durable request
@@ -101,6 +101,16 @@ instance, and observed status sequence. It still does **not** authorize a
 monitor by itself; activation additionally needs the durable writer, process
 lock, lifecycle revocation, and real-device evidence below.
 
+The isolated `NativeOwnerHandoffWorkflow` now owns the deterministic request
+lifecycle. It publishes through the store, retains the process lease, accepts
+only injected snapshots that pass the policy, and can time out, cancel, or use
+a recovery-only lease to return to legacy. Transitional unsafe snapshots remain
+waiting for a caller-owned monotonic five-second deadline. The workflow has no
+status file reader or scheduler and exposes no native-activation operation;
+even its `legacyYielded` phase therefore means only “safe snapshot observed”,
+not permission to install a monitor. Any future activation must take another
+fresh snapshot immediately before its first effect.
+
 ## Crash and restart behavior
 
 - Hammerspoon restart while a valid request remains: reconcile before starting
@@ -114,8 +124,8 @@ lock, lifecycle revocation, and real-device evidence below.
 
 ## Remaining activation P0
 
-- A UI state machine for `legacyActive → stoppingLegacy → nativeActive` and the
-  reverse path, with epoch-bound progress and recovery.
+- A live status reader, monotonic scheduler, and disclosed UI around the pure
+  workflow, including lifecycle-driven return and recovery.
 - Immediate native monitor/capture/domain/overlay revocation before returning
   ownership or pausing.
 - Hammerspoon/Juyi crash, reload, multi-process, stale-status and every cutpoint

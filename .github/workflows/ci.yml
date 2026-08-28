@@ -51,7 +51,7 @@ jobs:
             grep -Fq "$source" Juyi.xcodeproj/project.pbxproj
             grep -Fq "$source" scripts/build_macos_app.sh
           done
-          for source in NativeSelectionCaptureLabModel.swift NativeSelectionCaptureLabHost.swift NativeOwnerHandoffProtocol.swift NativeOwnerHandoffStore.swift; do
+          for source in NativeSelectionCaptureLabModel.swift NativeSelectionCaptureLabHost.swift NativeOwnerHandoffProtocol.swift NativeOwnerHandoffStore.swift NativeOwnerHandoffWorkflow.swift; do
             grep -Fq "$source" Juyi.xcodeproj/project.pbxproj
             grep -Fq "$source" scripts/build_macos_app.sh
           done
@@ -236,7 +236,7 @@ jobs:
           default_debug_dir="$RUNNER_TEMP/JuyiDebug/Build/Products/Debug/Juyi.app/Contents/MacOS"
           release_all_dir="$RUNNER_TEMP/JuyiReleaseAllDevelopmentFlags/Build/Products/Release/Juyi.app/Contents/MacOS"
           scripts/verify_macos_binary.sh "$opt_in_dir/Juyi" 15.0
-          for token in 'juyi-native-owner-handoff-store-v1' 'NativeOwnerHandoffStore' 'native-owner.lock' 'owner-request.json'; do
+          for token in 'juyi-native-owner-handoff-store-v1' 'NativeOwnerHandoffStore' 'NativeOwnerHandoffWorkflow' 'native-owner.lock' 'owner-request.json'; do
             LC_ALL=C grep -aFq "$token" "$opt_in_dir"/*
             if LC_ALL=C grep -aFq "$token" "$default_debug_dir"/*; then exit 1; fi
             if LC_ALL=C grep -aFq "$token" "$release_all_dir"/*; then exit 1; fi
@@ -422,7 +422,7 @@ jobs:
           for token in 'juyi-native-selection-capture-lab-v1' 'NativeSelectionCaptureLabCoordinator' '一次性取词实验室' '开发：原生取词实验室…'; do
             if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           done
-          for token in 'juyi-native-owner-handoff-store-v1' 'NativeOwnerHandoffStore' 'native-owner.lock' 'owner-request.json'; do
+          for token in 'juyi-native-owner-handoff-store-v1' 'NativeOwnerHandoffStore' 'NativeOwnerHandoffWorkflow' 'native-owner.lock' 'owner-request.json'; do
             if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           done
           if grep -Fq 'juyi-native-apple-translation-adapter-v1' "$RUNNER_TEMP/legacy-default-release.strings"; then exit 1; fi
@@ -455,7 +455,7 @@ jobs:
       - name: Build exact legacy Debug native owner handoff store
         run: |
           CONFIGURATION=Debug SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_OWNER_HANDOFF_LAB' scripts/build_macos_app.sh
-          for token in 'juyi-native-owner-handoff-store-v1' 'NativeOwnerHandoffStore' 'native-owner.lock' 'owner-request.json'; do
+          for token in 'juyi-native-owner-handoff-store-v1' 'NativeOwnerHandoffStore' 'NativeOwnerHandoffWorkflow' 'native-owner.lock' 'owner-request.json'; do
             LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*
           done
           for token in 'NativeOptionMonitor' 'juyi-native-selection-capture-lab-v1' 'juyi-native-translation-domain-v1'; do
@@ -621,6 +621,10 @@ jobs:
         run: |
           swiftc -swift-version 5 -strict-concurrency=complete -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_OWNER_HANDOFF_LAB macos/NativeOwnerHandoffProtocol.swift macos/NativeOwnerHandoffStore.swift tests/NativeOwnerHandoffStoreTests.swift -o "$RUNNER_TEMP/native-owner-handoff-store-tests"
           "$RUNNER_TEMP/native-owner-handoff-store-tests"
+      - name: Run native owner handoff workflow tests
+        run: |
+          swiftc -swift-version 5 -strict-concurrency=complete -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_OWNER_HANDOFF_LAB macos/NativeOwnerHandoffProtocol.swift macos/NativeOwnerHandoffStore.swift macos/NativeOwnerHandoffWorkflow.swift tests/NativeOwnerHandoffWorkflowTests.swift -o "$RUNNER_TEMP/native-owner-handoff-workflow-tests"
+          "$RUNNER_TEMP/native-owner-handoff-workflow-tests"
       - name: Run native Option monitor lifecycle tests
         run: |
           swiftc -parse-as-library -framework AppKit -framework ApplicationServices macos/AccessibilityController.swift macos/DoubleOptionStateMachine.swift macos/NativeOptionEventAdapter.swift macos/NativeSelectionReader.swift macos/NativeSelectionCaptureCoordinator.swift macos/NativeOptionMonitor.swift tests/NativeOptionMonitorTests.swift -o "$RUNNER_TEMP/native-option-monitor-tests"

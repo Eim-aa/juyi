@@ -55,6 +55,7 @@
 		A0000000000000000000009D /* NativeSelectionCaptureLabHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000009B /* NativeSelectionCaptureLabHost.swift */; };
 		A0000000000000000000009F /* NativeOwnerHandoffProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000009E /* NativeOwnerHandoffProtocol.swift */; };
 		A000000000000000000000A1 /* NativeOwnerHandoffStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A0 /* NativeOwnerHandoffStore.swift */; };
+		A000000000000000000000A3 /* NativeOwnerHandoffWorkflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -113,6 +114,7 @@
 		A0000000000000000000009B /* NativeSelectionCaptureLabHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSelectionCaptureLabHost.swift; sourceTree = "<group>"; };
 		A0000000000000000000009E /* NativeOwnerHandoffProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffProtocol.swift; sourceTree = "<group>"; };
 		A000000000000000000000A0 /* NativeOwnerHandoffStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffStore.swift; sourceTree = "<group>"; };
+		A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffWorkflow.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -179,6 +181,7 @@
 				A0000000000000000000009B /* NativeSelectionCaptureLabHost.swift */,
 				A0000000000000000000009E /* NativeOwnerHandoffProtocol.swift */,
 				A000000000000000000000A0 /* NativeOwnerHandoffStore.swift */,
+				A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */,
 				A00000000000000000000030 /* NativeOptionFeature.swift */,
 				A00000000000000000000066 /* NativeTranslationOverlayModel.swift */,
 				A00000000000000000000067 /* NativeTranslationOverlayAnchorPolicy.swift */,
@@ -345,6 +348,7 @@
 				A0000000000000000000009D /* NativeSelectionCaptureLabHost.swift in Sources */,
 				A0000000000000000000009F /* NativeOwnerHandoffProtocol.swift in Sources */,
 				A000000000000000000000A1 /* NativeOwnerHandoffStore.swift in Sources */,
+				A000000000000000000000A3 /* NativeOwnerHandoffWorkflow.swift in Sources */,
 				A00000000000000000000070 /* NativeTranslationOverlayModel.swift in Sources */,
 				A00000000000000000000071 /* NativeTranslationOverlayAnchorPolicy.swift in Sources */,
 				A00000000000000000000072 /* NativeTranslationOverlayInteractionPolicy.swift in Sources */,

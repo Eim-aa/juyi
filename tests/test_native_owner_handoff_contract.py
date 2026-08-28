@@ -13,6 +13,12 @@ STORE = (ROOT / "macos/NativeOwnerHandoffStore.swift").read_text(encoding="utf-8
 STORE_TESTS = (ROOT / "tests/NativeOwnerHandoffStoreTests.swift").read_text(
     encoding="utf-8"
 )
+WORKFLOW = (ROOT / "macos/NativeOwnerHandoffWorkflow.swift").read_text(
+    encoding="utf-8"
+)
+WORKFLOW_TESTS = (ROOT / "tests/NativeOwnerHandoffWorkflowTests.swift").read_text(
+    encoding="utf-8"
+)
 SWIFT_TESTS = (ROOT / "tests/NativeOwnerHandoffProtocolTests.swift").read_text(
     encoding="utf-8"
 )
@@ -161,6 +167,31 @@ def test_store_is_exact_gated_durable_and_recovery_only():
         assert forbidden not in STORE
 
 
+def test_workflow_retains_lease_but_has_no_live_effects():
+    assert "#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB" in WORKFLOW
+    for required in (
+        "acknowledgementDeadline: TimeInterval = 5",
+        "waitingForLegacy",
+        "legacyYielded",
+        "recoverAndReturnToLegacy",
+        "latestUnsafeReason",
+        "ReturnReason",
+        "returnActiveLeaseToLegacy",
+    ):
+        assert required in WORKFLOW
+    for forbidden in (
+        "Data(contentsOf:",
+        "asyncAfter",
+        "Timer",
+        "NSEvent",
+        "AXUIElement",
+        "NSPasteboard",
+        "URLSession",
+        "TranslationSession",
+    ):
+        assert forbidden not in WORKFLOW
+
+
 def test_protocol_tests_cover_every_negative_and_are_in_all_build_paths():
     for reason in (
         "requestInvalid",
@@ -183,8 +214,10 @@ def test_protocol_tests_cover_every_negative_and_are_in_all_build_paths():
     for source in (PROJECT, LEGACY, CI):
         assert "NativeOwnerHandoffProtocol.swift" in source
         assert "NativeOwnerHandoffStore.swift" in source
+        assert "NativeOwnerHandoffWorkflow.swift" in source
     assert "NativeOwnerHandoffProtocolTests.swift" in CI
     assert "NativeOwnerHandoffStoreTests.swift" in CI
+    assert "NativeOwnerHandoffWorkflowTests.swift" in CI
     assert "hammerspoon_runtime_test.lua" in CI
 
 
@@ -193,12 +226,15 @@ def test_documentation_keeps_activation_and_production_no_go_explicit():
     for required in (
         "native activation is still **NO-GO**",
         "Hammerspoon continues to be the only production trigger",
-        "has no App action, coordinator, status reader, or monitor",
+        "has no App action, live status reader, timer, or monitor",
         "cross-process native-owner lock",
         "zero or one trigger owner, never two",
         "Signed macOS 15.0/latest 15.x",
     ):
         assert required in normalized_doc
     user_script = "start_service" + ".command"
-    for source in (PROJECT, LEGACY, CI, DOC, POLICY, STORE, STORE_TESTS):
+    for source in (
+        PROJECT, LEGACY, CI, DOC, POLICY, STORE, STORE_TESTS, WORKFLOW,
+        WORKFLOW_TESTS,
+    ):
         assert user_script not in source
