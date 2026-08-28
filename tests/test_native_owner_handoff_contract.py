@@ -19,6 +19,12 @@ WORKFLOW = (ROOT / "macos/NativeOwnerHandoffWorkflow.swift").read_text(
 WORKFLOW_TESTS = (ROOT / "tests/NativeOwnerHandoffWorkflowTests.swift").read_text(
     encoding="utf-8"
 )
+STATUS_READER = (ROOT / "macos/NativeOwnerHandoffStatusReader.swift").read_text(
+    encoding="utf-8"
+)
+STATUS_READER_TESTS = (
+    ROOT / "tests/NativeOwnerHandoffStatusReaderTests.swift"
+).read_text(encoding="utf-8")
 SWIFT_TESTS = (ROOT / "tests/NativeOwnerHandoffProtocolTests.swift").read_text(
     encoding="utf-8"
 )
@@ -192,6 +198,29 @@ def test_workflow_retains_lease_but_has_no_live_effects():
         assert forbidden not in WORKFLOW
 
 
+def test_status_reader_is_one_shot_bounded_and_nofollow():
+    for required in (
+        "hs-status.json",
+        "O_NOFOLLOW",
+        "AT_SYMLINK_NOFOLLOW",
+        "maximumStatusBytes",
+        "st_nlink == 1",
+        "(value.st_mode & 0o022) == 0",
+        "currentPath.st_ino == final.st_ino",
+    ):
+        assert required in STATUS_READER
+    for forbidden in (
+        "Timer",
+        "asyncAfter",
+        "write(",
+        "URLSession",
+        "NSEvent",
+        "AXUIElement",
+        "NSPasteboard",
+    ):
+        assert forbidden not in STATUS_READER
+
+
 def test_protocol_tests_cover_every_negative_and_are_in_all_build_paths():
     for reason in (
         "requestInvalid",
@@ -215,9 +244,11 @@ def test_protocol_tests_cover_every_negative_and_are_in_all_build_paths():
         assert "NativeOwnerHandoffProtocol.swift" in source
         assert "NativeOwnerHandoffStore.swift" in source
         assert "NativeOwnerHandoffWorkflow.swift" in source
+        assert "NativeOwnerHandoffStatusReader.swift" in source
     assert "NativeOwnerHandoffProtocolTests.swift" in CI
     assert "NativeOwnerHandoffStoreTests.swift" in CI
     assert "NativeOwnerHandoffWorkflowTests.swift" in CI
+    assert "NativeOwnerHandoffStatusReaderTests.swift" in CI
     assert "hammerspoon_runtime_test.lua" in CI
 
 
@@ -226,7 +257,7 @@ def test_documentation_keeps_activation_and_production_no_go_explicit():
     for required in (
         "native activation is still **NO-GO**",
         "Hammerspoon continues to be the only production trigger",
-        "has no App action, live status reader, timer, or monitor",
+        "has no App action, poll scheduler, or monitor",
         "cross-process native-owner lock",
         "zero or one trigger owner, never two",
         "Signed macOS 15.0/latest 15.x",
@@ -236,5 +267,6 @@ def test_documentation_keeps_activation_and_production_no_go_explicit():
     for source in (
         PROJECT, LEGACY, CI, DOC, POLICY, STORE, STORE_TESTS, WORKFLOW,
         WORKFLOW_TESTS,
+        STATUS_READER, STATUS_READER_TESTS,
     ):
         assert user_script not in source

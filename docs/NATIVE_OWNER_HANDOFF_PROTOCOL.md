@@ -6,7 +6,7 @@ This slice closes the legacy half of the single-owner problem without enabling
 the native double-Option monitor. When no owner request exists, Hammerspoon
 continues to be the only production trigger exactly as before. The store is
 compiled only for the isolated Debug `JUYI_NATIVE_OWNER_HANDOFF_LAB` slice and
-has no App action, live status reader, timer, or monitor, so default Debug and
+has no App action, poll scheduler, or monitor, so default Debug and
 every supported Release build still create no request.
 
 ## Durable request
@@ -111,6 +111,15 @@ even its `legacyYielded` phase therefore means only “safe snapshot observed”
 not permission to install a monitor. Any future activation must take another
 fresh snapshot immediately before its first effect.
 
+`NativeOwnerHandoffStatusReader` provides the corresponding single read-only
+snapshot. It walks the owner-only directory with `O_NOFOLLOW`, requires the
+current uid and 0700 directory, rejects symlinks, hard links, non-regular or
+group/other-writable files, caps reads at 4096 bytes, and verifies the file's
+device/inode/size before and after the exact read as well as against the final
+directory entry. It accepts Hammerspoon's 0600 or read-only 0644 umask result
+inside that private directory. It never parses, logs, writes, polls, or retries;
+the bytes go unchanged to the pure acceptance policy.
+
 ## Crash and restart behavior
 
 - Hammerspoon restart while a valid request remains: reconcile before starting
@@ -124,8 +133,8 @@ fresh snapshot immediately before its first effect.
 
 ## Remaining activation P0
 
-- A live status reader, monotonic scheduler, and disclosed UI around the pure
-  workflow, including lifecycle-driven return and recovery.
+- A monotonic poll scheduler and disclosed UI around the workflow and secure
+  snapshot reader, including lifecycle-driven return and recovery.
 - Immediate native monitor/capture/domain/overlay revocation before returning
   ownership or pausing.
 - Hammerspoon/Juyi crash, reload, multi-process, stale-status and every cutpoint
