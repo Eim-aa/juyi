@@ -43,6 +43,10 @@ jobs:
             grep -Fq "$source" Juyi.xcodeproj/project.pbxproj
             grep -Fq "$source" scripts/build_macos_app.sh
           done
+          for source in NativeTranslationOverlayExternalPresentation.swift NativeTranslationResultLabPresentation.swift NativeTranslationResultLabModel.swift NativeTranslationResultLabHost.swift; do
+            grep -Fq "$source" Juyi.xcodeproj/project.pbxproj
+            grep -Fq "$source" scripts/build_macos_app.sh
+          done
       - name: Build Xcode Debug configuration
         run: >-
           xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
@@ -62,6 +66,35 @@ jobs:
           CODE_SIGNING_ALLOWED=NO
           SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN'
           build
+      - name: Build Debug Result Lab flag without prerequisites
+        run: >-
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiResultLabOnly"
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_RESULT_LAB'
+          build
+      - name: Build Debug domain and overlay without Result Lab flag
+        run: >-
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiResultLabMissingFlag"
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_TRANSLATION_OVERLAY'
+          build
+      - name: Build exact Debug native translation Result Lab
+        run: >-
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiTranslationResultLab"
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB'
+          build
+      - name: Reject Debug Result Lab mixed with live adapters
+        run: |
+          if xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiResultLabMixedApple" CODE_SIGNING_ALLOWED=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER' build; then
+            exit 1
+          fi
+          if xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiResultLabMixedVolc" CODE_SIGNING_ALLOWED=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER' build; then
+            exit 1
+          fi
       - name: Build explicit Debug native Apple Translation adapter
         run: >-
           xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
@@ -107,7 +140,7 @@ jobs:
           xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
           -configuration Release -derivedDataPath "$RUNNER_TEMP/JuyiReleaseAllDevelopmentFlags"
           CODE_SIGNING_ALLOWED=NO
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER JUYI_NATIVE_TRANSLATION_OVERLAY'
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB'
           build
       - name: Verify overlay compile-time gate
         run: |
@@ -136,6 +169,30 @@ jobs:
             if grep -Fq 'translate.volcengineapi.com' "$RUNNER_TEMP/$artifact.strings"; then exit 1; fi
             if grep -Fq 'VolcV4RequestBuilder' "$RUNNER_TEMP/$artifact.strings"; then exit 1; fi
             if grep -Fq 'VolcTranslationResponseParser' "$RUNNER_TEMP/$artifact.strings"; then exit 1; fi
+          done
+      - name: Verify native translation Result Lab compile-time gate
+        run: |
+          opt_in_dir="$RUNNER_TEMP/JuyiTranslationResultLab/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          default_debug_dir="$RUNNER_TEMP/JuyiDebug/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          overlay_only_dir="$RUNNER_TEMP/JuyiOverlayPreview/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          domain_only_dir="$RUNNER_TEMP/JuyiTranslationDomain/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          result_only_dir="$RUNNER_TEMP/JuyiResultLabOnly/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          missing_flag_dir="$RUNNER_TEMP/JuyiResultLabMissingFlag/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          release_all_dir="$RUNNER_TEMP/JuyiReleaseAllDevelopmentFlags/Build/Products/Release/Juyi.app/Contents/MacOS"
+          for token in 'juyi-native-translation-result-lab-v1' 'NativeTranslationResultLabCoordinator' 'Debug 固定样例 · 模拟执行' '开发：结果界面实验室…' 'The weather is pleasant today.' 'Good tools should feel effortless.'; do
+            LC_ALL=C grep -aFq "$token" "$opt_in_dir"/*
+          done
+          for directory in "$default_debug_dir" "$overlay_only_dir" "$domain_only_dir" "$result_only_dir" "$missing_flag_dir" "$release_all_dir"; do
+            for token in 'juyi-native-translation-result-lab-v1' 'NativeTranslationResultLabCoordinator' 'Debug 固定样例 · 模拟执行' '开发：结果界面实验室…'; do
+              if LC_ALL=C grep -aFq "$token" "$directory"/*; then exit 1; fi
+            done
+          done
+          for token in 'juyi-native-apple-translation-adapter-v1' '开发：测试 Apple 离线翻译…' 'juyi-native-volc-translation-adapter-v1' 'NativeVolcDebugWorkflow' 'io.github.Eim-aa.Juyi.debug.native-volc.active' '开发：测试火山云端翻译…'; do
+            if LC_ALL=C grep -aFq "$token" "$opt_in_dir"/*; then exit 1; fi
+          done
+          find "$opt_in_dir" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/result-lab-opt-in.loads"
+          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
+            if grep -Fq "$framework" "$RUNNER_TEMP/result-lab-opt-in.loads"; then exit 1; fi
           done
       - name: Verify native Apple Translation adapter compile-time gate
         run: |
@@ -250,10 +307,37 @@ jobs:
           if LC_ALL=C grep -aFq 'juyi-native-apple-translation-adapter-v1' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           if LC_ALL=C grep -aFq 'The weather is pleasant today.' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           if LC_ALL=C grep -aFq '开发：测试 Apple 离线翻译…' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+      - name: Build legacy Debug Result Lab flag without prerequisites
+        run: |
+          CONFIGURATION=Debug SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_RESULT_LAB' scripts/build_macos_app.sh
+          for token in 'juyi-native-translation-result-lab-v1' 'NativeTranslationResultLabCoordinator' 'Debug 固定样例 · 模拟执行' '开发：结果界面实验室…'; do
+            if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          done
+      - name: Build exact legacy Debug translation Result Lab
+        run: |
+          CONFIGURATION=Debug SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB' scripts/build_macos_app.sh
+          for token in 'juyi-native-translation-result-lab-v1' 'NativeTranslationResultLabCoordinator' 'Debug 固定样例 · 模拟执行' '开发：结果界面实验室…' 'The weather is pleasant today.' 'Good tools should feel effortless.'; do
+            LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*
+          done
+          for token in 'juyi-native-apple-translation-adapter-v1' '开发：测试 Apple 离线翻译…' 'juyi-native-volc-translation-adapter-v1' 'NativeVolcDebugWorkflow' 'io.github.Eim-aa.Juyi.debug.native-volc.active' '开发：测试火山云端翻译…'; do
+            if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          done
+          find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-result-lab-debug.loads"
+          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
+            if grep -Fq "$framework" "$RUNNER_TEMP/legacy-result-lab-debug.loads"; then exit 1; fi
+          done
+      - name: Reject legacy Debug Result Lab mixed with live adapters
+        run: |
+          if CONFIGURATION=Debug SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER' scripts/build_macos_app.sh; then
+            exit 1
+          fi
+          if CONFIGURATION=Debug SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER' scripts/build_macos_app.sh; then
+            exit 1
+          fi
       - name: Build legacy Release with every development flag injected
         run: |
-          CONFIGURATION=Release SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER JUYI_NATIVE_TRANSLATION_OVERLAY' scripts/build_macos_app.sh
-          for token in 'juyi-native-apple-translation-adapter-v1' 'The weather is pleasant today.' '开发：测试 Apple 离线翻译…' 'juyi-native-volc-translation-adapter-v1' 'io.github.Eim-aa.Juyi.debug.native-volc.active' 'Library/Application Support/io.github.Eim-aa.Juyi/NativeVolcDebug' 'NativeVolcTranslationAdapterSheet' '此页面连接真实火山翻译 API，不是模拟器。' '开发：测试火山云端翻译…'; do
+          CONFIGURATION=Release SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB' scripts/build_macos_app.sh
+          for token in 'juyi-native-apple-translation-adapter-v1' 'The weather is pleasant today.' '开发：测试 Apple 离线翻译…' 'juyi-native-volc-translation-adapter-v1' 'io.github.Eim-aa.Juyi.debug.native-volc.active' 'Library/Application Support/io.github.Eim-aa.Juyi/NativeVolcDebug' 'NativeVolcTranslationAdapterSheet' '此页面连接真实火山翻译 API，不是模拟器。' '开发：测试火山云端翻译…' 'juyi-native-translation-result-lab-v1' 'NativeTranslationResultLabCoordinator' 'Debug 固定样例 · 模拟执行' '开发：结果界面实验室…'; do
             if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           done
           find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-release-all-flags.loads"
@@ -302,6 +386,23 @@ jobs:
         run: |
           swiftc -parse-as-library macos/NativeTranslationOverlayInteractionPolicy.swift tests/NativeTranslationOverlayInteractionPolicyTests.swift -o "$RUNNER_TEMP/native-translation-overlay-interaction-tests"
           "$RUNNER_TEMP/native-translation-overlay-interaction-tests"
+      - name: Run native translation Result Lab lease tests
+        run: |
+          swiftc -swift-version 5 -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -D JUYI_NATIVE_TRANSLATION_OVERLAY -D JUYI_NATIVE_TRANSLATION_RESULT_LAB macos/NativeTranslationOverlayInteractionPolicy.swift macos/NativeTranslationOverlayExternalPresentation.swift tests/NativeTranslationOverlayExternalPresentationTests.swift -o "$RUNNER_TEMP/native-translation-result-lab-lease-tests"
+          "$RUNNER_TEMP/native-translation-result-lab-lease-tests"
+      - name: Run native translation Result Lab bridge tests
+        run: |
+          swiftc -swift-version 5 -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -D JUYI_NATIVE_TRANSLATION_OVERLAY -D JUYI_NATIVE_TRANSLATION_RESULT_LAB -framework CryptoKit -framework Combine macos/VolcV4RequestBuilder.swift macos/NativeTranslationDomain.swift macos/NativeTranslationOverlayModel.swift macos/NativeTranslationOverlayInteractionPolicy.swift macos/NativeTranslationOverlayExternalPresentation.swift macos/NativeTranslationResultLabPresentation.swift macos/NativeTranslationResultLabModel.swift tests/NativeTranslationResultLabPresentationTests.swift -o "$RUNNER_TEMP/native-translation-result-lab-bridge-tests"
+          "$RUNNER_TEMP/native-translation-result-lab-bridge-tests"
+      - name: Run native translation Result Lab owner tests
+        run: |
+          swiftc -swift-version 5 -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -D JUYI_NATIVE_TRANSLATION_OVERLAY -D JUYI_NATIVE_TRANSLATION_RESULT_LAB -framework CryptoKit -framework Combine macos/VolcV4RequestBuilder.swift macos/NativeTranslationDomain.swift macos/NativeTranslationOverlayModel.swift macos/NativeTranslationOverlayInteractionPolicy.swift macos/NativeTranslationOverlayExternalPresentation.swift macos/NativeTranslationResultLabPresentation.swift macos/NativeTranslationResultLabModel.swift tests/NativeTranslationResultLabModelTests.swift -o "$RUNNER_TEMP/native-translation-result-lab-owner-tests"
+          "$RUNNER_TEMP/native-translation-result-lab-owner-tests"
+      - name: Run native translation Swift-Python parity corpus
+        run: |
+          swiftc -swift-version 5 -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -D JUYI_NATIVE_TRANSLATION_OVERLAY -D JUYI_NATIVE_TRANSLATION_RESULT_LAB -framework CryptoKit -framework Combine macos/VolcV4RequestBuilder.swift macos/NativeTranslationDomain.swift macos/NativeTranslationOverlayModel.swift macos/NativeTranslationOverlayInteractionPolicy.swift macos/NativeTranslationOverlayExternalPresentation.swift macos/NativeTranslationResultLabPresentation.swift macos/NativeTranslationResultLabModel.swift tests/NativeTranslationParityRunner.swift -o "$RUNNER_TEMP/native-translation-parity"
+          "$RUNNER_TEMP/native-translation-parity" tests/fixtures/native_translation_parity_v1.json > "$RUNNER_TEMP/native-translation-parity.json"
+          python3 tests/check_native_translation_parity.py --corpus tests/fixtures/native_translation_parity_v1.json --swift-output "$RUNNER_TEMP/native-translation-parity.json"
       - name: Run native translation domain tests
         run: |
           swiftc -swift-version 5 -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -framework CryptoKit macos/VolcV4RequestBuilder.swift macos/NativeTranslationDomain.swift tests/NativeTranslationDomainTests.swift -o "$RUNNER_TEMP/native-translation-domain-tests"

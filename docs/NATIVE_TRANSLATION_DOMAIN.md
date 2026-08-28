@@ -1,5 +1,8 @@
 # 原生翻译 Domain 4A：默认关闭的开发切片
 
+4D0 的默认关闭纯 Result Lab 接线与 parity 说明见
+[`NATIVE_TRANSLATION_RESULT_LAB.md`](NATIVE_TRANSLATION_RESULT_LAB.md)。
+
 状态：**仅供开发验证，未接入用户功能，普通 Debug 与所有 Release 均不包含实现。**
 
 三个 Swift 源文件整体位于唯一的 `#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN` 编译条件内。只有开发者显式构建 Debug 并同时注入该条件时，纯 domain 才会进入产物；默认 xcconfig、legacy 构建脚本、App 启动流程、菜单和运行时设置都没有入口或开关。即使向 Release 单独注入自定义条件，因缺少 `DEBUG`，实现仍会被编译器完全移除。

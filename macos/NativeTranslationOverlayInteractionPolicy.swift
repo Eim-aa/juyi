@@ -113,6 +113,28 @@ enum NativeTranslationOverlayDismissReason: Equatable {
     case terminate
 }
 
+enum NativeTranslationOverlayScopedEventSource: Equatable {
+    case global
+    case local
+}
+
+#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+/// The Result Lab sheet and its App menu are the explicit owner surface for
+/// the external preview. Local mouse events must reach those controls before
+/// any dismissal; a mouse event from another application remains outside.
+enum NativeTranslationResultLabOwnerSurfacePolicy {
+    static func suppressesDismiss(
+        from source: NativeTranslationOverlayScopedEventSource,
+        eventIsKeyDown: Bool,
+        panelIsKey: Bool
+    ) -> Bool {
+        guard source == .local else { return false }
+        if eventIsKeyDown { return !panelIsKey }
+        return true
+    }
+}
+#endif
+
 enum NativeTranslationOverlayFocusRestorePolicy {
     static func shouldRestoreSourceApplication(
         reason: NativeTranslationOverlayDismissReason?,

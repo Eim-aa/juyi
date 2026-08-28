@@ -37,7 +37,14 @@ def test_preview_and_panel_have_one_compile_time_gate_and_no_runtime_switch():
     assert APP.count("showFixturePreview()") == 1
     assert "JUYI_NATIVE_TRANSLATION_OVERLAY" not in DEBUG_CONFIG
     assert "JUYI_NATIVE_TRANSLATION_OVERLAY" not in RELEASE_CONFIG
-    assert "JUYI_NATIVE_TRANSLATION_OVERLAY" not in LEGACY
+    assert 'if [[ "$CONFIGURATION" == "Debug" ]]; then' in LEGACY
+    debug_forwarding = LEGACY.split(
+        'if [[ "$CONFIGURATION" == "Debug" ]]; then', 1
+    )[1].split("\nfi\n", 1)[0]
+    assert 'SWIFT_FLAGS+=(-D JUYI_NATIVE_TRANSLATION_OVERLAY)' in debug_forwarding
+    assert "HAS_NATIVE_OVERLAY=true" in debug_forwarding
+    assert "HAS_NATIVE_DOMAIN" in debug_forwarding
+    assert "JUYI_NATIVE_TRANSLATION_RESULT_LAB" in debug_forwarding
     app_overlay_references = "\n".join(
         line
         for line in APP.splitlines()

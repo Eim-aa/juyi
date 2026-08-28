@@ -37,7 +37,14 @@ FRAMEWORK_FLAGS=(
 )
 if [[ "$CONFIGURATION" == "Debug" ]]; then
     ACTIVE_CONDITIONS=" ${SWIFT_ACTIVE_COMPILATION_CONDITIONS:-} "
+    HAS_NATIVE_DOMAIN=false
+    HAS_NATIVE_OVERLAY=false
+    if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_TRANSLATION_OVERLAY "* ]]; then
+        HAS_NATIVE_OVERLAY=true
+        SWIFT_FLAGS+=(-D JUYI_NATIVE_TRANSLATION_OVERLAY)
+    fi
     if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_TRANSLATION_DOMAIN "* ]]; then
+        HAS_NATIVE_DOMAIN=true
         SWIFT_FLAGS+=(-D JUYI_NATIVE_TRANSLATION_DOMAIN)
         if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER "* ]]; then
             SWIFT_FLAGS+=(-D JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER)
@@ -47,6 +54,10 @@ if [[ "$CONFIGURATION" == "Debug" ]]; then
             SWIFT_FLAGS+=(-D JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER)
             FRAMEWORK_FLAGS+=(-framework LocalAuthentication -framework Security)
         fi
+    fi
+    if [[ "$HAS_NATIVE_DOMAIN" == true && "$HAS_NATIVE_OVERLAY" == true \
+        && "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_TRANSLATION_RESULT_LAB "* ]]; then
+        SWIFT_FLAGS+=(-D JUYI_NATIVE_TRANSLATION_RESULT_LAB)
     fi
 fi
 
@@ -82,6 +93,10 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/NativeTranslationOverlayAnchorPolicy.swift" \
         "$ROOT/macos/NativeTranslationOverlayInteractionPolicy.swift" \
         "$ROOT/macos/NativeTranslationOverlayController.swift" \
+        "$ROOT/macos/NativeTranslationOverlayExternalPresentation.swift" \
+        "$ROOT/macos/NativeTranslationResultLabPresentation.swift" \
+        "$ROOT/macos/NativeTranslationResultLabModel.swift" \
+        "$ROOT/macos/NativeTranslationResultLabHost.swift" \
         "$ROOT/macos/OnboardingPolicy.swift" \
         "$ROOT/macos/WindowFramePolicy.swift" \
         "$ROOT/macos/JuyiMenuBar.swift"

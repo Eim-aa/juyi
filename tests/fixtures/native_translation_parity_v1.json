@@ -1,0 +1,125 @@
+{
+  "schema": "juyi.native_translation.input_parity",
+  "version": 1,
+  "inputCases": [
+    {
+      "id": "nil_is_empty",
+      "input": { "kind": "null" },
+      "expectedDecision": "failure:empty_input"
+    },
+    {
+      "id": "line_endings_and_scalar_whitespace",
+      "input": { "kind": "literal", "value": " ab\r\ncd\rEF " },
+      "expectedDecision": "ready"
+    },
+    {
+      "id": "unicode_scalars_4999",
+      "input": { "kind": "repeated", "scalar": "a", "count": 4996, "suffix": "😀é" },
+      "expectedDecision": "ready"
+    },
+    {
+      "id": "unicode_scalars_5000",
+      "input": { "kind": "repeated", "scalar": "a", "count": 4997, "suffix": "😀é" },
+      "expectedDecision": "ready"
+    },
+    {
+      "id": "unicode_scalars_5001",
+      "input": { "kind": "repeated", "scalar": "a", "count": 4998, "suffix": "😀é" },
+      "expectedDecision": "ready"
+    },
+    {
+      "id": "cjk_ratio_exactly_half",
+      "input": { "kind": "literal", "value": "ab你好" },
+      "expectedDecision": "ready"
+    },
+    {
+      "id": "cjk_ratio_above_half",
+      "input": { "kind": "literal", "value": "a你好" },
+      "expectedDecision": "failure:source_language_mismatch"
+    },
+    {
+      "id": "one_alphabetic_scalar",
+      "input": { "kind": "literal", "value": "é" },
+      "expectedDecision": "skipped:too_short"
+    }
+  ],
+  "routeCases": [
+    {
+      "id": "installed_apple_same_engine",
+      "requestedEngine": "apple",
+      "appleAvailable": true,
+      "volcAvailable": true,
+      "expectedDecision": "execute:apple"
+    },
+    {
+      "id": "verified_volc_same_engine",
+      "requestedEngine": "volc",
+      "appleAvailable": true,
+      "volcAvailable": true,
+      "expectedDecision": "execute:volc"
+    }
+  ],
+  "signerCases": [
+    {
+      "id": "volc_v4_python_golden",
+      "text": "Hello, world.",
+      "accessKey": "AKTEST",
+      "secretKey": "SKTEST",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh",
+      "instant": "2026-01-02T03:04:05Z",
+      "expectedBodySHA256": "c167fb9959bc1d87ccec51dfea1250da630a0163a1a0e89854c91aef467bc75a",
+      "expectedSignature": "7265ac5fe98b6ff62155737ef2dd0ec68d07dbb472c0aba1b527b7e9715302a7"
+    }
+  ],
+  "intentionalDeltas": [
+    {
+      "id": "legacy_argos_engine",
+      "reason": "python_legacy_engine_alias",
+      "swift": "rejected_unknown_engine",
+      "python": "execute:apple"
+    },
+    {
+      "id": "unknown_engine",
+      "reason": "python_unknown_engine_defaults_apple",
+      "swift": "rejected_unknown_engine",
+      "python": "execute:apple"
+    },
+    {
+      "id": "volc_unavailable",
+      "reason": "python_volc_unavailable_falls_back_apple",
+      "swift": "failure:cloud_credentials_missing",
+      "python": "execute:apple"
+    },
+    {
+      "id": "body_cache",
+      "reason": "python_lru_cache_2000",
+      "swift": "none",
+      "python": "lru:2000"
+    },
+    {
+      "id": "failure_and_skip_body",
+      "reason": "python_echoes_source_on_non_success",
+      "swift": "no_body",
+      "python": "echoes_source"
+    },
+    {
+      "id": "error_classification",
+      "reason": "python_string_error_classification",
+      "swift": "typed_failure",
+      "python": "message_substring"
+    },
+    {
+      "id": "response_parser",
+      "reason": "python_parser_is_legacy_loose",
+      "swift": "strict_typed_parser",
+      "python": "legacy_top_level_first_item"
+    },
+    {
+      "id": "network_timeout",
+      "reason": "python_transport_timeout_30s",
+      "swift": "result_lab_owner_12s",
+      "python": "transport_30s"
+    }
+  ]
+}

@@ -44,6 +44,10 @@
 		A00000000000000000000089 /* NativeVolcDebugWorkflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000083 /* NativeVolcDebugWorkflow.swift */; };
 		A0000000000000000000008A /* NativeVolcTranslationAdapterModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000084 /* NativeVolcTranslationAdapterModel.swift */; };
 		A0000000000000000000008B /* NativeVolcTranslationAdapterHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000085 /* NativeVolcTranslationAdapterHost.swift */; };
+		A00000000000000000000090 /* NativeTranslationOverlayExternalPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008C /* NativeTranslationOverlayExternalPresentation.swift */; };
+		A00000000000000000000091 /* NativeTranslationResultLabPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008D /* NativeTranslationResultLabPresentation.swift */; };
+		A00000000000000000000092 /* NativeTranslationResultLabModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008E /* NativeTranslationResultLabModel.swift */; };
+		A00000000000000000000093 /* NativeTranslationResultLabHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008F /* NativeTranslationResultLabHost.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -91,6 +95,10 @@
 		A00000000000000000000083 /* NativeVolcDebugWorkflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcDebugWorkflow.swift; sourceTree = "<group>"; };
 		A00000000000000000000084 /* NativeVolcTranslationAdapterModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcTranslationAdapterModel.swift; sourceTree = "<group>"; };
 		A00000000000000000000085 /* NativeVolcTranslationAdapterHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcTranslationAdapterHost.swift; sourceTree = "<group>"; };
+		A0000000000000000000008C /* NativeTranslationOverlayExternalPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationOverlayExternalPresentation.swift; sourceTree = "<group>"; };
+		A0000000000000000000008D /* NativeTranslationResultLabPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationResultLabPresentation.swift; sourceTree = "<group>"; };
+		A0000000000000000000008E /* NativeTranslationResultLabModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationResultLabModel.swift; sourceTree = "<group>"; };
+		A0000000000000000000008F /* NativeTranslationResultLabHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationResultLabHost.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -169,6 +177,10 @@
 				A00000000000000000000083 /* NativeVolcDebugWorkflow.swift */,
 				A00000000000000000000084 /* NativeVolcTranslationAdapterModel.swift */,
 				A00000000000000000000085 /* NativeVolcTranslationAdapterHost.swift */,
+				A0000000000000000000008C /* NativeTranslationOverlayExternalPresentation.swift */,
+				A0000000000000000000008D /* NativeTranslationResultLabPresentation.swift */,
+				A0000000000000000000008E /* NativeTranslationResultLabModel.swift */,
+				A0000000000000000000008F /* NativeTranslationResultLabHost.swift */,
 				A00000000000000000000024 /* Info.plist */,
 				A00000000000000000000025 /* AppIcon.png */,
 				A0000000000000000000002C /* Assets.xcassets */,
@@ -323,6 +335,10 @@
 				A00000000000000000000089 /* NativeVolcDebugWorkflow.swift in Sources */,
 				A0000000000000000000008A /* NativeVolcTranslationAdapterModel.swift in Sources */,
 				A0000000000000000000008B /* NativeVolcTranslationAdapterHost.swift in Sources */,
+				A00000000000000000000090 /* NativeTranslationOverlayExternalPresentation.swift in Sources */,
+				A00000000000000000000091 /* NativeTranslationResultLabPresentation.swift in Sources */,
+				A00000000000000000000092 /* NativeTranslationResultLabModel.swift in Sources */,
+				A00000000000000000000093 /* NativeTranslationResultLabHost.swift in Sources */,
 				A00000000000000000000032 /* OnboardingPolicy.swift in Sources */,
 				A00000000000000000000033 /* WindowFramePolicy.swift in Sources */,
 			);

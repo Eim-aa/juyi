@@ -436,19 +436,52 @@ final class NativeTranslationOverlaySession {
 
     @discardableResult
     func begin() -> Int {
+        beginInternal(
+            initialLoadingState: NativeTranslationOverlayReducer.reduce(
+                .loading(isExtended: false)
+            ),
+            extendedLoadingState: NativeTranslationOverlayReducer.reduce(
+                .loading(isExtended: true)
+            ),
+            includesTimeout: true
+        )
+    }
+
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+    @discardableResult
+    func beginResultLabPresentation(
+        engine: NativeTranslationEngine,
+        loading: NativeTranslationResultLabValidatedPresentation,
+        extendedLoading: NativeTranslationResultLabValidatedPresentation
+    ) -> Int {
+        beginInternal(
+            initialLoadingState: loading.overlayState,
+            extendedLoadingState: extendedLoading.overlayState,
+            includesTimeout: false
+        )
+    }
+    #endif
+
+    private func beginInternal(
+        initialLoadingState: NativeTranslationOverlayState,
+        extendedLoadingState: NativeTranslationOverlayState,
+        includesTimeout: Bool
+    ) -> Int {
         generation += 1
         cancelScheduledTasks()
         terminalGeneration = nil
         publish(.hidden)
         let requestGeneration = generation
         schedule(after: 0.15, generation: requestGeneration) { [weak self] in
-            self?.publish(NativeTranslationOverlayReducer.reduce(.loading(isExtended: false)))
+            self?.publish(initialLoadingState)
         }
         schedule(after: 2.0, generation: requestGeneration) { [weak self] in
-            self?.publish(NativeTranslationOverlayReducer.reduce(.loading(isExtended: true)))
+            self?.publish(extendedLoadingState)
         }
-        schedule(after: 12.0, generation: requestGeneration) { [weak self] in
-            self?.resolve(.timeout, for: requestGeneration)
+        if includesTimeout {
+            schedule(after: 12.0, generation: requestGeneration) { [weak self] in
+                self?.resolve(.timeout, for: requestGeneration)
+            }
         }
         return requestGeneration
     }
@@ -457,9 +490,27 @@ final class NativeTranslationOverlaySession {
         _ event: NativeTranslationOverlayEvent,
         for expectedGeneration: Int
     ) {
+        resolveTerminal(
+            NativeTranslationOverlayReducer.reduce(event),
+            for: expectedGeneration
+        )
+    }
+
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+    func resolveResultLabPresentation(
+        _ presentation: NativeTranslationResultLabValidatedPresentation,
+        for expectedGeneration: Int
+    ) {
+        resolveTerminal(presentation.overlayState, for: expectedGeneration)
+    }
+    #endif
+
+    private func resolveTerminal(
+        _ terminal: NativeTranslationOverlayState,
+        for expectedGeneration: Int
+    ) {
         guard generation == expectedGeneration,
               terminalGeneration != expectedGeneration else { return }
-        let terminal = NativeTranslationOverlayReducer.reduce(event)
         if terminal.kind == .hidden {
             invalidate()
             return

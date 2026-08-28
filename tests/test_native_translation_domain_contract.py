@@ -38,6 +38,9 @@ def test_domain_has_no_runtime_entry_or_runtime_switch():
         "&& JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER",
         "#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN "
         "&& JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER",
+        "#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN "
+        "&& JUYI_NATIVE_TRANSLATION_OVERLAY "
+        "&& JUYI_NATIVE_TRANSLATION_RESULT_LAB",
     }
     domain_flag_lines = [
         line.strip()

@@ -213,6 +213,9 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
     private let ctaButton = NativeTranslationOverlayButton()
     private let metadataStack = NSStackView()
     private let actionsStack = NSStackView()
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+    private var usesResultLabCopyDisclosure = false
+    #endif
     private let footerStack = NSStackView()
     private var bodyHeightConstraint: NSLayoutConstraint!
     private var separatorHeightConstraint: NSLayoutConstraint!
@@ -259,13 +262,36 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
             state.cta == nil ? nil : "仅在你点击后打开句译中的对应页面"
         )
         copyButton.isHidden = !state.canCopy
-        copyButton.title = copyPresentation.buttonTitle
-        copyButton.setAccessibilityLabel(copyPresentation.buttonTitle)
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+        let copyTitle = usesResultLabCopyDisclosure && copyPresentation == .idle
+            ? "复制固定译文"
+            : copyPresentation.buttonTitle
+        #else
+        let copyTitle = copyPresentation.buttonTitle
+        #endif
+        copyButton.title = copyTitle
+        copyButton.setAccessibilityLabel(copyTitle)
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+        copyButton.setAccessibilityHelp(
+            state.canCopy
+                ? (usesResultLabCopyDisclosure
+                    ? "复制完整固定译文并替换系统剪贴板；其他 App 或剪贴板管理器之后可能读取并保留它"
+                    : "复制完整译文，浮窗会继续保留")
+                : nil
+        )
+        closeButton.setAccessibilityLabel("关闭")
+        closeButton.setAccessibilityHelp(
+            usesResultLabCopyDisclosure
+                ? "关闭当前 Result Lab 浮窗并停止本次模拟；迟到结果不会显示或复制"
+                : "关闭当前译文，不停止句译"
+        )
+        #else
         copyButton.setAccessibilityHelp(
             state.canCopy ? "复制完整译文，浮窗会继续保留" : nil
         )
         closeButton.setAccessibilityLabel("关闭")
         closeButton.setAccessibilityHelp("关闭当前译文，不停止句译")
+        #endif
         actionsStack.isHidden = state.cta == nil && !state.canCopy
         setStatefulActionsEnabled(statefulActionsEnabled)
         footerStack.isHidden = metadataStack.isHidden && actionsStack.isHidden
@@ -301,13 +327,24 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         needsLayout = true
     }
 
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+    func setResultLabPresentation(_ enabled: Bool) {
+        usesResultLabCopyDisclosure = enabled
+    }
+    #endif
+
     func desiredSize(for state: NativeTranslationOverlayState) -> CGSize {
         let scale = accessibilityFontScale
         switch state.kind {
         case .hidden:
             return CGSize(width: 360, height: 0)
         case .loading:
-            return CGSize(width: 360, height: 76 * scale)
+            let metadataExpansion: CGFloat = state.metadata == nil ? 0 : 40
+            let bodyExpansion: CGFloat = state.body.isEmpty ? 0 : 44
+            return CGSize(
+                width: 360,
+                height: (76 + metadataExpansion + bodyExpansion) * scale
+            )
         case .notice, .error:
             let extra = state.cta == nil ? 0 : 28
             let baseline = min(152, max(104, 116 + extra))
@@ -770,6 +807,12 @@ final class NativeTranslationOverlayController: NSObject {
     private var pendingDismissReason: NativeTranslationOverlayDismissReason?
     private var preservesVisibleContentForNextSessionBegin = false
     private var nextFixtureIndex = 0
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+    private let externalPresentationRegistry =
+        NativeTranslationOverlayExternalPresentationRegistry()
+    private var isResultLabPresentation = false
+    private var resultLabEngine: NativeTranslationEngine?
+    #endif
 
     private override init() {
         overlayView = NativeTranslationOverlayContentView(
@@ -816,14 +859,129 @@ final class NativeTranslationOverlayController: NSObject {
                 panelIsVisible: panel.isVisible,
                 presentationPhase: presentationLifecycle.phase
             )
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+        let replacedExternalPresentation = externalPresentationRegistry.currentLease
+        isResultLabPresentation = false
+        resultLabEngine = nil
+        overlayView.setResultLabPresentation(false)
+        resetPanelAccessibilityIdentity()
+        #endif
         let generation = session.begin()
         if let event = fixture.event { session.resolve(event, for: generation) }
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+        if let replacedExternalPresentation {
+            // The legacy session is fully installed before notifying the old
+            // external owner. A callback that starts a new external session
+            // therefore wins and cannot be overwritten by this call.
+            _ = externalPresentationRegistry.invalidate(
+                replacedExternalPresentation,
+                reason: .stop
+            )
+        }
+        #endif
     }
+
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+    /// Creates the only panel session that an external Result Lab request may
+    /// resolve. It is called before simulated domain work begins.
+    func beginExternal(
+        requestedEngine: NativeTranslationEngine,
+        onDismiss: @escaping (NativeTranslationOverlayDismissReason) -> Void
+    ) -> NativeTranslationOverlayExternalPresentationLease? {
+        guard !isPaused else { return nil }
+        sourceApplication = externalFrontmostApplication()
+        anchorMousePoint = NSEvent.mouseLocation
+        guard prepareAnchor() else { return nil }
+        fixtureCopyPresentationLifecycle.queue(.idle)
+        pendingPresentationLifecycle.cancel()
+        preservesVisibleContentForNextSessionBegin =
+            NativeTranslationOverlayVisibleReplacementPolicy.preservesCurrentContent(
+                panelIsVisible: panel.isVisible,
+                presentationPhase: presentationLifecycle.phase
+            )
+        isResultLabPresentation = true
+        resultLabEngine = requestedEngine
+        overlayView.setResultLabPresentation(true)
+        let engineLabel = requestedEngine == .apple ? "Apple" : "火山"
+        panel.title = "句译 Debug 固定样例 \(engineLabel) 模拟结果"
+        panel.setAccessibilityTitle("句译 Debug 固定样例 \(engineLabel) 模拟结果")
+        let generation = session.beginResultLabPresentation(
+            engine: requestedEngine,
+            loading: .loading(engine: requestedEngine, isExtended: false),
+            extendedLoading: .loading(engine: requestedEngine, isExtended: true)
+        )
+        let lease = externalPresentationRegistry.begin(
+            sessionGeneration: generation,
+            onDismiss: onDismiss
+        )
+        guard session.generation == generation,
+              externalPresentationRegistry.isCurrent(
+            lease,
+            sessionGeneration: generation
+        ) else {
+            _ = externalPresentationRegistry.invalidate(lease, reason: .stop)
+            return nil
+        }
+        return lease
+    }
+
+    @discardableResult
+    func resolve(
+        presentation: NativeTranslationResultLabValidatedPresentation,
+        lease: NativeTranslationOverlayExternalPresentationLease
+    ) -> Bool {
+        guard presentation.overlayState.isTerminal,
+              externalPresentationRegistry.acceptTerminal(
+                  lease,
+                  sessionGeneration: session.generation
+              ) else { return false }
+        session.resolveResultLabPresentation(
+            presentation,
+            for: session.generation
+        )
+        return true
+    }
+
+    func invalidate(
+        lease: NativeTranslationOverlayExternalPresentationLease,
+        reason: NativeTranslationOverlayDismissReason
+    ) {
+        guard externalPresentationRegistry.matches(
+            lease,
+            sessionGeneration: session.generation
+        ) else { return }
+        pendingDismissReason = reason
+        session.invalidate()
+        pendingDismissReason = nil
+        isResultLabPresentation = false
+        resultLabEngine = nil
+        overlayView.setResultLabPresentation(false)
+        resetPanelAccessibilityIdentity()
+        _ = externalPresentationRegistry.invalidate(lease, reason: reason)
+    }
+
+    #endif
 
     func focusCurrentOverlay() {
         guard panel.isVisible else { return }
         enterKeyboardMode()
     }
+
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+    @discardableResult
+    func focusCurrentOverlay(
+        lease: NativeTranslationOverlayExternalPresentationLease
+    ) -> Bool {
+        guard isResultLabPresentation,
+              panel.isVisible,
+              externalPresentationRegistry.matches(
+                  lease,
+                  sessionGeneration: session.generation
+              ) else { return false }
+        enterKeyboardMode()
+        return true
+    }
+    #endif
 
     func setPaused(_ paused: Bool) {
         guard isPaused != paused else { return }
@@ -1170,12 +1328,33 @@ final class NativeTranslationOverlayController: NSObject {
     private func dismiss(_ reason: NativeTranslationOverlayDismissReason) {
         pendingDismissReason = reason
         defer { pendingDismissReason = nil }
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+        let hadExternalPresentation = externalPresentationRegistry.hasActiveLease
+        #endif
         guard currentState.isVisible || session.state.isVisible else {
             // Explicit lifecycle invalidations still advance generation.
             session.invalidate()
+            #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+            if hadExternalPresentation {
+                isResultLabPresentation = false
+                resultLabEngine = nil
+                overlayView.setResultLabPresentation(false)
+                resetPanelAccessibilityIdentity()
+                externalPresentationRegistry.invalidateActive(reason: reason)
+            }
+            #endif
             return
         }
         session.invalidate()
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+        if hadExternalPresentation {
+            isResultLabPresentation = false
+            resultLabEngine = nil
+            overlayView.setResultLabPresentation(false)
+            resetPanelAccessibilityIdentity()
+            externalPresentationRegistry.invalidateActive(reason: reason)
+        }
+        #endif
     }
 
     private func enterKeyboardMode() {
@@ -1217,7 +1396,15 @@ final class NativeTranslationOverlayController: NSObject {
         switch result {
         case .copied:
             copyPresentation = .copied
+            #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+            postAnnouncement(
+                isResultLabPresentation
+                    ? "句译，已复制 Debug 固定样例 \(resultLabEngine == .volc ? "火山" : "Apple") 模拟译文"
+                    : "句译，已复制译文"
+            )
+            #else
             postAnnouncement("句译，已复制译文")
+            #endif
             shouldResetPresentation = true
         case .failed:
             copyPresentation = .failed
@@ -1258,6 +1445,13 @@ final class NativeTranslationOverlayController: NSObject {
         navigationHandler?(cta)
     }
 
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+    private func resetPanelAccessibilityIdentity() {
+        panel.title = "句译译文"
+        panel.setAccessibilityTitle("句译译文")
+    }
+    #endif
+
     private func postAnnouncement(_ text: String) {
         NSAccessibility.post(
             element: NSApplication.shared,
@@ -1271,13 +1465,17 @@ final class NativeTranslationOverlayController: NSObject {
 
     private func installGlobalMonitor() -> Any? {
         NSEvent.addGlobalMonitorForEvents(matching: monitorMask) { [weak self] event in
-            MainActor.assumeIsolated { self?.handleScopedEvent(event) }
+            MainActor.assumeIsolated {
+                self?.handleScopedEvent(event, source: .global)
+            }
         }
     }
 
     private func installLocalMonitor() -> Any? {
         NSEvent.addLocalMonitorForEvents(matching: monitorMask) { [weak self] event in
-            MainActor.assumeIsolated { self?.handleScopedEvent(event) }
+            MainActor.assumeIsolated {
+                self?.handleScopedEvent(event, source: .local)
+            }
             return event
         }
     }
@@ -1286,7 +1484,10 @@ final class NativeTranslationOverlayController: NSObject {
         [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]
     }
 
-    private func handleScopedEvent(_ event: NSEvent) {
+    private func handleScopedEvent(
+        _ event: NSEvent,
+        source: NativeTranslationOverlayScopedEventSource
+    ) {
         guard panel.isVisible else { return }
         let interaction: NativeTranslationOverlayInteractionEvent
         switch event.type {
@@ -1309,6 +1510,17 @@ final class NativeTranslationOverlayController: NSObject {
         case .none:
             break
         case .dismiss:
+            #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+            if isResultLabPresentation,
+               NativeTranslationResultLabOwnerSurfacePolicy
+                   .suppressesDismiss(
+                       from: source,
+                       eventIsKeyDown: event.type == .keyDown,
+                       panelIsKey: panel.isKeyWindow
+                   ) {
+                break
+            }
+            #endif
             dismiss(event.type == .keyDown ? .escape : .outside)
         case .enterKeyboardMode:
             enterKeyboardMode()
