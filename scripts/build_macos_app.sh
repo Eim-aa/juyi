@@ -105,6 +105,7 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/NativeSelectionCaptureCoordinator.swift" \
         "$ROOT/macos/NativeSelectionCaptureLabModel.swift" \
         "$ROOT/macos/NativeSelectionCaptureLabHost.swift" \
+        "$ROOT/macos/NativeOwnerHandoffProtocol.swift" \
         "$ROOT/macos/NativeOptionMonitor.swift" \
         "$ROOT/macos/NativeOptionFeature.swift" \
         "$ROOT/macos/NativeTranslationDomain.swift" \

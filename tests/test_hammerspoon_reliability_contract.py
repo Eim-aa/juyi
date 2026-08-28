@@ -81,3 +81,50 @@ def test_async_engine_refresh_cannot_restore_stale_cloud_choice():
     init = _between("local function initEngineState", "local function startExternalEngineWatcher")
     assert "local persisted = readPersistedEngine()" in init
     assert "if readPersistedEngine() ~= requested then return end" in LUA
+
+
+def test_owner_request_is_exact_epoch_bound_and_fail_closed():
+    reader = _between("local function readOwnerRequest", "local function writeStatus")
+    assert 'OWNER_REQUEST_PATH = os.getenv("HOME") .. "/.config/argos-translator/owner-request.json"' in LUA
+    assert "#raw == 0 or #raw > 1024" in reader
+    assert "keyCount ~= 4" in reader
+    assert 'decoded.requested_owner ~= "native"' in reader
+    assert "canonicalUUID(decoded.epoch)" in reader
+    assert "canonicalUUID(decoded.native_instance_id)" in reader
+
+    status = _between("local function writeStatus", "-- Truncate to at most")
+    for field in (
+        "owner_protocol_version",
+        "legacy_instance_id",
+        "owner_state",
+        "owner_request_epoch",
+        "owner_request_native_instance_id",
+        "watcher_active",
+        "active_request",
+        "popup_visible",
+        "status_sequence",
+    ):
+        assert field in status
+
+
+def test_owner_yield_and_pause_quiesce_before_ack_or_resume():
+    quiesce = _between("local function quiesceLegacyOwner", "local function reconcileLegacyOwner")
+    for operation in (
+        "requestGeneration = requestGeneration + 1",
+        "stopRequestTimers(activeRequest)",
+        "activeRequest = nil",
+        "tapWatcher:stop()",
+        "dismiss()",
+    ):
+        assert operation in quiesce
+
+    reconcile = _between("local function reconcileLegacyOwner", "local function beginRequest")
+    assert reconcile.index("quiesceLegacyOwner()") < reconcile.index('legacyOwnerState = "yielded"')
+    assert 'request.kind ~= "absent"' in reconcile
+    assert 'legacyOwnerState = "blocked"' in reconcile
+    assert 'legacyOwnerState = "paused"' in reconcile
+    assert reconcile.index('request.kind ~= "absent"') < reconcile.index("tapWatcher:start()")
+
+    start = _between("function M.start()", "function M.stop()")
+    assert start.index("reconcileLegacyOwner()") < start.index("startExternalEngineWatcher()")
+    assert "tapWatcher:start()" not in start

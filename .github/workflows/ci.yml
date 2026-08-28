@@ -51,7 +51,7 @@ jobs:
             grep -Fq "$source" Juyi.xcodeproj/project.pbxproj
             grep -Fq "$source" scripts/build_macos_app.sh
           done
-          for source in NativeSelectionCaptureLabModel.swift NativeSelectionCaptureLabHost.swift; do
+          for source in NativeSelectionCaptureLabModel.swift NativeSelectionCaptureLabHost.swift NativeOwnerHandoffProtocol.swift; do
             grep -Fq "$source" Juyi.xcodeproj/project.pbxproj
             grep -Fq "$source" scripts/build_macos_app.sh
           done
@@ -543,6 +543,10 @@ jobs:
         run: |
           swiftc -swift-version 5 -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_SELECTION_CAPTURE_LAB -framework AppKit -framework ApplicationServices -framework Combine macos/AccessibilityController.swift macos/NativeSelectionReader.swift macos/NativeSelectionCaptureCoordinator.swift macos/NativeSelectionCaptureLabModel.swift tests/NativeSelectionCaptureLabModelTests.swift -o "$RUNNER_TEMP/native-selection-capture-lab-model-tests"
           "$RUNNER_TEMP/native-selection-capture-lab-model-tests"
+      - name: Run native owner handoff protocol tests
+        run: |
+          swiftc -swift-version 5 -warnings-as-errors -parse-as-library macos/NativeOwnerHandoffProtocol.swift tests/NativeOwnerHandoffProtocolTests.swift -o "$RUNNER_TEMP/native-owner-handoff-protocol-tests"
+          "$RUNNER_TEMP/native-owner-handoff-protocol-tests"
       - name: Run native Option monitor lifecycle tests
         run: |
           swiftc -parse-as-library -framework AppKit -framework ApplicationServices macos/AccessibilityController.swift macos/DoubleOptionStateMachine.swift macos/NativeOptionEventAdapter.swift macos/NativeSelectionReader.swift macos/NativeSelectionCaptureCoordinator.swift macos/NativeOptionMonitor.swift tests/NativeOptionMonitorTests.swift -o "$RUNNER_TEMP/native-option-monitor-tests"

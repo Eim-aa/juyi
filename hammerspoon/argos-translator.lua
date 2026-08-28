@@ -39,8 +39,15 @@ local activeRequest = nil
 local ENGINE_STATE_PATH = os.getenv("HOME") .. "/.config/argos-translator/hs-engine"
 local STATUS_PATH = os.getenv("HOME") .. "/.config/argos-translator/hs-status.json"
 local PAUSE_PATH = os.getenv("HOME") .. "/.config/argos-translator/hs-paused"
+local OWNER_REQUEST_PATH = os.getenv("HOME") .. "/.config/argos-translator/owner-request.json"
 local AUTH_TOKEN_PATH = os.getenv("HOME") .. "/.config/argos-translator/auth-token"
 local CLOUD_REMOVAL_MARKER_PATH = os.getenv("HOME") .. "/.config/argos-translator/cloud-removal-pending"
+local OWNER_PROTOCOL_VERSION = 1
+local legacyInstanceID = nil
+local ownerRequestEpoch = nil
+local ownerRequestNativeInstanceID = nil
+local legacyOwnerState = "starting"
+local statusSequence = 0
 local ENGINE_SHORT = { volc = "云端", apple = "苹果" }
 local ENGINE_SOURCE = { volc = "火山云端", apple = "苹果端上翻译" }
 -- Engine failures come back as error codes with the source text echoed in
@@ -107,12 +114,91 @@ local function isPaused()
     return value == "1"
 end
 
+local function canonicalUUID(value)
+    if type(value) ~= "string" then return nil end
+    local normalized = value:lower()
+    if normalized:match(
+        "^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]%-"
+        .. "[0-9a-f][0-9a-f][0-9a-f][0-9a-f]%-"
+        .. "[0-9a-f][0-9a-f][0-9a-f][0-9a-f]%-"
+        .. "[0-9a-f][0-9a-f][0-9a-f][0-9a-f]%-"
+        .. "[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$"
+    ) then
+        return normalized
+    end
+    return nil
+end
+
+local function newLegacyInstanceID()
+    if hs.host and type(hs.host.uuid) == "function" then
+        local ok, value = pcall(hs.host.uuid)
+        local normalized = ok and canonicalUUID(value) or nil
+        if normalized then return normalized end
+    end
+    -- `hs.host.uuid()` is available in supported Hammerspoon releases. This
+    -- fallback keeps an older build fail-operational without weakening the
+    -- native handoff: the native side accepts only canonical UUID instances,
+    -- so a fallback instance can report health but can never authorize native.
+    return "legacy-instance-unavailable"
+end
+
+local function readOwnerRequest()
+    local f, _, errno = io.open(OWNER_REQUEST_PATH, "r")
+    if not f then
+        if errno == 2 then return { kind = "absent" } end
+        return { kind = "unavailable" }
+    end
+    local raw = f:read("*a")
+    f:close()
+    if type(raw) ~= "string" or #raw == 0 or #raw > 1024 then
+        return { kind = "invalid" }
+    end
+    local ok, decoded = pcall(hs.json.decode, raw)
+    if not ok or type(decoded) ~= "table" then
+        return { kind = "invalid" }
+    end
+    local allowed = {
+        version = true,
+        requested_owner = true,
+        epoch = true,
+        native_instance_id = true,
+    }
+    local keyCount = 0
+    for key, _ in pairs(decoded) do
+        if not allowed[key] then return { kind = "invalid" } end
+        keyCount = keyCount + 1
+    end
+    local epoch = canonicalUUID(decoded.epoch)
+    local nativeInstanceID = canonicalUUID(decoded.native_instance_id)
+    if keyCount ~= 4
+        or decoded.version ~= OWNER_PROTOCOL_VERSION
+        or decoded.requested_owner ~= "native"
+        or not epoch
+        or not nativeInstanceID then
+        return { kind = "invalid" }
+    end
+    return {
+        kind = "native",
+        epoch = epoch,
+        native_instance_id = nativeInstanceID,
+    }
+end
+
 local function writeStatus(moduleLoaded)
+    statusSequence = statusSequence + 1
     local status = {
         module_loaded = moduleLoaded and true or false,
         accessibility = hs.accessibilityState(false) and true or false,
         watcher_active = tapWatcher ~= nil and tapWatcher:isEnabled() or false,
+        active_request = activeRequest ~= nil and activeRequest.finished ~= true,
+        popup_visible = activeCanvas ~= nil,
         paused = isPaused(),
+        owner_protocol_version = OWNER_PROTOCOL_VERSION,
+        legacy_instance_id = legacyInstanceID,
+        owner_state = legacyOwnerState,
+        owner_request_epoch = ownerRequestEpoch,
+        owner_request_native_instance_id = ownerRequestNativeInstanceID,
+        status_sequence = statusSequence,
         updated_at = os.time(),
     }
     local ok, encoded = pcall(hs.json.encode, status)
@@ -528,6 +614,49 @@ local function stopRequestTimers(request)
     request.timers = {}
 end
 
+-- Relinquishing the legacy owner is a data-plane barrier, not just a watcher
+-- toggle. Tombstone the current generation before stopping external work so
+-- synchronous or already-queued callbacks can only observe stale ownership.
+local function quiesceLegacyOwner()
+    requestGeneration = requestGeneration + 1
+    if activeRequest then stopRequestTimers(activeRequest) end
+    activeRequest = nil
+    if tapWatcher and tapWatcher:isEnabled() then tapWatcher:stop() end
+    optDown = false
+    optPressTime = 0
+    lastTapTime = 0
+    sawOtherKey = false
+    dismiss()
+end
+
+local function reconcileLegacyOwner()
+    local request = readOwnerRequest()
+    if request.kind == "native" then
+        quiesceLegacyOwner()
+        ownerRequestEpoch = request.epoch
+        ownerRequestNativeInstanceID = request.native_instance_id
+        legacyOwnerState = "yielded"
+        return
+    end
+
+    ownerRequestEpoch = nil
+    ownerRequestNativeInstanceID = nil
+    if request.kind ~= "absent" then
+        quiesceLegacyOwner()
+        legacyOwnerState = "blocked"
+        return
+    end
+
+    if isPaused() then
+        quiesceLegacyOwner()
+        legacyOwnerState = "paused"
+        return
+    end
+
+    if tapWatcher and not tapWatcher:isEnabled() then tapWatcher:start() end
+    legacyOwnerState = "legacy_active"
+end
+
 local function beginRequest()
     requestGeneration = requestGeneration + 1
     if activeRequest then stopRequestTimers(activeRequest) end
@@ -827,11 +956,7 @@ end
 local function startExternalEngineWatcher()
     if externalEngineWatcher then externalEngineWatcher:stop() end
     externalEngineWatcher = hs.timer.doEvery(1.0, function()
-        local paused = isPaused()
-        if tapWatcher then
-            if paused and tapWatcher:isEnabled() then tapWatcher:stop() end
-            if not paused and not tapWatcher:isEnabled() then tapWatcher:start() end
-        end
+        reconcileLegacyOwner()
         writeStatus(true)
         local requested = readPersistedEngine()
         if (requested == "volc" or currentEngine == "volc")
@@ -962,13 +1087,21 @@ end
 
 function M.start()
     rotateLogIfNeeded()
+    if activeRequest then stopRequestTimers(activeRequest) end
+    activeRequest = nil
+    requestGeneration = requestGeneration + 1
+    dismiss()
     if tapWatcher then tapWatcher:stop() end
+    if not legacyInstanceID then legacyInstanceID = newLegacyInstanceID() end
+    legacyOwnerState = "starting"
     tapWatcher = hs.eventtap.new(
         { hs.eventtap.event.types.flagsChanged, hs.eventtap.event.types.keyDown },
         onFlagsOrKey
     )
-    tapWatcher:start()
-    if isPaused() then tapWatcher:stop() end
+    -- Reconcile before starting the event tap. A durable native request that
+    -- survived a crash/reload can therefore never observe a transient legacy
+    -- watcher during Hammerspoon startup.
+    reconcileLegacyOwner()
     startExternalEngineWatcher()
     -- The native app is the single Juyi menu-bar surface. Hammerspoon keeps
     -- only the hotkey, popup and engine watcher.
@@ -979,9 +1112,7 @@ function M.start()
 end
 
 function M.stop()
-    if activeRequest then stopRequestTimers(activeRequest) end
-    activeRequest = nil
-    requestGeneration = requestGeneration + 1
+    quiesceLegacyOwner()
     if tapWatcher then
         tapWatcher:stop()
         tapWatcher = nil
@@ -991,8 +1122,8 @@ function M.stop()
         menubar = nil
     end
     if externalEngineWatcher then externalEngineWatcher:stop(); externalEngineWatcher = nil end
+    legacyOwnerState = "stopped"
     writeStatus(false)
-    dismiss()
 end
 
 M.start()

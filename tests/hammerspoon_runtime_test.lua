@@ -20,9 +20,16 @@ local state = {
     alerts = {},
     authToken = VALID_TOKEN,
     cloudRemovalMarker = "absent",
+    ownerRequest = "absent",
+    paused = false,
     persistedEngine = nil,
     canvasCount = 0,
+    statusWrites = {},
 }
+
+local OWNER_EPOCH = "11111111-2222-3333-4444-555555555555"
+local NATIVE_INSTANCE = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+local LEGACY_INSTANCE = "99999999-8888-7777-6666-555555555555"
 
 local function expect(condition, message)
     if not condition then error(message, 2) end
@@ -44,6 +51,27 @@ end
 local fakeHome = "__juyi_hammerspoon_test_home__"
 local realOpen = io.open
 io.open = function(path, mode)
+    if path == fakeHome .. "/.config/argos-translator/owner-request.json"
+        and mode == "r" then
+        if state.ownerRequest == "absent" then
+            return nil, "No such file or directory", 2
+        end
+        if state.ownerRequest == "unavailable" then
+            return nil, "Permission denied", 13
+        end
+        return {
+            read = function() return state.ownerRequest end,
+            close = function() end,
+        }
+    end
+    if path == fakeHome .. "/.config/argos-translator/hs-paused"
+        and mode == "r" then
+        if not state.paused then return nil, "No such file or directory", 2 end
+        return {
+            read = function() return "1" end,
+            close = function() end,
+        }
+    end
     if path == fakeHome .. "/.config/argos-translator/auth-token" and mode == "r" then
         if state.authToken == nil then return nil, "No such file or directory", 2 end
         return {
@@ -138,12 +166,34 @@ hs = {
     },
     json = {
         encode = function(value)
+            if type(value) == "table" and value.module_loaded ~= nil then
+                state.lastStatus = value
+                table.insert(state.statusWrites, value)
+                return "encoded-status"
+            end
             if type(value) == "table" and value.text ~= nil then
                 return "encoded-request:" .. tostring(value.engine) .. ":" .. tostring(value.text)
             end
             return "encoded-request"
         end,
         decode = function(value)
+            if value == "valid-native-owner-request" then
+                return {
+                    version = 1,
+                    requested_owner = "native",
+                    epoch = OWNER_EPOCH,
+                    native_instance_id = NATIVE_INSTANCE,
+                }
+            end
+            if value == "native-owner-request-with-extra-key" then
+                return {
+                    version = 1,
+                    requested_owner = "native",
+                    epoch = OWNER_EPOCH,
+                    native_instance_id = NATIVE_INSTANCE,
+                    extra = true,
+                }
+            end
             if value == "health-response" then
                 return {
                     engines = { apple = true, volc = true },
@@ -204,6 +254,7 @@ hs = {
         show = function(message) table.insert(state.alerts, message) end,
     },
     http = {},
+    host = { uuid = function() return LEGACY_INSTANCE end },
 }
 
 hs.canvas.new = function(frame)
@@ -296,6 +347,17 @@ local function fireLatestTriggerTimer()
     error("double-tap did not schedule a hotkey trigger")
 end
 
+local function fireLatestOwnerPoll()
+    for index = #state.timers, 1, -1 do
+        local timer = state.timers[index]
+        if timer.delay == 1.0 and timer.repeating and timer.enabled then
+            timer:fire()
+            return
+        end
+    end
+    error("owner reconciliation timer not found")
+end
+
 local function requestTimers()
     local found = {}
     for index = #state.timers, 1, -1 do
@@ -333,6 +395,12 @@ end
 -- Hammerspoon, giving the test access through the actual event callbacks.
 local module = dofile(sourcePath)
 expectEqual(#state.gets, 1, "module startup should issue one health request")
+expectEqual(state.tapWatcher:isEnabled(), true, "legacy watcher should start without a request")
+expectEqual(state.lastStatus.owner_protocol_version, 1, "owner protocol version missing")
+expectEqual(state.lastStatus.legacy_instance_id, LEGACY_INSTANCE, "legacy instance mismatch")
+expectEqual(state.lastStatus.owner_state, "legacy_active", "legacy owner state mismatch")
+expectEqual(state.lastStatus.active_request, false, "startup reported an active request")
+expectEqual(state.lastStatus.popup_visible, false, "startup reported a popup")
 assertAuthorization(
     state.gets[1].headers,
     "Bearer " .. VALID_TOKEN,
@@ -373,8 +441,66 @@ for name, timer in pairs(secondTimers) do
     expect(timer.enabled, "stale response stopped current " .. name .. " timer")
 end
 
+
+-- A durable native owner request is a full legacy data-plane barrier. The
+-- watcher, pending request, timers, popup and gesture state must be tombstoned
+-- before an epoch-bound yielded acknowledgement is published.
+state.ownerRequest = "valid-native-owner-request"
+fireLatestOwnerPoll()
+expectEqual(state.tapWatcher:isEnabled(), false, "native request left watcher active")
+expectEqual(state.currentCanvas, nil, "native request left popup visible")
+expectEqual(state.lastStatus.owner_state, "yielded", "native request was not acknowledged")
+expectEqual(state.lastStatus.owner_request_epoch, OWNER_EPOCH, "owner epoch mismatch")
+expectEqual(
+    state.lastStatus.owner_request_native_instance_id,
+    NATIVE_INSTANCE,
+    "native instance acknowledgement mismatch"
+)
+expectEqual(state.lastStatus.watcher_active, false, "yielded status reported watcher")
+expectEqual(state.lastStatus.active_request, false, "yielded status reported request")
+expectEqual(state.lastStatus.popup_visible, false, "yielded status reported popup")
+local yieldedCanvasCount = state.canvasCount
+state.responses.yieldedLate = {
+    result = "不得重现",
+    engine = "apple",
+    elapsed_ms = 8,
+    warnings = {},
+}
+secondPost.callback(200, "yieldedLate", {})
+expectEqual(state.canvasCount, yieldedCanvasCount, "yielded request reopened a popup")
+
+-- Removing the request is an explicit return to the legacy owner. Hammerspoon
+-- may resume only after it observes confirmed absence.
+state.ownerRequest = "absent"
+fireLatestOwnerPoll()
+expectEqual(state.tapWatcher:isEnabled(), true, "legacy watcher did not resume")
+expectEqual(state.lastStatus.owner_state, "legacy_active", "legacy owner did not resume")
+expectEqual(state.lastStatus.owner_request_epoch, nil, "stale owner epoch survived resume")
+
+-- Pause is the same full kill barrier, not just a watcher toggle.
+local pausedPost = triggerSelection("pause barrier")
+state.paused = true
+fireLatestOwnerPoll()
+expectEqual(state.tapWatcher:isEnabled(), false, "pause left watcher active")
+expectEqual(state.currentCanvas, nil, "pause left popup visible")
+expectEqual(state.lastStatus.owner_state, "paused", "pause state mismatch")
+expectEqual(state.lastStatus.active_request, false, "pause left request active")
+local pausedCanvasCount = state.canvasCount
+state.responses.pausedLate = {
+    result = "暂停后迟到",
+    engine = "apple",
+    elapsed_ms = 9,
+    warnings = {},
+}
+pausedPost.callback(200, "pausedLate", {})
+expectEqual(state.canvasCount, pausedCanvasCount, "pause allowed late popup")
+state.paused = false
+fireLatestOwnerPoll()
+expectEqual(state.tapWatcher:isEnabled(), true, "unpause did not resume legacy watcher")
+
 -- A long successful response is clipped to the usable screen, visibly marked,
 -- and still copies the complete unmodified translation.
+secondPost = triggerSelection("second after owner barrier")
 local fullTranslation = string.rep("完整译文", 200)
 state.responses.second = {
     result = fullTranslation,
@@ -496,6 +622,36 @@ expect(
 )
 
 module.stop()
+
+-- Reload must reconcile before ever starting the new watcher. A durable
+-- request therefore survives both Juyi and Hammerspoon crashes without a
+-- transient dual-owner window.
+state.ownerRequest = "valid-native-owner-request"
+local yieldedStartupModule = dofile(sourcePath)
+expectEqual(state.tapWatcher:isEnabled(), false, "startup briefly enabled yielded watcher")
+expectEqual(state.lastStatus.owner_state, "yielded", "startup did not preserve yield")
+expectEqual(state.lastStatus.owner_request_epoch, OWNER_EPOCH, "startup yield epoch mismatch")
+yieldedStartupModule.stop()
+
+-- Invalid, oversized or unavailable control state is fail-closed. It cannot
+-- mint a yielded acknowledgement and cannot fall back to a legacy watcher.
+state.ownerRequest = "native-owner-request-with-extra-key"
+local invalidOwnerModule = dofile(sourcePath)
+expectEqual(state.tapWatcher:isEnabled(), false, "invalid owner request enabled watcher")
+expectEqual(state.lastStatus.owner_state, "blocked", "invalid owner request was not blocked")
+expectEqual(state.lastStatus.owner_request_epoch, nil, "invalid request acknowledged an epoch")
+invalidOwnerModule.stop()
+
+state.ownerRequest = "unavailable"
+local unavailableOwnerModule = dofile(sourcePath)
+expectEqual(state.tapWatcher:isEnabled(), false, "unavailable owner request enabled watcher")
+expectEqual(
+    state.lastStatus.owner_state,
+    "blocked",
+    "unavailable owner request was not blocked"
+)
+unavailableOwnerModule.stop()
+state.ownerRequest = "absent"
 
 -- A removal marker is a per-request data-plane kill switch. Even if the app
 -- entered removal after this module loaded with a persisted cloud choice, the

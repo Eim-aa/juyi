@@ -6,6 +6,11 @@ Engineering note: [NATIVE_OPTION_MONITOR.md](NATIVE_OPTION_MONITOR.md) records
 the disabled, development-only native double-Option foundation. The active
 product trigger remains Hammerspoon.
 
+Engineering note:
+[NATIVE_OWNER_HANDOFF_PROTOCOL.md](NATIVE_OWNER_HANDOFF_PROTOCOL.md) records the
+durable, epoch-bound legacy-owner quiesce protocol and the pure native
+acceptance policy. It does not yet enable the native monitor.
+
 Engineering note: [NATIVE_TRANSLATION_OVERLAY.md](NATIVE_TRANSLATION_OVERLAY.md)
 records the compile-time-gated native overlay component preview. It uses fixed
 Debug fixtures only; the active translation popup remains Hammerspoon.
