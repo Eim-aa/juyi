@@ -59,6 +59,7 @@
 		A000000000000000000000A5 /* NativeOwnerHandoffStatusReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */; };
 		A000000000000000000000A7 /* NativeOwnerHandoffLabModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A6 /* NativeOwnerHandoffLabModel.swift */; };
 		A000000000000000000000A9 /* NativeOwnerHandoffLabHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A8 /* NativeOwnerHandoffLabHost.swift */; };
+		A000000000000000000000AB /* NativeOwnerActivationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -121,6 +122,7 @@
 		A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffStatusReader.swift; sourceTree = "<group>"; };
 		A000000000000000000000A6 /* NativeOwnerHandoffLabModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffLabModel.swift; sourceTree = "<group>"; };
 		A000000000000000000000A8 /* NativeOwnerHandoffLabHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffLabHost.swift; sourceTree = "<group>"; };
+		A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerActivationCoordinator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -191,6 +193,7 @@
 				A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */,
 				A000000000000000000000A6 /* NativeOwnerHandoffLabModel.swift */,
 				A000000000000000000000A8 /* NativeOwnerHandoffLabHost.swift */,
+				A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */,
 				A00000000000000000000030 /* NativeOptionFeature.swift */,
 				A00000000000000000000066 /* NativeTranslationOverlayModel.swift */,
 				A00000000000000000000067 /* NativeTranslationOverlayAnchorPolicy.swift */,
@@ -361,6 +364,7 @@
 				A000000000000000000000A5 /* NativeOwnerHandoffStatusReader.swift in Sources */,
 				A000000000000000000000A7 /* NativeOwnerHandoffLabModel.swift in Sources */,
 				A000000000000000000000A9 /* NativeOwnerHandoffLabHost.swift in Sources */,
+				A000000000000000000000AB /* NativeOwnerActivationCoordinator.swift in Sources */,
 				A00000000000000000000070 /* NativeTranslationOverlayModel.swift in Sources */,
 				A00000000000000000000071 /* NativeTranslationOverlayAnchorPolicy.swift in Sources */,
 				A00000000000000000000072 /* NativeTranslationOverlayInteractionPolicy.swift in Sources */,

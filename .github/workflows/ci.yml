@@ -51,7 +51,7 @@ jobs:
             grep -Fq "$source" Juyi.xcodeproj/project.pbxproj
             grep -Fq "$source" scripts/build_macos_app.sh
           done
-          for source in NativeSelectionCaptureLabModel.swift NativeSelectionCaptureLabHost.swift NativeOwnerHandoffProtocol.swift NativeOwnerHandoffStore.swift NativeOwnerHandoffWorkflow.swift NativeOwnerHandoffStatusReader.swift NativeOwnerHandoffLabModel.swift NativeOwnerHandoffLabHost.swift; do
+          for source in NativeSelectionCaptureLabModel.swift NativeSelectionCaptureLabHost.swift NativeOwnerHandoffProtocol.swift NativeOwnerHandoffStore.swift NativeOwnerHandoffWorkflow.swift NativeOwnerHandoffStatusReader.swift NativeOwnerHandoffLabModel.swift NativeOwnerHandoffLabHost.swift NativeOwnerActivationCoordinator.swift; do
             grep -Fq "$source" Juyi.xcodeproj/project.pbxproj
             grep -Fq "$source" scripts/build_macos_app.sh
           done
@@ -83,6 +83,23 @@ jobs:
             fi
             index=$((index + 1))
           done
+      - name: Build exact Debug native owner activation foundation
+        run: >-
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiNativeOwnerActivation"
+          CODE_SIGNING_ALLOWED=NO
+          ONLY_ACTIVE_ARCH=NO ARCHS='arm64 x86_64'
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_OWNER_HANDOFF_LAB JUYI_NATIVE_OWNER_ACTIVATION_LAB'
+          SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+          build
+      - name: Reject incomplete or mixed native owner activation foundation
+        run: |
+          if xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiNativeOwnerActivationMissingHandoff" CODE_SIGNING_ALLOWED=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_OWNER_ACTIVATION_LAB' build; then
+            exit 1
+          fi
+          if xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiNativeOwnerActivationMixedOption" CODE_SIGNING_ALLOWED=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_OWNER_HANDOFF_LAB JUYI_NATIVE_OWNER_ACTIVATION_LAB JUYI_NATIVE_OPTION_MONITOR' build; then
+            exit 1
+          fi
       - name: Build Xcode Debug configuration
         run: >-
           xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
@@ -227,7 +244,7 @@ jobs:
           xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
           -configuration Release -derivedDataPath "$RUNNER_TEMP/JuyiReleaseAllDevelopmentFlags"
           CODE_SIGNING_ALLOWED=NO
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_OWNER_HANDOFF_LAB JUYI_NATIVE_SELECTION_CAPTURE_LAB JUYI_NATIVE_OPTION_MONITOR JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB JUYI_NATIVE_APPLE_RESULT_LAB_BINDING'
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_OWNER_HANDOFF_LAB JUYI_NATIVE_OWNER_ACTIVATION_LAB JUYI_NATIVE_SELECTION_CAPTURE_LAB JUYI_NATIVE_OPTION_MONITOR JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB JUYI_NATIVE_APPLE_RESULT_LAB_BINDING'
           SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
           build
       - name: Verify native owner handoff lab compile-time gate
@@ -247,6 +264,24 @@ jobs:
           find "$opt_in_dir" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/native-owner-handoff-store.loads"
           for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
             if grep -Fq "$framework" "$RUNNER_TEMP/native-owner-handoff-store.loads"; then exit 1; fi
+          done
+      - name: Verify native owner activation foundation compile-time gate
+        run: |
+          opt_in_dir="$RUNNER_TEMP/JuyiNativeOwnerActivation/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          default_debug_dir="$RUNNER_TEMP/JuyiDebug/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          release_all_dir="$RUNNER_TEMP/JuyiReleaseAllDevelopmentFlags/Build/Products/Release/Juyi.app/Contents/MacOS"
+          scripts/verify_macos_binary.sh "$opt_in_dir/Juyi" 15.0
+          for token in 'juyi-native-owner-activation-coordinator-v1' 'NativeOwnerActivationCoordinator' 'revocationRequired'; do
+            LC_ALL=C grep -aFq "$token" "$opt_in_dir"/*
+            if LC_ALL=C grep -aFq "$token" "$default_debug_dir"/*; then exit 1; fi
+            if LC_ALL=C grep -aFq "$token" "$release_all_dir"/*; then exit 1; fi
+          done
+          for token in 'NativeOptionMonitor' 'NativeOptionDevelopmentHarness' 'juyi-native-selection-capture-lab-v1' 'juyi-native-translation-domain-v1'; do
+            if LC_ALL=C grep -aFq "$token" "$opt_in_dir"/*; then exit 1; fi
+          done
+          find "$opt_in_dir" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/native-owner-activation.loads"
+          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
+            if grep -Fq "$framework" "$RUNNER_TEMP/native-owner-activation.loads"; then exit 1; fi
           done
       - name: Verify native selection Capture Lab compile-time gate
         run: |
@@ -466,6 +501,20 @@ jobs:
           for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
             if grep -Fq "$framework" "$RUNNER_TEMP/legacy-native-owner-handoff-store.loads"; then exit 1; fi
           done
+      - name: Build exact legacy Debug native owner activation foundation
+        run: |
+          CONFIGURATION=Debug SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_OWNER_HANDOFF_LAB JUYI_NATIVE_OWNER_ACTIVATION_LAB' scripts/build_macos_app.sh
+          for token in 'juyi-native-owner-activation-coordinator-v1' 'NativeOwnerActivationCoordinator' 'revocationRequired'; do
+            LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*
+          done
+          for token in 'NativeOptionMonitor' 'NativeOptionDevelopmentHarness' 'juyi-native-selection-capture-lab-v1' 'juyi-native-translation-domain-v1'; do
+            if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          done
+          scripts/verify_macos_binary.sh build/Juyi.app/Contents/MacOS/Juyi 15.0
+          find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-native-owner-activation.loads"
+          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
+            if grep -Fq "$framework" "$RUNNER_TEMP/legacy-native-owner-activation.loads"; then exit 1; fi
+          done
       - name: Reject legacy Debug native owner handoff lab conflict
         run: |
           if CONFIGURATION=Debug SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_OWNER_HANDOFF_LAB JUYI_NATIVE_SELECTION_CAPTURE_LAB' scripts/build_macos_app.sh; then
@@ -575,8 +624,8 @@ jobs:
           done
       - name: Build legacy Release with every development flag injected
         run: |
-          CONFIGURATION=Release SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_OWNER_HANDOFF_LAB JUYI_NATIVE_SELECTION_CAPTURE_LAB JUYI_NATIVE_OPTION_MONITOR JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB JUYI_NATIVE_APPLE_RESULT_LAB_BINDING' scripts/build_macos_app.sh
-          for token in 'juyi-native-owner-handoff-store-v1' 'NativeOwnerHandoffStore' 'NativeOwnerHandoffLabModel' '开发：双 Option owner 交接实验室…' 'native-owner.lock' 'owner-request.json' 'juyi-native-selection-capture-lab-v1' 'NativeSelectionCaptureLabCoordinator' '一次性取词实验室' '开发：原生取词实验室…' 'juyi-native-apple-translation-adapter-v1' 'The weather is pleasant today.' '开发：测试 Apple 离线翻译…' 'juyi-native-volc-translation-adapter-v1' 'io.github.Eim-aa.Juyi.debug.native-volc.active' 'Library/Application Support/io.github.Eim-aa.Juyi/NativeVolcDebug' 'NativeVolcTranslationAdapterSheet' '此页面连接真实火山翻译 API，不是模拟器。' '开发：测试火山云端翻译…' 'juyi-native-translation-result-lab-v1' 'NativeTranslationResultLabCoordinator' 'Debug 固定样例 · 模拟执行' '开发：结果界面实验室…' 'juyi-native-apple-result-lab-binding-v1' 'NativeTranslationAppleResultLabCoordinator' '开发：真实 Apple 结果实验室…' '正在运行真实 Apple Translation…'; do
+          CONFIGURATION=Release SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_OWNER_HANDOFF_LAB JUYI_NATIVE_OWNER_ACTIVATION_LAB JUYI_NATIVE_SELECTION_CAPTURE_LAB JUYI_NATIVE_OPTION_MONITOR JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB JUYI_NATIVE_APPLE_RESULT_LAB_BINDING' scripts/build_macos_app.sh
+          for token in 'juyi-native-owner-handoff-store-v1' 'NativeOwnerHandoffStore' 'NativeOwnerHandoffLabModel' '开发：双 Option owner 交接实验室…' 'juyi-native-owner-activation-coordinator-v1' 'NativeOwnerActivationCoordinator' 'native-owner.lock' 'owner-request.json' 'juyi-native-selection-capture-lab-v1' 'NativeSelectionCaptureLabCoordinator' '一次性取词实验室' '开发：原生取词实验室…' 'juyi-native-apple-translation-adapter-v1' 'The weather is pleasant today.' '开发：测试 Apple 离线翻译…' 'juyi-native-volc-translation-adapter-v1' 'io.github.Eim-aa.Juyi.debug.native-volc.active' 'Library/Application Support/io.github.Eim-aa.Juyi/NativeVolcDebug' 'NativeVolcTranslationAdapterSheet' '此页面连接真实火山翻译 API，不是模拟器。' '开发：测试火山云端翻译…' 'juyi-native-translation-result-lab-v1' 'NativeTranslationResultLabCoordinator' 'Debug 固定样例 · 模拟执行' '开发：结果界面实验室…' 'juyi-native-apple-result-lab-binding-v1' 'NativeTranslationAppleResultLabCoordinator' '开发：真实 Apple 结果实验室…' '正在运行真实 Apple Translation…'; do
             if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           done
           find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-release-all-flags.loads"
@@ -633,6 +682,10 @@ jobs:
         run: |
           swiftc -swift-version 5 -strict-concurrency=complete -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_OWNER_HANDOFF_LAB -framework Combine macos/NativeOwnerHandoffProtocol.swift macos/NativeOwnerHandoffStore.swift macos/NativeOwnerHandoffWorkflow.swift macos/NativeOwnerHandoffStatusReader.swift macos/NativeOwnerHandoffLabModel.swift tests/NativeOwnerHandoffLabModelTests.swift -o "$RUNNER_TEMP/native-owner-handoff-lab-model-tests"
           "$RUNNER_TEMP/native-owner-handoff-lab-model-tests"
+      - name: Run native owner activation coordinator tests
+        run: |
+          swiftc -swift-version 5 -strict-concurrency=complete -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_OWNER_HANDOFF_LAB -D JUYI_NATIVE_OWNER_ACTIVATION_LAB macos/NativeOwnerHandoffProtocol.swift macos/NativeOwnerHandoffStore.swift macos/NativeOwnerHandoffWorkflow.swift macos/NativeOwnerActivationCoordinator.swift tests/NativeOwnerActivationCoordinatorTests.swift -o "$RUNNER_TEMP/native-owner-activation-coordinator-tests"
+          "$RUNNER_TEMP/native-owner-activation-coordinator-tests"
       - name: Run native Option monitor lifecycle tests
         run: |
           swiftc -parse-as-library -framework AppKit -framework ApplicationServices macos/AccessibilityController.swift macos/DoubleOptionStateMachine.swift macos/NativeOptionEventAdapter.swift macos/NativeSelectionReader.swift macos/NativeSelectionCaptureCoordinator.swift macos/NativeOptionMonitor.swift tests/NativeOptionMonitorTests.swift -o "$RUNNER_TEMP/native-option-monitor-tests"

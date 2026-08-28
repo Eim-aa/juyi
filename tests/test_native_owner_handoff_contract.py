@@ -34,6 +34,12 @@ LAB_HOST = (ROOT / "macos/NativeOwnerHandoffLabHost.swift").read_text(
 LAB_TESTS = (ROOT / "tests/NativeOwnerHandoffLabModelTests.swift").read_text(
     encoding="utf-8"
 )
+ACTIVATION = (ROOT / "macos/NativeOwnerActivationCoordinator.swift").read_text(
+    encoding="utf-8"
+)
+ACTIVATION_TESTS = (
+    ROOT / "tests/NativeOwnerActivationCoordinatorTests.swift"
+).read_text(encoding="utf-8")
 APP = (ROOT / "macos/JuyiMenuBar.swift").read_text(encoding="utf-8")
 SWIFT_TESTS = (ROOT / "tests/NativeOwnerHandoffProtocolTests.swift").read_text(
     encoding="utf-8"
@@ -274,6 +280,40 @@ def test_disclosed_lab_is_explicit_monotonic_and_lifecycle_complete():
     assert "testCloseCancelsAndLatePollCannotReopen" in LAB_TESTS
 
 
+def test_activation_foundation_orders_effect_stop_before_owner_return():
+    assert "JUYI_NATIVE_OWNER_ACTIVATION_LAB requires" in ACTIVATION
+    for required in (
+        "juyi-native-owner-activation-coordinator-v1",
+        "readyToActivate",
+        "nativeActive",
+        "revocationRequired",
+        "effect.start()",
+        "effect.stop()",
+        "returnLeaseAfterConfirmedStop",
+        "Keep both the durable request and cross-process process lock",
+        "authorizationRevoked",
+    ):
+        assert required in ACTIVATION
+    for forbidden in (
+        "NSEvent",
+        "AXUIElement",
+        "NSWorkspace",
+        "NSPasteboard",
+        "URLSession",
+        "TranslationSession",
+        "SecItem",
+    ):
+        assert forbidden not in ACTIVATION
+    for required_test in (
+        "testEffectCannotStartBeforeExactYield",
+        "testStartAndStopOrderingProtectsRequest",
+        "testUncertainStartMustStopBeforeReturn",
+        "testUncertainActiveStopNeverReturnsEarly",
+        "testDuplicateActivationAndLateStatusAreIgnored",
+    ):
+        assert required_test in ACTIVATION_TESTS
+
+
 def test_protocol_tests_cover_every_negative_and_are_in_all_build_paths():
     for reason in (
         "requestInvalid",
@@ -300,11 +340,13 @@ def test_protocol_tests_cover_every_negative_and_are_in_all_build_paths():
         assert "NativeOwnerHandoffStatusReader.swift" in source
         assert "NativeOwnerHandoffLabModel.swift" in source
         assert "NativeOwnerHandoffLabHost.swift" in source
+        assert "NativeOwnerActivationCoordinator.swift" in source
     assert "NativeOwnerHandoffProtocolTests.swift" in CI
     assert "NativeOwnerHandoffStoreTests.swift" in CI
     assert "NativeOwnerHandoffWorkflowTests.swift" in CI
     assert "NativeOwnerHandoffStatusReaderTests.swift" in CI
     assert "NativeOwnerHandoffLabModelTests.swift" in CI
+    assert "NativeOwnerActivationCoordinatorTests.swift" in CI
     assert "hammerspoon_runtime_test.lua" in CI
 
 
@@ -325,5 +367,6 @@ def test_documentation_keeps_activation_and_production_no_go_explicit():
         WORKFLOW_TESTS,
         STATUS_READER, STATUS_READER_TESTS,
         LAB_MODEL, LAB_HOST, LAB_TESTS, APP,
+        ACTIVATION, ACTIVATION_TESTS,
     ):
         assert user_script not in source

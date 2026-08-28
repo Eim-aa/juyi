@@ -39,6 +39,11 @@ if [[ "$CONFIGURATION" == "Debug" ]]; then
     ACTIVE_CONDITIONS=" ${SWIFT_ACTIVE_COMPILATION_CONDITIONS:-} "
     HAS_NATIVE_DOMAIN=false
     HAS_NATIVE_OVERLAY=false
+    # Forward the activation-foundation flag independently so a missing
+    # handoff prerequisite fails in source instead of silently compiling out.
+    if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_OWNER_ACTIVATION_LAB "* ]]; then
+        SWIFT_FLAGS+=(-D JUYI_NATIVE_OWNER_ACTIVATION_LAB)
+    fi
     if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_OWNER_HANDOFF_LAB "* ]]; then
         SWIFT_FLAGS+=(-warnings-as-errors)
         SWIFT_FLAGS+=(-D JUYI_NATIVE_OWNER_HANDOFF_LAB)
@@ -129,6 +134,7 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/NativeOwnerHandoffStatusReader.swift" \
         "$ROOT/macos/NativeOwnerHandoffLabModel.swift" \
         "$ROOT/macos/NativeOwnerHandoffLabHost.swift" \
+        "$ROOT/macos/NativeOwnerActivationCoordinator.swift" \
         "$ROOT/macos/NativeOptionMonitor.swift" \
         "$ROOT/macos/NativeOptionFeature.swift" \
         "$ROOT/macos/NativeTranslationDomain.swift" \

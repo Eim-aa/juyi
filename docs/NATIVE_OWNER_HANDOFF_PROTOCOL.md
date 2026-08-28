@@ -144,6 +144,27 @@ lab never starts an Option monitor or reads AX, selection, keyboard characters,
 clipboard, credentials, network, translation engines, or the translation
 overlay.
 
+## Native activation foundation
+
+The separate Debug-only `JUYI_NATIVE_OWNER_ACTIVATION_LAB` condition requires
+the handoff condition and compiles a pure activation coordinator. It still has
+no App entry point and no real native event monitor. The coordinator is the
+single ordering authority around an injected future owner effect:
+
+1. it refuses `start()` until the exact durable request has received a fresh,
+   matching legacy-yield acknowledgement;
+2. it keeps the request and cross-process lock for the entire native-active
+   interval;
+3. every pause, stop, sleep, session, termination, authorization-revocation,
+   or user return first calls the native effect's stop boundary;
+4. it removes the request only after stop is confirmed; and
+5. an uncertain start or stop enters `revocationRequired`, preserving both the
+   request and lock until an explicit retry confirms the effect stopped.
+
+This makes an uncertain native effect fail closed with Hammerspoon still
+yielded. It is activation architecture, not activation approval: the current
+effect in tests is injected and no build starts a native monitor yet.
+
 ## Crash and restart behavior
 
 - Hammerspoon restart while a valid request remains: reconcile before starting
@@ -160,7 +181,8 @@ overlay.
 - Signed real-device validation of the disclosed polling UI and every
   lifecycle return/recovery cutpoint.
 - Immediate native monitor/capture/domain/overlay revocation before returning
-  ownership or pausing.
+  ownership or pausing; the pure ordering boundary now exists, but no real
+  monitor is bound to it.
 - Hammerspoon/Juyi crash, reload, multi-process, stale-status and every cutpoint
   test with proof that the system has zero or one trigger owner, never two.
 - Signed macOS 15.0/latest 15.x, arm64/Intel, clean TCC, sleep/session/revoke,
