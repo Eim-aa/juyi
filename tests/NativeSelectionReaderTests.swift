@@ -2,9 +2,14 @@ import ApplicationServices
 import Foundation
 
 @main
+@MainActor
 enum NativeSelectionReaderTests {
-    private static let source = NativeSelectionTarget(
+    nonisolated private static let sourceLaunchDate = Date(
+        timeIntervalSinceReferenceDate: 1_000
+    )
+    nonisolated private static let source = NativeSelectionTarget(
         processIdentifier: 200,
+        launchDate: sourceLaunchDate,
         bundleIdentifier: "com.example.editor"
     )
 
@@ -40,6 +45,7 @@ enum NativeSelectionReaderTests {
         let ownReader = NativeSelectionReader(client: ownClient)
         let ownTarget = NativeSelectionTarget(
             processIdentifier: 100,
+            launchDate: Date(timeIntervalSinceReferenceDate: 900),
             bundleIdentifier: "io.github.Eim-aa.Juyi"
         )
         expect(
@@ -52,7 +58,11 @@ enum NativeSelectionReaderTests {
         let invalidReader = NativeSelectionReader(client: invalidClient)
         expect(
             invalidReader.readSelection(
-                for: .init(processIdentifier: 0, bundleIdentifier: nil)
+                for: .init(
+                    processIdentifier: 0,
+                    launchDate: Date(timeIntervalSinceReferenceDate: 800),
+                    bundleIdentifier: nil
+                )
             ) == .cancelled,
             "invalid PID is cancelled"
         )
@@ -69,6 +79,7 @@ enum NativeSelectionReaderTests {
         let switchedClient = StubClient()
         switchedClient.frontmostApplication = NativeSelectionTarget(
             processIdentifier: 300,
+            launchDate: Date(timeIntervalSinceReferenceDate: 1_100),
             bundleIdentifier: "com.example.settings"
         )
         let switchedReader = NativeSelectionReader(client: switchedClient)
@@ -82,6 +93,7 @@ enum NativeSelectionReaderTests {
         switchedDuringReadClient.beforeReturningSelection = {
             switchedDuringReadClient.frontmostApplication = NativeSelectionTarget(
                 processIdentifier: 300,
+                launchDate: Date(timeIntervalSinceReferenceDate: 1_200),
                 bundleIdentifier: "com.example.other"
             )
         }
@@ -97,16 +109,49 @@ enum NativeSelectionReaderTests {
             "post-AX identity check happens after the bounded read"
         )
 
+        let metadataChangedClient = StubClient()
+        metadataChangedClient.frontmostApplication = NativeSelectionTarget(
+            processIdentifier: 200,
+            launchDate: sourceLaunchDate,
+            bundleIdentifier: "com.example.different-process"
+        )
+        let metadataChangedReader = NativeSelectionReader(client: metadataChangedClient)
+        expect(
+            metadataChangedReader.readSelection(for: source)
+                == .success(text: "hello", didTruncate: false),
+            "bundle identity remains snapshot metadata"
+        )
+
         let reusedPIDClient = StubClient()
         reusedPIDClient.frontmostApplication = NativeSelectionTarget(
             processIdentifier: 200,
-            bundleIdentifier: "com.example.different-process"
+            launchDate: Date(timeIntervalSinceReferenceDate: 2_000),
+            bundleIdentifier: "com.example.editor"
         )
         let reusedPIDReader = NativeSelectionReader(client: reusedPIDClient)
         expect(
-            reusedPIDReader.readSelection(for: source)
-                == .success(text: "hello", didTruncate: false),
-            "PID is the security key while bundle identity remains snapshot metadata"
+            reusedPIDReader.readSelection(for: source) == .cancelled,
+            "same PID with a different launch date is a different process"
+        )
+        expect(
+            reusedPIDClient.requestedTargets.isEmpty,
+            "PID reuse is rejected before AX"
+        )
+
+        let reusedDuringReadClient = StubClient()
+        reusedDuringReadClient.beforeReturningSelection = {
+            reusedDuringReadClient.frontmostApplication = NativeSelectionTarget(
+                processIdentifier: 200,
+                launchDate: Date(timeIntervalSinceReferenceDate: 2_000),
+                bundleIdentifier: "com.example.editor"
+            )
+        }
+        let reusedDuringReadReader = NativeSelectionReader(
+            client: reusedDuringReadClient
+        )
+        expect(
+            reusedDuringReadReader.readSelection(for: source) == .cancelled,
+            "PID reuse during synchronous AX is rejected by the post-read identity check"
         )
     }
 
@@ -214,16 +259,42 @@ enum NativeSelectionReaderTests {
                 ]
             ),
             (
-                .subrole,
+                .role,
                 [
                     (.success, .proceed),
-                    (.noValue, .proceed),
-                    (.attributeUnsupported, .proceed),
+                    (.noValue, .finish(.unsupported)),
+                    (.attributeUnsupported, .finish(.unsupported)),
                     (.apiDisabled, .finish(.accessibilityRequired)),
                     (.notImplemented, .finish(.unsupported)),
                     (.invalidUIElement, .finish(.temporarilyUnavailable)),
                     (.cannotComplete, .finish(.temporarilyUnavailable)),
                     (.illegalArgument, .finish(.internalFailure)),
+                ]
+            ),
+            (
+                .subrole,
+                [
+                    (.success, .proceed),
+                    (.noValue, .finish(.unsupported)),
+                    (.attributeUnsupported, .finish(.unsupported)),
+                    (.apiDisabled, .finish(.accessibilityRequired)),
+                    (.notImplemented, .finish(.unsupported)),
+                    (.invalidUIElement, .finish(.temporarilyUnavailable)),
+                    (.cannotComplete, .finish(.temporarilyUnavailable)),
+                    (.illegalArgument, .finish(.internalFailure)),
+                ]
+            ),
+            (
+                .focusedElementRevalidation,
+                [
+                    (.success, .proceed),
+                    (.apiDisabled, .finish(.accessibilityRequired)),
+                    (.noValue, .finish(.cancelled)),
+                    (.attributeUnsupported, .finish(.cancelled)),
+                    (.notImplemented, .finish(.cancelled)),
+                    (.invalidUIElement, .finish(.temporarilyUnavailable)),
+                    (.cannotComplete, .finish(.temporarilyUnavailable)),
+                    (.illegalArgument, .finish(.cancelled)),
                 ]
             ),
             (
@@ -259,31 +330,118 @@ enum NativeSelectionReaderTests {
 
         expect(
             NativeSelectionAXPolicy.identityDecision(
-                elementProcessIdentifier: 200,
-                targetProcessIdentifier: 200
+                elementProcessIdentity: source.processIdentity,
+                targetProcessIdentity: source.processIdentity
             ) == .proceed,
-            "matching AX element PID proceeds"
+            "matching AX process identity proceeds"
         )
         expect(
             NativeSelectionAXPolicy.identityDecision(
-                elementProcessIdentifier: 300,
-                targetProcessIdentifier: 200
+                elementProcessIdentity: NativeSelectionProcessIdentity(
+                    processIdentifier: 200,
+                    launchDate: Date(timeIntervalSinceReferenceDate: 2_000)
+                ),
+                targetProcessIdentity: source.processIdentity
             ) == .finish(.cancelled),
-            "mismatched AX element PID cancels"
+            "same AX PID with a different launch date cancels"
         )
         expect(
-            NativeSelectionAXPolicy.subroleDecision(
-                kAXSecureTextFieldSubrole as String
+            NativeSelectionAXPolicy.identityDecision(
+                elementProcessIdentity: nil,
+                targetProcessIdentity: source.processIdentity
+            ) == .finish(.cancelled),
+            "missing AX process launch date cancels"
+        )
+        expect(
+            NativeSelectionAXPolicy.focusedElementDecision(elementsMatch: true)
+                == .proceed,
+            "the same post-read focused element proceeds"
+        )
+        expect(
+            NativeSelectionAXPolicy.focusedElementDecision(elementsMatch: false)
+                == .finish(.cancelled),
+            "a post-read focused element change cancels"
+        )
+        expect(
+            NativeSelectionAXPolicy.roleAndSubroleValueDecision(
+                roleValue: kAXTextFieldRole as CFString,
+                subroleValue: nil
+            )
+                == .finish(.unsupported),
+            "missing successful subrole value fails closed"
+        )
+        expect(
+            NativeSelectionAXPolicy.roleAndSubroleValueDecision(
+                roleValue: nil,
+                subroleValue: kAXSearchFieldSubrole as CFString
+            )
+                == .finish(.unsupported),
+            "missing successful role value fails closed"
+        )
+        expect(
+            NativeSelectionAXPolicy.roleAndSubroleValueDecision(
+                roleValue: NSNumber(value: 1),
+                subroleValue: kAXSearchFieldSubrole as CFString
+            )
+                == .finish(.unsupported),
+            "non-string role value fails closed"
+        )
+        expect(
+            NativeSelectionAXPolicy.roleAndSubroleValueDecision(
+                roleValue: kAXTextFieldRole as CFString,
+                subroleValue: NSNumber(value: 1)
+            )
+                == .finish(.unsupported),
+            "non-string subrole value fails closed"
+        )
+        expect(
+            NativeSelectionAXPolicy.roleAndSubroleDecision(
+                role: kAXTextFieldRole as String,
+                subrole: kAXSecureTextFieldSubrole as String
             ) == .finish(.secureField),
             "public secure-text subrole is blocked"
         )
         expect(
-            NativeSelectionAXPolicy.subroleDecision("AXTextField") == .proceed,
-            "ordinary text subrole proceeds"
+            NativeSelectionAXPolicy.roleAndSubroleDecision(
+                role: kAXTextFieldRole as String,
+                subrole: kAXUnknownSubrole as String
+            ) == .finish(.unsupported),
+            "public unknown subrole is blocked"
         )
         expect(
-            NativeSelectionAXPolicy.subroleDecision("password hint") == .proceed,
-            "unofficial string heuristics are not used"
+            NativeSelectionAXPolicy.roleAndSubroleDecision(
+                role: kAXUnknownRole as String,
+                subrole: kAXSearchFieldSubrole as String
+            ) == .finish(.unsupported),
+            "public unknown role is blocked"
+        )
+        expect(
+            NativeSelectionAXPolicy.roleAndSubroleDecision(
+                role: kAXTextFieldRole as String,
+                subrole: "AXCustomTextField"
+            ) == .finish(.unsupported),
+            "unreviewed custom subroles do not proceed"
+        )
+        expect(
+            NativeSelectionAXPolicy.roleAndSubroleDecision(
+                role: "",
+                subrole: kAXSearchFieldSubrole as String
+            ) == .finish(.unsupported),
+            "empty role fails closed"
+        )
+        expect(
+            NativeSelectionAXPolicy.roleAndSubroleDecision(
+                role: kAXTextFieldRole as String,
+                subrole: ""
+            ) == .finish(.unsupported),
+            "empty subrole fails closed"
+        )
+        expect(
+            NativeSelectionAXPolicy.roleAndSubroleDecision(
+                role: kAXTextFieldRole as String,
+                subrole: kAXSearchFieldSubrole as String
+            ) == .proceed,
+            "the reviewed public non-secure role/subrole pair proceeds"
         )
     }
 

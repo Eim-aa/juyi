@@ -1,6 +1,7 @@
 import Foundation
 
 @main
+@MainActor
 enum NativeSelectionCaptureCoordinatorTests {
     private final class ManualScheduler {
         private var actions: [() -> Void] = []
@@ -18,10 +19,12 @@ enum NativeSelectionCaptureCoordinatorTests {
 
     private static let firstTarget = NativeSelectionTarget(
         processIdentifier: 200,
+        launchDate: Date(timeIntervalSinceReferenceDate: 1_000),
         bundleIdentifier: "com.example.first"
     )
     private static let secondTarget = NativeSelectionTarget(
         processIdentifier: 300,
+        launchDate: Date(timeIntervalSinceReferenceDate: 1_100),
         bundleIdentifier: "com.example.second"
     )
     private static var passed = 0

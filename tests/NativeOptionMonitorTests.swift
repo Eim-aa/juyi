@@ -3,6 +3,7 @@ import Foundation
 @main
 @MainActor
 enum NativeOptionMonitorTests {
+    private static let editorLaunchDate = Date(timeIntervalSinceReferenceDate: 1_000)
     private final class Token {}
 
     private final class FakeEventSource: NativeOptionEventSource {
@@ -81,10 +82,12 @@ enum NativeOptionMonitorTests {
 
     private static let editor = NativeSelectionTarget(
         processIdentifier: 200,
+        launchDate: editorLaunchDate,
         bundleIdentifier: "com.example.editor"
     )
     private static let juyi = NativeSelectionTarget(
         processIdentifier: 100,
+        launchDate: Date(timeIntervalSinceReferenceDate: 900),
         bundleIdentifier: "io.github.Eim-aa.Juyi"
     )
     private static var passed = 0
@@ -307,11 +310,64 @@ enum NativeOptionMonitorTests {
         emitTap(raceSource, keyCode: 61, down: 0.10, up: 0.15)
         frontmost.target = NativeSelectionTarget(
             processIdentifier: 300,
+            launchDate: Date(timeIntervalSinceReferenceDate: 1_100),
             bundleIdentifier: "com.apple.systempreferences"
         )
         raceScheduler.run(0)
         expect(received == 0, "frontmost PID race cancels delivery")
         raceMonitor.stop()
+
+        let metadataSource = FakeEventSource()
+        let metadataScheduler = Scheduler()
+        let metadataFrontmost = FrontmostBox(editor)
+        var metadataReceived: [NativeSelectionTarget] = []
+        let metadataMonitor = makeMonitor(
+            source: metadataSource,
+            authorization: AuthorizationBox(),
+            frontmost: metadataFrontmost,
+            scheduler: metadataScheduler,
+            received: { metadataReceived.append($0) }
+        )
+        _ = metadataMonitor.start()
+        emitTap(metadataSource, keyCode: 58, down: 0, up: 0.05)
+        emitTap(metadataSource, keyCode: 61, down: 0.10, up: 0.15)
+        metadataFrontmost.target = NativeSelectionTarget(
+            processIdentifier: 200,
+            launchDate: editorLaunchDate,
+            bundleIdentifier: "com.example.changed-metadata"
+        )
+        metadataScheduler.run(0)
+        expect(
+            metadataReceived == [editor],
+            "bundle changes do not replace PID plus launch-date identity"
+        )
+        metadataMonitor.stop()
+
+        let reusedPIDSource = FakeEventSource()
+        let reusedPIDScheduler = Scheduler()
+        let reusedPIDFrontmost = FrontmostBox(editor)
+        var reusedPIDReceived = 0
+        let reusedPIDMonitor = makeMonitor(
+            source: reusedPIDSource,
+            authorization: AuthorizationBox(),
+            frontmost: reusedPIDFrontmost,
+            scheduler: reusedPIDScheduler,
+            received: { _ in reusedPIDReceived += 1 }
+        )
+        _ = reusedPIDMonitor.start()
+        emitTap(reusedPIDSource, keyCode: 58, down: 0, up: 0.05)
+        emitTap(reusedPIDSource, keyCode: 61, down: 0.10, up: 0.15)
+        reusedPIDFrontmost.target = NativeSelectionTarget(
+            processIdentifier: 200,
+            launchDate: Date(timeIntervalSinceReferenceDate: 2_000),
+            bundleIdentifier: "com.example.editor"
+        )
+        reusedPIDScheduler.run(0)
+        expect(
+            reusedPIDReceived == 0,
+            "same PID with a different launch date cancels delivery"
+        )
+        reusedPIDMonitor.stop()
     }
 
     private static func testNewRecognitionInvalidatesAXEvenWhenDeliveryFails() {
@@ -331,6 +387,7 @@ enum NativeOptionMonitorTests {
                 emitTap(source, keyCode: 61, down: 0.30, up: 0.35)
                 frontmost.target = NativeSelectionTarget(
                     processIdentifier: 300,
+                    launchDate: Date(timeIntervalSinceReferenceDate: 1_100),
                     bundleIdentifier: "com.example.other"
                 )
                 return .success(text: "stale sensitive text", didTruncate: false)

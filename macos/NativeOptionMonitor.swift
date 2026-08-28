@@ -1,3 +1,4 @@
+#if !JUYI_NATIVE_SELECTION_CAPTURE_LAB
 import AppKit
 import Foundation
 
@@ -106,10 +107,7 @@ final class NativeOptionMonitor {
             guard let application = NSWorkspace.shared.frontmostApplication else {
                 return nil
             }
-            return NativeSelectionTarget(
-                processIdentifier: application.processIdentifier,
-                bundleIdentifier: application.bundleIdentifier
-            )
+            return NativeSelectionTarget(application: application)
         },
         currentProcessIdentifier: pid_t = ProcessInfo.processInfo.processIdentifier,
         stateMachine: DoubleOptionStateMachine = DoubleOptionStateMachine(),
@@ -194,7 +192,8 @@ final class NativeOptionMonitor {
         let deliveryGeneration = generation
         recognitionInvalidationHandler()
 
-        // Snapshot both PID and bundle identity at the second Option release.
+        // Snapshot PID + launch date at the second Option release. Bundle ID is
+        // metadata only and is never accepted as process identity.
         // NSEvent global monitoring does not observe this app, and the explicit
         // PID check provides a second fail-closed boundary.
         guard let target = frontmostApplication(),
@@ -224,8 +223,9 @@ final class NativeOptionMonitor {
             return
         }
         guard target.processIdentifier != currentProcessIdentifier,
-              frontmostApplication()?.processIdentifier
-                == target.processIdentifier else { return }
+              frontmostApplication()?.hasSameProcess(as: target) == true else {
+            return
+        }
         recognitionHandler(target)
     }
 
@@ -246,3 +246,4 @@ final class NativeOptionMonitor {
         eventSource.removeMonitor(monitor)
     }
 }
+#endif

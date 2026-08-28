@@ -12,7 +12,7 @@
 - `NativeOptionEventAdapter.swift`：不携带字符内容的纯事件适配器；处理左右 Option、启动/恢复时 Option 已按住及 Caps Lock 等边界。
 - `NativeOptionMonitor.swift`：`@MainActor` 的 AppKit 全局 `NSEvent` 监听器，仅订阅 `flagsChanged` 与 `keyDown`；回调不读取 `characters`，识别结果离开回调后异步投递。常态不安装 local monitor，因此句译自身前台不会触发。
 - `AccessibilityController.swift`：提供只读状态和名称明确的显式请求方法。监听启动只查询状态，绝不调用请求方法。
-- `NativeSelectionReader.swift`：AX-only 取词基础。它把触发瞬间的前台 PID/bundle ID 作为快照，读取前重新核对 PID、拒绝自身 PID、核对 focused element PID，并在读取 `AXSelectedText` 前拒绝 `AXSecureTextField`；没有剪贴板回退、文本日志或 UI 副作用。
+- `NativeSelectionReader.swift`：AX-only 取词基础。它把触发瞬间的前台 `PID + NSRunningApplication.launchDate` 作为进程身份，bundle ID 只作元数据；读取前后都核对完整进程身份并拒绝自身 PID。系统 client 在读取 `AXSelectedText` 前验证 focused element 的 PID、role 与 subrole，只允许显式审过的非安全组合；文本读取后还会重新获取 focused element，以 `CFEqual` 确认元素未变，再复验 PID/进程身份/role/subrole。没有剪贴板回退、文本日志或 UI 副作用。
 - `NativeSelectionCaptureCoordinator.swift`：专用串行 worker 与 generation gate。被第二次触发、停止或授权变化取代的排队任务不会发起 AX；同步 AX 已开始时无法中断，但返回后会在进入主队列前丢弃过期文本。
 - `NativeOptionFeature.swift`：Release 编译期恒为 `false`；Debug 还需额外编译条件，且内部结果只保存在内存，不接入后端或公开 UI。
 
@@ -26,7 +26,7 @@ Apple 的 [`addGlobalMonitorForEvents`](https://developer.apple.com/documentatio
 
 因此原先 `CGEventTap` / Input Monitoring 路线已退役；当前开发实现不做 Input Monitoring 预检或引导。全局按键监听与 AX 主取词都以同一次 Accessibility 授权为前提，但 `AXIsProcessTrusted` 仅表示授权，不等于 monitor 已成功安装。正式启用前仍必须在干净 TCC 环境做真机验证。本切片不新增任何公开权限文案或自动权限弹窗。
 
-Apple 将 [`kAXSelectedTextAttribute`](https://developer.apple.com/documentation/applicationservices/kaxselectedtextattribute) 定义为当前选中文本。系统 client 只通过 `AXUIElement` 获取目标 App 的 focused element 与该属性；每个相关 AX element 设置 100 ms messaging timeout，失败时按稳定结果分类并 fail closed。文本按现有后端策略依次统一 CRLF/CR、裁去首尾 Unicode 空白，并按 Unicode scalar 限制 5,000；内部空白、大小写与 Unicode 组合保持原样。
+Apple 将 [`kAXSelectedTextAttribute`](https://developer.apple.com/documentation/applicationservices/kaxselectedtextattribute) 定义为当前选中文本。系统 client 只通过 `AXUIElement` 获取目标 App 的 focused element 与该属性；每个相关 AX element 设置 100 ms messaging timeout，失败时按稳定结果分类并 fail closed。role/subrole 缺失、不支持、非字符串、`AXUnknown`、安全输入或未列入白名单时，都在首次访问 `AXSelectedText` 前结束；当前默认关闭的基础切片仅放行公开的 `AXTextField + AXSearchField` 非安全组合。文本按现有后端策略依次统一 CRLF/CR、裁去首尾 Unicode 空白，并按 Unicode scalar 限制 5,000；内部空白、大小写与 Unicode 组合保持原样。
 
 ## 内部验证方式
 
@@ -49,6 +49,7 @@ CI 另外以可执行 Swift 测试覆盖 NSEvent 纯适配器、monitor 生命�
 - 用原生监听接管生产热键；
 - 将 Debug-only 原生浮窗组件接入真实选区、翻译请求与生产触发；
 - 与 Hammerspoon 的迁移/互斥策略；
+- 启用前 P0：在 TextEdit、Safari/Chromium、原生文本框等目标上采集无文本的 role/subrole 兼容性证据，经安全审阅后逐项扩充白名单；当前不会为兼容性放行缺失或任意自定义值；
 - 用户可见的开关、状态或完成态变化。
 
 这些内容必须在后续切片单独设计和验收。在此之前，不得把本文件描述为“已原生化”或“已去除外部依赖”。

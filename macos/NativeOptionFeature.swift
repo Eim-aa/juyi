@@ -1,3 +1,4 @@
+#if !JUYI_NATIVE_SELECTION_CAPTURE_LAB
 import Foundation
 
 enum NativeOptionFeature {
@@ -82,4 +83,5 @@ final class NativeOptionDevelopmentHarness {
         lastCaptureResult = nil
     }
 }
+#endif
 #endif

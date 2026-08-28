@@ -136,7 +136,8 @@ def test_monitor_is_main_actor_global_only_and_never_reads_key_text():
     assert "func refreshAuthorizationStatus" in MONITOR
     assert "removeGlobalMonitorIfNeeded" in MONITOR
     assert "eventSource.removeMonitor(monitor)" in MONITOR
-    assert "frontmostApplication()?.processIdentifier" in MONITOR
+    assert "frontmostApplication()?.hasSameProcess(as: target) == true" in MONITOR
+    assert "NativeSelectionTarget(application: application)" in MONITOR
     assert MONITOR.index("recognitionInvalidationHandler()") < MONITOR.index(
         "guard let target = frontmostApplication()"
     )
@@ -159,7 +160,7 @@ def test_adapter_has_no_text_payload_and_handles_startup_safely():
     assert "NativeOptionEventAdapterTests.swift" in CI
 
 
-def test_ax_reader_is_pid_bound_secure_fail_closed_and_ax_only():
+def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
     for result in (
         "success(text: String, didTruncate: Bool)",
         "accessibilityRequired",
@@ -173,29 +174,52 @@ def test_ax_reader_is_pid_bound_secure_fail_closed_and_ax_only():
     ):
         assert f"case {result}" in SELECTION
 
+    assert "struct NativeSelectionProcessIdentity: Equatable, Sendable" in SELECTION
+    assert "struct NativeSelectionTarget: Equatable, Sendable" in SELECTION
+    assert "let launchDate: Date" in SELECTION
+    assert "let launchDate = application.launchDate" in SELECTION
+    assert "processIdentity == other.processIdentity" in SELECTION
+    assert "NativeSelectionTarget(application: application)" in SELECTION
     assert "AXUIElementCreateApplication(target.processIdentifier)" in SELECTION
-    assert "kAXFocusedUIElementAttribute" in SELECTION
+    assert SELECTION.count("kAXFocusedUIElementAttribute as CFString") == 2
+    assert "CFEqual(focusedElement, revalidatedFocusedElement)" in SELECTION
     assert "AXUIElementGetPid" in SELECTION
+    assert "NSRunningApplication(processIdentifier: elementPID)" in SELECTION
+    assert "targetProcessIdentity: target.processIdentity" in SELECTION
+    assert "kAXRoleAttribute" in SELECTION
     assert "kAXSubroleAttribute" in SELECTION
     assert "kAXSecureTextFieldSubrole" in SELECTION
+    assert "kAXUnknownRole" in SELECTION
+    assert "kAXUnknownSubrole" in SELECTION
+    assert "kAXTextFieldRole" in SELECTION
+    assert "kAXSearchFieldSubrole" in SELECTION
     assert "kAXSelectedTextAttribute" in SELECTION
-    assert SELECTION.index("AXUIElementGetPid") < SELECTION.index(
-        "kAXSelectedTextAttribute"
-    )
-    assert SELECTION.index("kAXSecureTextFieldSubrole") < SELECTION.index(
-        "kAXSelectedTextAttribute"
-    )
-    assert SELECTION.count("AXUIElementSetMessagingTimeout") == 2
+    selected_index = SELECTION.index("kAXSelectedTextAttribute as CFString")
+    validation_calls = [
+        match.start()
+        for match in re.finditer("validateIdentityRoleAndSubrole\\(", SELECTION)
+    ]
+    assert len(validation_calls) == 3
+    assert validation_calls[0] < selected_index < validation_calls[1]
+    assert "roleAndSubroleValueDecision" in SELECTION
+    assert SELECTION.count("AXUIElementSetMessagingTimeout") == 3
     assert "messagingTimeout: Float = 0.10" in SELECTION
     assert SELECTION.count(
-        "client.frontmostApplication?.processIdentifier == targetPID"
+        "client.frontmostApplication?.hasSameProcess(as: target) == true"
     ) == 2
     reader_call = SELECTION.index("let selection = client.copySelectedText(from: target)")
     assert SELECTION.find(
-        "client.frontmostApplication?.processIdentifier == targetPID",
+        "client.frontmostApplication?.hasSameProcess(as: target) == true",
         reader_call,
     ) > reader_call
     assert "targetPID != client.currentProcessIdentifier" in SELECTION
+
+    validator = SELECTION.split(
+        "private func validateIdentityRoleAndSubrole", 1
+    )[1]
+    assert validator.index("kAXRoleAttribute") < validator.index("kAXSubroleAttribute")
+    assert "role == (kAXTextFieldRole as String)" in SELECTION
+    assert "subrole == (kAXSearchFieldSubrole as String)" in SELECTION
 
     for forbidden in (
         "NSPasteboard",
@@ -261,6 +285,11 @@ def test_docs_record_official_boundary_without_claiming_migration_is_live():
     assert "addglobalmonitorforevents" in DOC.lower()
     assert "MonitoringEvents.html" in DOC
     assert "kaxselectedtextattribute" in DOC.lower()
+    assert "PID + NSRunningApplication.launchDate" in DOC
+    assert "bundle ID 只作元数据" in DOC
+    assert "CFEqual" in DOC
+    assert "AXTextField + AXSearchField" in DOC
+    assert "启用前 P0" in DOC
     assert "常态 global-only" in DOC
     assert "CGEventTap" in DOC and "已退役" in DOC
     assert "干净 TCC 环境" in DOC
