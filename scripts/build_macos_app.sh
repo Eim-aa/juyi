@@ -127,6 +127,8 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/NativeOwnerHandoffStore.swift" \
         "$ROOT/macos/NativeOwnerHandoffWorkflow.swift" \
         "$ROOT/macos/NativeOwnerHandoffStatusReader.swift" \
+        "$ROOT/macos/NativeOwnerHandoffLabModel.swift" \
+        "$ROOT/macos/NativeOwnerHandoffLabHost.swift" \
         "$ROOT/macos/NativeOptionMonitor.swift" \
         "$ROOT/macos/NativeOptionFeature.swift" \
         "$ROOT/macos/NativeTranslationDomain.swift" \

@@ -25,6 +25,16 @@ STATUS_READER = (ROOT / "macos/NativeOwnerHandoffStatusReader.swift").read_text(
 STATUS_READER_TESTS = (
     ROOT / "tests/NativeOwnerHandoffStatusReaderTests.swift"
 ).read_text(encoding="utf-8")
+LAB_MODEL = (ROOT / "macos/NativeOwnerHandoffLabModel.swift").read_text(
+    encoding="utf-8"
+)
+LAB_HOST = (ROOT / "macos/NativeOwnerHandoffLabHost.swift").read_text(
+    encoding="utf-8"
+)
+LAB_TESTS = (ROOT / "tests/NativeOwnerHandoffLabModelTests.swift").read_text(
+    encoding="utf-8"
+)
+APP = (ROOT / "macos/JuyiMenuBar.swift").read_text(encoding="utf-8")
 SWIFT_TESTS = (ROOT / "tests/NativeOwnerHandoffProtocolTests.swift").read_text(
     encoding="utf-8"
 )
@@ -221,6 +231,49 @@ def test_status_reader_is_one_shot_bounded_and_nofollow():
         assert forbidden not in STATUS_READER
 
 
+def test_disclosed_lab_is_explicit_monotonic_and_lifecycle_complete():
+    for required in (
+        "pollingInterval: TimeInterval = 0.2",
+        "acknowledgementDeadline",
+        "monotonicNow",
+        "wallNow",
+        "statusBecameUnavailable",
+        "invalidatePolling()",
+        "generation &+= 1",
+    ):
+        assert required in LAB_MODEL
+    for required in (
+        "打开本页为零 I/O",
+        "开始安全交接测试",
+        "原生 monitor 仍未启动",
+        "安全归还给 Hammerspoon",
+        "不会翻译、联网、读密钥",
+    ):
+        assert required in LAB_HOST
+    for forbidden in (
+        "NativeOptionMonitor",
+        "AXUIElement",
+        "NSPasteboard",
+        "URLSession",
+        "TranslationSession",
+        "SecItem",
+    ):
+        assert forbidden not in LAB_MODEL + LAB_HOST
+    for token in (
+        "NativeOwnerHandoffLabLive.shared",
+        "NativeOwnerHandoffLabHost()",
+        "开发：双 Option owner 交接实验室…",
+        "openNativeOwnerHandoffLab",
+        "nativeOwnerHandoffWillSleep",
+        "nativeOwnerHandoffSessionResigned",
+    ):
+        assert token in APP
+    assert "#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB" in APP
+    assert "!JUYI_NATIVE_OWNER_HANDOFF_LAB" in APP
+    assert "testOpenIsZeroIOAndExplicitStartYields" in LAB_TESTS
+    assert "testCloseCancelsAndLatePollCannotReopen" in LAB_TESTS
+
+
 def test_protocol_tests_cover_every_negative_and_are_in_all_build_paths():
     for reason in (
         "requestInvalid",
@@ -245,10 +298,13 @@ def test_protocol_tests_cover_every_negative_and_are_in_all_build_paths():
         assert "NativeOwnerHandoffStore.swift" in source
         assert "NativeOwnerHandoffWorkflow.swift" in source
         assert "NativeOwnerHandoffStatusReader.swift" in source
+        assert "NativeOwnerHandoffLabModel.swift" in source
+        assert "NativeOwnerHandoffLabHost.swift" in source
     assert "NativeOwnerHandoffProtocolTests.swift" in CI
     assert "NativeOwnerHandoffStoreTests.swift" in CI
     assert "NativeOwnerHandoffWorkflowTests.swift" in CI
     assert "NativeOwnerHandoffStatusReaderTests.swift" in CI
+    assert "NativeOwnerHandoffLabModelTests.swift" in CI
     assert "hammerspoon_runtime_test.lua" in CI
 
 
@@ -257,7 +313,7 @@ def test_documentation_keeps_activation_and_production_no_go_explicit():
     for required in (
         "native activation is still **NO-GO**",
         "Hammerspoon continues to be the only production trigger",
-        "has no App action, poll scheduler, or monitor",
+        "default Debug and every supported Release build still contain neither",
         "cross-process native-owner lock",
         "zero or one trigger owner, never two",
         "Signed macOS 15.0/latest 15.x",
@@ -268,5 +324,6 @@ def test_documentation_keeps_activation_and_production_no_go_explicit():
         PROJECT, LEGACY, CI, DOC, POLICY, STORE, STORE_TESTS, WORKFLOW,
         WORKFLOW_TESTS,
         STATUS_READER, STATUS_READER_TESTS,
+        LAB_MODEL, LAB_HOST, LAB_TESTS, APP,
     ):
         assert user_script not in source

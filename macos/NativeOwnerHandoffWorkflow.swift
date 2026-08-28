@@ -35,6 +35,7 @@ final class NativeOwnerHandoffWorkflow {
         case timedOut
         case recoveredCrashResidue
         case requestAlreadyAbsent
+        case statusUnavailable
     }
 
     private(set) var phase: Phase = .idle
@@ -112,6 +113,17 @@ final class NativeOwnerHandoffWorkflow {
         returnActiveLeaseToLegacy(reason: .cancelled)
     }
 
+    func statusBecameUnavailable() {
+        guard activeLease != nil else {
+            phase = .unavailable
+            return
+        }
+        returnActiveLeaseToLegacy(
+            reason: .statusUnavailable,
+            successPhase: .unavailable
+        )
+    }
+
     /// Explicit recovery can only remove a canonical crash residue. It never
     /// yields `.legacyYielded` and therefore cannot authorize native effects.
     func recoverAndReturnToLegacy() {
@@ -137,14 +149,17 @@ final class NativeOwnerHandoffWorkflow {
         }
     }
 
-    private func returnActiveLeaseToLegacy(reason: ReturnReason) {
+    private func returnActiveLeaseToLegacy(
+        reason: ReturnReason,
+        successPhase: Phase = .returnedToLegacy
+    ) {
         guard let lease = activeLease else { return }
         acceptedLegacyLease = nil
         if store.returnToLegacy(lease) {
             activeLease = nil
             latestUnsafeReason = nil
             returnReason = reason
-            phase = .returnedToLegacy
+            phase = successPhase
         } else {
             phase = .recoveryRequired
         }

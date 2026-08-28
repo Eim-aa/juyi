@@ -1765,6 +1765,11 @@ final class AppModel: ObservableObject {
         paused.toggle()
         do { try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true); try (paused ? "1\n" : "0\n").write(to: pauseFile, atomically: true, encoding: .utf8) }
         catch { paused.toggle(); notice = "暂时无法更改状态。" }
+        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
+        if paused != previous {
+            NativeOwnerHandoffLabLive.shared.invalidate(.pause)
+        }
+        #endif
         #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
         if paused != previous {
             NativeSelectionCaptureLabLive.shared.setPaused(paused)
@@ -1782,6 +1787,9 @@ final class AppModel: ObservableObject {
     }
     func stopService() {
         guard serviceReady && !serviceBusy && !cloudBusy else { return }; serviceBusy = true
+        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
+        NativeOwnerHandoffLabLive.shared.invalidate(.stop)
+        #endif
         #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
         NativeSelectionCaptureLabLive.shared.invalidate(.stop)
         #endif
@@ -2348,6 +2356,10 @@ private struct AppView: View {
 
 private struct RootView: View {
     @ObservedObject var model: AppModel
+    #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
+    @ObservedObject private var nativeOwnerHandoffLab =
+        NativeOwnerHandoffLabLive.shared
+    #endif
     #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
     @ObservedObject private var nativeSelectionCaptureLab =
         NativeSelectionCaptureLabLive.shared
@@ -2375,6 +2387,18 @@ private struct RootView: View {
         }
         .sheet(isPresented: $model.showCloudSetup) { CloudSetupView(model: model) }
         .sheet(isPresented: $model.showDiagnostics) { DiagnosticsView(model: model) }
+        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
+        .sheet(
+            isPresented: Binding(
+                get: { nativeOwnerHandoffLab.isPresented },
+                set: { presented in
+                    if !presented { nativeOwnerHandoffLab.close() }
+                }
+            )
+        ) {
+            NativeOwnerHandoffLabHost()
+        }
+        #endif
         #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
         .sheet(
             isPresented: Binding(
@@ -2450,7 +2474,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private var window: NSWindow!
     private var lastOnboardingMode: Bool?
-    #if DEBUG && !JUYI_NATIVE_SELECTION_CAPTURE_LAB
+    #if DEBUG && !JUYI_NATIVE_SELECTION_CAPTURE_LAB && !JUYI_NATIVE_OWNER_HANDOFF_LAB
     private let nativeOptionDevelopmentHarness = NativeOptionDevelopmentHarness()
     #endif
     #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
@@ -2464,7 +2488,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let isLoginLaunch = launchedFromLogin
         NSApp.setActivationPolicy(.regular); installMainMenu(); createWindow()
         model.onChange = { [weak self] in self?.updateChrome() }; updateChrome()
-        #if DEBUG && !JUYI_NATIVE_SELECTION_CAPTURE_LAB
+        #if DEBUG && !JUYI_NATIVE_SELECTION_CAPTURE_LAB && !JUYI_NATIVE_OWNER_HANDOFF_LAB
         nativeOptionDevelopmentHarness.setPaused(model.paused)
         nativeOptionDevelopmentHarness.startIfEnabled()
         #endif
@@ -2476,7 +2500,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
         NativeTranslationOverlayController.shared.setPaused(model.paused)
         #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        workspaceCenter.addObserver(
+            self, selector: #selector(nativeOwnerHandoffWillSleep(_:)),
+            name: NSWorkspace.willSleepNotification, object: nil
+        )
+        workspaceCenter.addObserver(
+            self, selector: #selector(nativeOwnerHandoffSessionResigned(_:)),
+            name: NSWorkspace.sessionDidResignActiveNotification, object: nil
+        )
+        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         let workspaceCenter = NSWorkspace.shared.notificationCenter
         workspaceCenter.addObserver(
             self, selector: #selector(nativeAppleResultLabWillSleep(_:)),
@@ -2514,7 +2548,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     func applicationDidBecomeActive(_ notification: Notification) {
         model.applicationBecameActive()
-        #if DEBUG && !JUYI_NATIVE_SELECTION_CAPTURE_LAB
+        #if DEBUG && !JUYI_NATIVE_SELECTION_CAPTURE_LAB && !JUYI_NATIVE_OWNER_HANDOFF_LAB
         nativeOptionDevelopmentHarness.applicationBecameActive()
         #endif
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
@@ -2527,8 +2561,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         #endif
     }
     func applicationWillTerminate(_ notification: Notification) {
-        #if DEBUG && !JUYI_NATIVE_SELECTION_CAPTURE_LAB
+        #if DEBUG && !JUYI_NATIVE_SELECTION_CAPTURE_LAB && !JUYI_NATIVE_OWNER_HANDOFF_LAB
         nativeOptionDevelopmentHarness.stop()
+        #endif
+        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        NativeOwnerHandoffLabLive.shared.invalidate(.terminate)
         #endif
         #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
         NativeSelectionCaptureLabLive.shared.invalidate(.terminate)
@@ -2557,6 +2595,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if model.onboardingPresented { model.deferOnboarding() }
     }
     func windowWillClose(_ notification: Notification) {
+        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
+        NativeOwnerHandoffLabLive.shared.close()
+        #endif
         #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
         NativeSelectionCaptureLabLive.shared.close()
         #endif
@@ -2590,7 +2631,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func installMainMenu() {
         let main = NSMenu(), app = NSMenuItem(), submenu = NSMenu()
-        #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
+        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
+        let ownerLab = NSMenuItem(
+            title: "开发：双 Option owner 交接实验室…",
+            action: #selector(openNativeOwnerHandoffLab),
+            keyEquivalent: ""
+        )
+        ownerLab.target = self
+        submenu.addItem(ownerLab)
+        submenu.addItem(.separator())
+        #elseif DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
         let captureLab = NSMenuItem(
             title: "开发：原生取词实验室…",
             action: #selector(openNativeSelectionCaptureLab),
@@ -2672,7 +2722,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(.separator()); menu.addItem(item(model.paused ? "恢复句译" : "暂停句译", action: #selector(pause))); menu.addItem(item("诊断与帮助…", action: #selector(diagnostics))); menu.addItem(.separator()); menu.addItem(item("退出句译", action: #selector(terminate))); statusItem.menu = menu
     }
     private func updateChrome() {
-        #if DEBUG && !JUYI_NATIVE_SELECTION_CAPTURE_LAB
+        #if DEBUG && !JUYI_NATIVE_SELECTION_CAPTURE_LAB && !JUYI_NATIVE_OWNER_HANDOFF_LAB
         nativeOptionDevelopmentHarness.setPaused(model.paused)
         #endif
         #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
@@ -2713,6 +2763,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
+    #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
+    @objc private func openNativeOwnerHandoffLab() {
+        showWindow()
+        NativeOwnerHandoffLabLive.shared.open()
+    }
+    #endif
     #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
     @objc private func openNativeSelectionCaptureLab() {
         showWindow()
@@ -2792,6 +2848,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     @objc private func nativeVolcSessionResigned(_ notification: Notification) {
         NativeVolcTranslationAdapterCoordinator.shared.invalidate(.sessionResigned)
+    }
+    #endif
+    #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
+    @objc private func nativeOwnerHandoffWillSleep(_ notification: Notification) {
+        NativeOwnerHandoffLabLive.shared.invalidate(.sleep)
+    }
+    @objc private func nativeOwnerHandoffSessionResigned(_ notification: Notification) {
+        NativeOwnerHandoffLabLive.shared.invalidate(.sessionResigned)
     }
     #endif
     #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING

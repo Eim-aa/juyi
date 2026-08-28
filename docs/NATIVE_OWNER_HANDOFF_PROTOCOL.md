@@ -4,10 +4,11 @@ Status: protocol and durable-store foundation implemented; native activation is 
 
 This slice closes the legacy half of the single-owner problem without enabling
 the native double-Option monitor. When no owner request exists, Hammerspoon
-continues to be the only production trigger exactly as before. The store is
-compiled only for the isolated Debug `JUYI_NATIVE_OWNER_HANDOFF_LAB` slice and
-has no App action, poll scheduler, or monitor, so default Debug and
-every supported Release build still create no request.
+continues to be the only production trigger exactly as before. The
+implementation is compiled only for the isolated Debug
+`JUYI_NATIVE_OWNER_HANDOFF_LAB` slice. That exact build now has one disclosed
+App menu action and a five-second polling lab; default Debug and every supported
+Release build still contain neither the lab nor any request capability.
 
 ## Durable request
 
@@ -120,6 +121,29 @@ directory entry. It accepts Hammerspoon's 0600 or read-only 0644 umask result
 inside that private directory. It never parses, logs, writes, polls, or retries;
 the bytes go unchanged to the pure acceptance policy.
 
+## Debug handoff lab
+
+The main-window sheet opens in disclosure-only state: opening performs zero
+owner/status I/O. Only “开始安全交接测试” publishes the request and starts a
+200 ms monotonic poll loop with a hard five-second deadline. A safe result says
+only that Hammerspoon's watcher, request, and popup were observed stopped; this
+slice still has no API that can start a native monitor. The user must explicitly
+return ownership, and Escape first returns an active lease before a later close.
+
+Close, pause, service stop, system sleep, session resignation, window close,
+and App termination invalidate the poll generation, cancel its timer, remove
+the exact request while the process lock is held, and then release the lock.
+Late timer callbacks cannot read status or reopen the workflow. A crash keeps
+the durable request and therefore zero owners; reopening exposes only the
+recovery action, whose recovery-only lease can remove that residue.
+
+The sheet states before the action that it writes a non-text owner request and
+reads Hammerspoon status, may stop an existing legacy request/popup, and can
+leave Hammerspoon stopped after a crash until recovery. It also states that the
+lab never starts an Option monitor or reads AX, selection, keyboard characters,
+clipboard, credentials, network, translation engines, or the translation
+overlay.
+
 ## Crash and restart behavior
 
 - Hammerspoon restart while a valid request remains: reconcile before starting
@@ -133,8 +157,8 @@ the bytes go unchanged to the pure acceptance policy.
 
 ## Remaining activation P0
 
-- A monotonic poll scheduler and disclosed UI around the workflow and secure
-  snapshot reader, including lifecycle-driven return and recovery.
+- Signed real-device validation of the disclosed polling UI and every
+  lifecycle return/recovery cutpoint.
 - Immediate native monitor/capture/domain/overlay revocation before returning
   ownership or pausing.
 - Hammerspoon/Juyi crash, reload, multi-process, stale-status and every cutpoint
