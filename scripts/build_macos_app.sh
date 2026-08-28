@@ -39,6 +39,23 @@ if [[ "$CONFIGURATION" == "Debug" ]]; then
     ACTIVE_CONDITIONS=" ${SWIFT_ACTIVE_COMPILATION_CONDITIONS:-} "
     HAS_NATIVE_DOMAIN=false
     HAS_NATIVE_OVERLAY=false
+    if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_OWNER_HANDOFF_LAB "* ]]; then
+        SWIFT_FLAGS+=(-warnings-as-errors)
+        SWIFT_FLAGS+=(-D JUYI_NATIVE_OWNER_HANDOFF_LAB)
+        for conflict in \
+            JUYI_NATIVE_SELECTION_CAPTURE_LAB \
+            JUYI_NATIVE_OPTION_MONITOR \
+            JUYI_NATIVE_TRANSLATION_DOMAIN \
+            JUYI_NATIVE_TRANSLATION_OVERLAY \
+            JUYI_NATIVE_TRANSLATION_RESULT_LAB \
+            JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER \
+            JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER \
+            JUYI_NATIVE_APPLE_RESULT_LAB_BINDING; do
+            if [[ "$ACTIVE_CONDITIONS" == *" $conflict "* ]]; then
+                SWIFT_FLAGS+=(-D "$conflict")
+            fi
+        done
+    fi
     # The capture lab is intentionally independent. Forward it and every
     # supplied conflicting condition even when that condition would normally
     # require another slice, so the source-level #error gate rejects the unsafe
@@ -48,6 +65,7 @@ if [[ "$CONFIGURATION" == "Debug" ]]; then
         SWIFT_FLAGS+=(-D JUYI_NATIVE_SELECTION_CAPTURE_LAB)
         for conflict in \
             JUYI_NATIVE_OPTION_MONITOR \
+            JUYI_NATIVE_OWNER_HANDOFF_LAB \
             JUYI_NATIVE_TRANSLATION_DOMAIN \
             JUYI_NATIVE_TRANSLATION_OVERLAY \
             JUYI_NATIVE_TRANSLATION_RESULT_LAB \
@@ -106,6 +124,7 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/NativeSelectionCaptureLabModel.swift" \
         "$ROOT/macos/NativeSelectionCaptureLabHost.swift" \
         "$ROOT/macos/NativeOwnerHandoffProtocol.swift" \
+        "$ROOT/macos/NativeOwnerHandoffStore.swift" \
         "$ROOT/macos/NativeOptionMonitor.swift" \
         "$ROOT/macos/NativeOptionFeature.swift" \
         "$ROOT/macos/NativeTranslationDomain.swift" \

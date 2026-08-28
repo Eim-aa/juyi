@@ -70,6 +70,11 @@ enum NativeOwnerHandoffProtocolTests {
         expect(text.contains(epoch.uuidString.lowercased()), "epoch missing")
         expect(text.contains(nativeInstance.uuidString.lowercased()), "instance missing")
         expect(!request.description.contains(request.epoch), "description leaked epoch")
+        expect(NativeOwnerHandoffProtocol.decodeCanonicalRequest(data) == request, "canonical request did not decode")
+        expect(NativeOwnerHandoffProtocol.decodeCanonicalRequest(Data(data.dropLast())) == nil, "missing newline accepted")
+        expect(NativeOwnerHandoffProtocol.decodeCanonicalRequest(Data(" {}\n".utf8)) == nil, "noncanonical JSON accepted")
+        let unknown = String(text.dropLast().dropLast()) + ",\"unknown\":true}\n"
+        expect(NativeOwnerHandoffProtocol.decodeCanonicalRequest(Data(unknown.utf8)) == nil, "unknown key accepted")
     }
 
     private static func testExactSafeAcknowledgement() {

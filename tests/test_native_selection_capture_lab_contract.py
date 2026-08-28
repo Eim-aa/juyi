@@ -29,6 +29,7 @@ CONFIG = "\n".join(
 FLAG = "JUYI_NATIVE_SELECTION_CAPTURE_LAB"
 GATE = f"#if DEBUG && {FLAG}"
 CONFLICT_FLAGS = (
+    "JUYI_NATIVE_OWNER_HANDOFF_LAB",
     "JUYI_NATIVE_OPTION_MONITOR",
     "JUYI_NATIVE_TRANSLATION_DOMAIN",
     "JUYI_NATIVE_TRANSLATION_OVERLAY",
@@ -76,7 +77,7 @@ def _assert_exact_isolated_source(source: str) -> None:
     assert "#if DEBUG ||" not in source
 
 
-def test_exact_two_flag_gate_and_all_seven_conflicts_are_compile_time_only() -> None:
+def test_exact_two_flag_gate_and_all_eight_conflicts_are_compile_time_only() -> None:
     for source in (MODEL, HOST):
         _assert_exact_isolated_source(source)
         for conflict in CONFLICT_FLAGS:

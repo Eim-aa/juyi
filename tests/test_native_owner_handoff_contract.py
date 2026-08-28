@@ -9,6 +9,10 @@ RUNTIME = (ROOT / "tests/hammerspoon_runtime_test.lua").read_text(encoding="utf-
 POLICY = (ROOT / "macos/NativeOwnerHandoffProtocol.swift").read_text(
     encoding="utf-8"
 )
+STORE = (ROOT / "macos/NativeOwnerHandoffStore.swift").read_text(encoding="utf-8")
+STORE_TESTS = (ROOT / "tests/NativeOwnerHandoffStoreTests.swift").read_text(
+    encoding="utf-8"
+)
 SWIFT_TESTS = (ROOT / "tests/NativeOwnerHandoffProtocolTests.swift").read_text(
     encoding="utf-8"
 )
@@ -130,10 +134,31 @@ def test_native_policy_is_pure_and_cannot_start_or_store_an_owner():
         assert forbidden not in POLICY
     assert "starts no monitor" in POLICY
     assert "future activation layer" in POLICY
-    macos_sources = "\n".join(
-        path.read_text(encoding="utf-8") for path in (ROOT / "macos").glob("*.swift")
-    )
-    assert "owner-request.json" not in macos_sources
+    assert "owner-request.json" not in POLICY
+
+
+def test_store_is_exact_gated_durable_and_recovery_only():
+    assert "#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB" in STORE
+    for required in (
+        "native-owner.lock",
+        "owner-request.json",
+        "O_NOFOLLOW",
+        "O_EXCL",
+        "RENAME_EXCL",
+        "fsync(directory)",
+        "LOCK_EX | LOCK_NB",
+        "recoveryOnly",
+        "releasePreservingRequest",
+    ):
+        assert required in STORE
+    for forbidden in (
+        "NSEvent",
+        "AXUIElement",
+        "NSPasteboard",
+        "URLSession",
+        "SecItem",
+    ):
+        assert forbidden not in STORE
 
 
 def test_protocol_tests_cover_every_negative_and_are_in_all_build_paths():
@@ -157,7 +182,9 @@ def test_protocol_tests_cover_every_negative_and_are_in_all_build_paths():
         assert reason in SWIFT_TESTS
     for source in (PROJECT, LEGACY, CI):
         assert "NativeOwnerHandoffProtocol.swift" in source
+        assert "NativeOwnerHandoffStore.swift" in source
     assert "NativeOwnerHandoffProtocolTests.swift" in CI
+    assert "NativeOwnerHandoffStoreTests.swift" in CI
     assert "hammerspoon_runtime_test.lua" in CI
 
 
@@ -166,12 +193,12 @@ def test_documentation_keeps_activation_and_production_no_go_explicit():
     for required in (
         "native activation is still **NO-GO**",
         "Hammerspoon continues to be the only production trigger",
-        "No current App action creates `owner-request.json`",
+        "has no App action, coordinator, status reader, or monitor",
         "cross-process native-owner lock",
         "zero or one trigger owner, never two",
         "Signed macOS 15.0/latest 15.x",
     ):
         assert required in normalized_doc
     user_script = "start_service" + ".command"
-    for source in (PROJECT, LEGACY, CI, DOC, POLICY):
+    for source in (PROJECT, LEGACY, CI, DOC, POLICY, STORE, STORE_TESTS):
         assert user_script not in source

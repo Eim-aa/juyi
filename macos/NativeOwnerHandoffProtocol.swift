@@ -6,6 +6,7 @@ import Foundation
 /// holding its own cross-process native-owner lock.
 enum NativeOwnerHandoffProtocol {
     static let version = 1
+    static let maximumRequestBytes = 1_024
     static let maximumStatusBytes = 4_096
     static let maximumStatusAge: TimeInterval = 2.5
     static let maximumFutureClockSkew: TimeInterval = 1.0
@@ -28,6 +29,18 @@ enum NativeOwnerHandoffProtocol {
             requestedOwner = "native"
             self.epoch = epoch.uuidString.lowercased()
             self.nativeInstanceID = nativeInstanceID.uuidString.lowercased()
+        }
+
+        fileprivate init(
+            version: Int,
+            requestedOwner: String,
+            epoch: String,
+            nativeInstanceID: String
+        ) {
+            self.version = version
+            self.requestedOwner = requestedOwner
+            self.epoch = epoch
+            self.nativeInstanceID = nativeInstanceID
         }
 
         var description: String {
@@ -103,6 +116,41 @@ enum NativeOwnerHandoffProtocol {
         var data = try encoder.encode(request)
         data.append(0x0A)
         return data
+    }
+
+    /// Decodes only the canonical four-key request emitted by
+    /// `encodedRequest`. Alternate whitespace, unknown keys, malformed UUIDs,
+    /// and non-native requests fail closed so a recovery path never adopts a
+    /// capability that this process did not write.
+    static func decodeCanonicalRequest(_ data: Data) -> Request? {
+        guard !data.isEmpty,
+              data.count <= maximumRequestBytes,
+              data.last == 0x0A,
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dictionary = object as? [String: Any],
+              Set(dictionary.keys) == Set([
+                  "version",
+                  "requested_owner",
+                  "epoch",
+                  "native_instance_id",
+              ]),
+              let version = dictionary["version"] as? Int,
+              version == self.version,
+              let owner = dictionary["requested_owner"] as? String,
+              owner == "native",
+              let epochText = dictionary["epoch"] as? String,
+              let epoch = UUID(uuidString: epochText),
+              let instanceText = dictionary["native_instance_id"] as? String,
+              let instance = UUID(uuidString: instanceText)
+        else { return nil }
+        let request = Request(
+            version: version,
+            requestedOwner: owner,
+            epoch: epoch.uuidString.lowercased(),
+            nativeInstanceID: instance.uuidString.lowercased()
+        )
+        guard (try? encodedRequest(request)) == data else { return nil }
+        return request
     }
 
     static func evaluate(

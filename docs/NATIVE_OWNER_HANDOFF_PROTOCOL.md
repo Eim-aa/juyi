@@ -1,11 +1,13 @@
 # Native owner handoff protocol
 
-Status: protocol foundation implemented; native activation is still **NO-GO**.
+Status: protocol and durable-store foundation implemented; native activation is still **NO-GO**.
 
 This slice closes the legacy half of the single-owner problem without enabling
 the native double-Option monitor. When no owner request exists, Hammerspoon
-continues to be the only production trigger exactly as before. No current App
-action creates `owner-request.json`.
+continues to be the only production trigger exactly as before. The store is
+compiled only for the isolated Debug `JUYI_NATIVE_OWNER_HANDOFF_LAB` slice and
+has no App action, coordinator, status reader, or monitor, so default Debug and
+every supported Release build still create no request.
 
 ## Durable request
 
@@ -32,10 +34,19 @@ file are fail-closed: the legacy watcher remains stopped and no yielded
 acknowledgement is minted. Confirmed `ENOENT` is the only state that permits the
 legacy owner to resume.
 
-The future writer is not implemented in this slice. Before activation it must
-use owner-only directory/file validation, atomic rename plus directory `fsync`,
-and a user-domain cross-process native-owner lock. It must hold that lock for the entire
-native-owner lifetime, so two Juyi processes cannot both install a monitor.
+The isolated store uses owner-only directory/file validation, `O_NOFOLLOW`,
+0600 files, an exclusive non-overwriting atomic rename, file and directory
+`fsync`, exact readback, and a stable cross-process native-owner lock named
+`native-owner.lock`. The returned lease
+holds an exclusive nonblocking `flock` for the entire candidate native-owner
+lifetime, so two Juyi processes cannot both proceed. The lock file is never
+unlinked.
+
+An existing canonical request is never overwritten. After a crash, a new begin
+returns recovery-required; the only recovery API returns a `recoveryOnly` lease
+which can remove the exact request and return to legacy, but cannot authorize a
+native monitor. Releasing or destroying a lease preserves the request and thus
+leaves zero owners. Temporary files use unique names and do not block recovery.
 
 ## Legacy quiesce barrier
 
@@ -103,7 +114,6 @@ lock, lifecycle revocation, and real-device evidence below.
 
 ## Remaining activation P0
 
-- Native atomic request store and never-unlinked cross-process owner lock.
 - A UI state machine for `legacyActive → stoppingLegacy → nativeActive` and the
   reverse path, with epoch-bound progress and recovery.
 - Immediate native monitor/capture/domain/overlay revocation before returning
