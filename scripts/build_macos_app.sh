@@ -23,9 +23,9 @@ case "$CONFIGURATION" in
     *) echo "unsupported CONFIGURATION: $CONFIGURATION (expected Debug or Release)" >&2; exit 2 ;;
 esac
 
-# The native Apple Translation adapter remains a compile-time-only development
-# slice. The standard Xcode conditions variable is accepted only for Debug and
-# only when both required feature conditions are present; Release ignores it.
+# Native translation slices remain compile-time-only development code. The
+# standard Xcode conditions variable is accepted only for Debug; Release ignores
+# every injected development condition.
 FRAMEWORK_FLAGS=(
     -framework ApplicationServices
     -framework AppKit
@@ -37,10 +37,16 @@ FRAMEWORK_FLAGS=(
 )
 if [[ "$CONFIGURATION" == "Debug" ]]; then
     ACTIVE_CONDITIONS=" ${SWIFT_ACTIVE_COMPILATION_CONDITIONS:-} "
-    if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_TRANSLATION_DOMAIN "* \
-        && "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER "* ]]; then
-        SWIFT_FLAGS+=(-D JUYI_NATIVE_TRANSLATION_DOMAIN -D JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER)
-        FRAMEWORK_FLAGS+=(-framework Translation)
+    if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_TRANSLATION_DOMAIN "* ]]; then
+        SWIFT_FLAGS+=(-D JUYI_NATIVE_TRANSLATION_DOMAIN)
+        if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER "* ]]; then
+            SWIFT_FLAGS+=(-D JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER)
+            FRAMEWORK_FLAGS+=(-framework Translation)
+        fi
+        if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER "* ]]; then
+            SWIFT_FLAGS+=(-D JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER)
+            FRAMEWORK_FLAGS+=(-framework LocalAuthentication -framework Security)
+        fi
     fi
 fi
 
@@ -66,6 +72,12 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/VolcTranslationResponseParser.swift" \
         "$ROOT/macos/NativeAppleTranslationAdapterModel.swift" \
         "$ROOT/macos/NativeAppleTranslationAdapterHost.swift" \
+        "$ROOT/macos/NativeVolcDebugCredentialStore.swift" \
+        "$ROOT/macos/NativeVolcDebugInterlock.swift" \
+        "$ROOT/macos/NativeVolcDebugTransport.swift" \
+        "$ROOT/macos/NativeVolcDebugWorkflow.swift" \
+        "$ROOT/macos/NativeVolcTranslationAdapterModel.swift" \
+        "$ROOT/macos/NativeVolcTranslationAdapterHost.swift" \
         "$ROOT/macos/NativeTranslationOverlayModel.swift" \
         "$ROOT/macos/NativeTranslationOverlayAnchorPolicy.swift" \
         "$ROOT/macos/NativeTranslationOverlayInteractionPolicy.swift" \

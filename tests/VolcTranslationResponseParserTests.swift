@@ -2,6 +2,7 @@
 import Foundation
 
 @main
+@MainActor
 enum VolcTranslationResponseParserTests {
     private static var passed = 0
 
@@ -19,6 +20,9 @@ enum VolcTranslationResponseParserTests {
 
     static func main() {
         testSuccess()
+        testOfficialResultSuccess()
+        testDuplicateEnvelopeFailsClosed()
+        testConflictingEnvelopeFailsClosed()
         testHTTPClassification()
         testUpstreamAllowlist()
         testMalformedPayloads()
@@ -44,10 +48,32 @@ enum VolcTranslationResponseParserTests {
                 == .success(" 译文 "),
             "successful result content is not normalized"
         )
+    }
+
+    private static func testOfficialResultSuccess() {
         expect(
-            parse(#"{"TranslationList":[{"Translation":"first"},{"Translation":"second"}]}"#)
-                == .success("first"),
-            "parser uses TranslationList index zero"
+            parse(
+                #"{"Result":{"TranslationList":[{"Translation":"好工具应该让人感觉毫不费力。"}]},"ResponseMetadata":{"Error":null}}"#
+            ) == .success("好工具应该让人感觉毫不费力。"),
+            "official Result.TranslationList succeeds"
+        )
+    }
+
+    private static func testDuplicateEnvelopeFailsClosed() {
+        expect(
+            parse(
+                #"{"TranslationList":[{"Translation":"一致"}],"Result":{"TranslationList":[{"Translation":"一致"}]}}"#
+            ) == .failure(.volcMalformedResponse),
+            "simultaneous legacy and official envelopes fail closed"
+        )
+    }
+
+    private static func testConflictingEnvelopeFailsClosed() {
+        expect(
+            parse(
+                #"{"TranslationList":[{"Translation":"旧结构"}],"Result":{"TranslationList":[{"Translation":"新结构"}]}}"#
+            ) == .failure(.volcMalformedResponse),
+            "conflicting response envelopes fail closed"
         )
     }
 
@@ -87,6 +113,7 @@ enum VolcTranslationResponseParserTests {
         let timeoutCodes = ["RequestTimeout", "RequestTimeoutException", "Timeout"]
         let quotaCodes = [
             "FlowLimitExceeded", "LimitExceeded", "QuotaExceeded", "Throttling", "TooManyRequests",
+            "-429",
         ]
         for (codes, expected): ([String], NativeTranslationFailure) in [
             (credentialCodes, .volcCredential),
@@ -125,6 +152,9 @@ enum VolcTranslationResponseParserTests {
             "[]",
             "{}",
             #"{"TranslationList":[]}"#,
+            #"{"TranslationList":[{"Translation":"first"},{"Translation":"second"}]}"#,
+            #"{"Result":{"TranslationList":[]}}"#,
+            #"{"Result":{"TranslationList":[{"Translation":"first"},{"Translation":"second"}]}}"#,
             #"{"TranslationList":[{}]}"#,
             #"{"TranslationList":[{"Translation":null}]}"#,
             #"{"TranslationList":[{"Translation":7}]}"#,

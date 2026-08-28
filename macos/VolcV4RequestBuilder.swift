@@ -69,7 +69,10 @@ enum VolcV4RequestBuilder {
         targetLanguage: String,
         instant: Date
     ) throws -> VolcV4SignedRequest {
-        guard validAccessKey(credentials.accessKey), validSecretKey(credentials.secretKey) else {
+        guard credentialsAreValid(
+            accessKey: credentials.accessKey,
+            secretKey: credentials.secretKey
+        ) else {
             throw VolcV4RequestBuilderError.invalidCredentials
         }
         guard validLanguageIdentifier(targetLanguage, allowsEmpty: false),
@@ -191,6 +194,10 @@ enum VolcV4RequestBuilder {
 
     static func hex(_ data: Data) -> String {
         data.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func credentialsAreValid(accessKey: String, secretKey: String) -> Bool {
+        validAccessKey(accessKey) && validSecretKey(secretKey)
     }
 
     private static func validAccessKey(_ value: String) -> Bool {

@@ -37,6 +37,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Report Xcode toolchain
         run: xcodebuild -version
+      - name: Verify native Volc source wiring
+        run: |
+          for source in NativeVolcDebugCredentialStore.swift NativeVolcDebugInterlock.swift NativeVolcDebugTransport.swift NativeVolcDebugWorkflow.swift NativeVolcTranslationAdapterModel.swift NativeVolcTranslationAdapterHost.swift; do
+            grep -Fq "$source" Juyi.xcodeproj/project.pbxproj
+            grep -Fq "$source" scripts/build_macos_app.sh
+          done
       - name: Build Xcode Debug configuration
         run: >-
           xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
@@ -63,6 +69,13 @@ jobs:
           CODE_SIGNING_ALLOWED=NO
           SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER'
           build
+      - name: Build explicit Debug native Volc Translation adapter
+        run: >-
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiVolcTranslationAdapter"
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER'
+          build
       - name: Build Xcode Release configuration
         run: >-
           xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
@@ -88,6 +101,13 @@ jobs:
           -configuration Release -derivedDataPath "$RUNNER_TEMP/JuyiReleaseAppleAdapterFlags"
           CODE_SIGNING_ALLOWED=NO
           SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER'
+          build
+      - name: Build Release with every native development flag injected
+        run: >-
+          xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
+          -configuration Release -derivedDataPath "$RUNNER_TEMP/JuyiReleaseAllDevelopmentFlags"
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER JUYI_NATIVE_TRANSLATION_OVERLAY'
           build
       - name: Verify overlay compile-time gate
         run: |
@@ -146,6 +166,37 @@ jobs:
             if grep -Fq '/Translation.framework/' "$RUNNER_TEMP/apple-adapter-off.loads"; then exit 1; fi
             if grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/apple-adapter-off.loads"; then exit 1; fi
           done
+      - name: Verify native Volc Translation adapter compile-time gate
+        run: |
+          opt_in_dir="$RUNNER_TEMP/JuyiVolcTranslationAdapter/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          default_debug_dir="$RUNNER_TEMP/JuyiDebug/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          domain_only_dir="$RUNNER_TEMP/JuyiTranslationDomain/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          apple_only_dir="$RUNNER_TEMP/JuyiAppleTranslationAdapter/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          release_dir="$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/MacOS"
+          release_flags_dir="$RUNNER_TEMP/JuyiReleaseAllDevelopmentFlags/Build/Products/Release/Juyi.app/Contents/MacOS"
+          LC_ALL=C grep -aFq 'juyi-native-volc-translation-adapter-v1' "$opt_in_dir"/*
+          LC_ALL=C grep -aFq 'Good tools should feel effortless.' "$opt_in_dir"/*
+          LC_ALL=C grep -aFq 'io.github.Eim-aa.Juyi.debug.native-volc.active' "$opt_in_dir"/*
+          LC_ALL=C grep -aFq 'Library/Application Support/io.github.Eim-aa.Juyi/NativeVolcDebug' "$opt_in_dir"/*
+          LC_ALL=C grep -aFq 'NativeVolcDebugWorkflow' "$opt_in_dir"/*
+          LC_ALL=C grep -aFq 'NativeVolcTranslationAdapterSheet' "$opt_in_dir"/*
+          LC_ALL=C grep -aFq '此页面连接真实火山翻译 API，不是模拟器。' "$opt_in_dir"/*
+          LC_ALL=C grep -aFq '开发：测试火山云端翻译…' "$opt_in_dir"/*
+          find "$opt_in_dir" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/volc-adapter-opt-in-debug.loads"
+          grep -Fq '/Security.framework/' "$RUNNER_TEMP/volc-adapter-opt-in-debug.loads"
+          grep -Fq '/LocalAuthentication.framework/' "$RUNNER_TEMP/volc-adapter-opt-in-debug.loads"
+          for directory in "$default_debug_dir" "$domain_only_dir" "$apple_only_dir" "$release_dir" "$release_flags_dir"; do
+            if LC_ALL=C grep -aFq 'juyi-native-volc-translation-adapter-v1' "$directory"/*; then exit 1; fi
+            if LC_ALL=C grep -aFq 'io.github.Eim-aa.Juyi.debug.native-volc.active' "$directory"/*; then exit 1; fi
+            if LC_ALL=C grep -aFq 'Library/Application Support/io.github.Eim-aa.Juyi/NativeVolcDebug' "$directory"/*; then exit 1; fi
+            if LC_ALL=C grep -aFq 'NativeVolcDebugWorkflow' "$directory"/*; then exit 1; fi
+            if LC_ALL=C grep -aFq 'NativeVolcTranslationAdapterSheet' "$directory"/*; then exit 1; fi
+            if LC_ALL=C grep -aFq '此页面连接真实火山翻译 API，不是模拟器。' "$directory"/*; then exit 1; fi
+            if LC_ALL=C grep -aFq '开发：测试火山云端翻译…' "$directory"/*; then exit 1; fi
+            find "$directory" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/volc-adapter-off.loads"
+            if grep -Fq '/Security.framework/' "$RUNNER_TEMP/volc-adapter-off.loads"; then exit 1; fi
+            if grep -Fq '/LocalAuthentication.framework/' "$RUNNER_TEMP/volc-adapter-off.loads"; then exit 1; fi
+          done
       - name: Verify Xcode Release products
         run: |
           scripts/verify_macos_binary.sh "$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/MacOS/Juyi" 15.0
@@ -159,9 +210,17 @@ jobs:
           if grep -Fq 'juyi-native-apple-translation-adapter-v1' "$RUNNER_TEMP/legacy-default-release.strings"; then exit 1; fi
           if grep -Fq 'The weather is pleasant today.' "$RUNNER_TEMP/legacy-default-release.strings"; then exit 1; fi
           if LC_ALL=C grep -aFq '开发：测试 Apple 离线翻译…' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          if LC_ALL=C grep -aFq 'juyi-native-volc-translation-adapter-v1' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          if LC_ALL=C grep -aFq 'io.github.Eim-aa.Juyi.debug.native-volc.active' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          if LC_ALL=C grep -aFq 'Library/Application Support/io.github.Eim-aa.Juyi/NativeVolcDebug' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          if LC_ALL=C grep -aFq 'NativeVolcTranslationAdapterSheet' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          if LC_ALL=C grep -aFq '此页面连接真实火山翻译 API，不是模拟器。' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          if LC_ALL=C grep -aFq '开发：测试火山云端翻译…' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-default-release.loads"
           if grep -Fq '/Translation.framework/' "$RUNNER_TEMP/legacy-default-release.loads"; then exit 1; fi
           if grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/legacy-default-release.loads"; then exit 1; fi
+          if grep -Fq '/Security.framework/' "$RUNNER_TEMP/legacy-default-release.loads"; then exit 1; fi
+          if grep -Fq '/LocalAuthentication.framework/' "$RUNNER_TEMP/legacy-default-release.loads"; then exit 1; fi
       - name: Build explicit legacy Debug Apple Translation adapter
         run: |
           CONFIGURATION=Debug SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER' scripts/build_macos_app.sh
@@ -171,6 +230,36 @@ jobs:
           LC_ALL=C grep -aFq '开发：测试 Apple 离线翻译…' build/Juyi.app/Contents/MacOS/*
           find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-apple-adapter-debug.loads"
           grep -Fq '/Translation.framework/' "$RUNNER_TEMP/legacy-apple-adapter-debug.loads"
+          if LC_ALL=C grep -aFq 'juyi-native-volc-translation-adapter-v1' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          if LC_ALL=C grep -aFq 'io.github.Eim-aa.Juyi.debug.native-volc.active' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          if LC_ALL=C grep -aFq 'NativeVolcTranslationAdapterSheet' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          if LC_ALL=C grep -aFq '开发：测试火山云端翻译…' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+      - name: Build explicit legacy Debug Volc Translation adapter
+        run: |
+          CONFIGURATION=Debug SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER' scripts/build_macos_app.sh
+          LC_ALL=C grep -aFq 'juyi-native-volc-translation-adapter-v1' build/Juyi.app/Contents/MacOS/*
+          LC_ALL=C grep -aFq 'Good tools should feel effortless.' build/Juyi.app/Contents/MacOS/*
+          LC_ALL=C grep -aFq 'io.github.Eim-aa.Juyi.debug.native-volc.active' build/Juyi.app/Contents/MacOS/*
+          LC_ALL=C grep -aFq 'Library/Application Support/io.github.Eim-aa.Juyi/NativeVolcDebug' build/Juyi.app/Contents/MacOS/*
+          LC_ALL=C grep -aFq 'NativeVolcTranslationAdapterSheet' build/Juyi.app/Contents/MacOS/*
+          LC_ALL=C grep -aFq '此页面连接真实火山翻译 API，不是模拟器。' build/Juyi.app/Contents/MacOS/*
+          LC_ALL=C grep -aFq '开发：测试火山云端翻译…' build/Juyi.app/Contents/MacOS/*
+          find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-volc-adapter-debug.loads"
+          grep -Fq '/Security.framework/' "$RUNNER_TEMP/legacy-volc-adapter-debug.loads"
+          grep -Fq '/LocalAuthentication.framework/' "$RUNNER_TEMP/legacy-volc-adapter-debug.loads"
+          if LC_ALL=C grep -aFq 'juyi-native-apple-translation-adapter-v1' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          if LC_ALL=C grep -aFq 'The weather is pleasant today.' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          if LC_ALL=C grep -aFq '开发：测试 Apple 离线翻译…' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+      - name: Build legacy Release with every development flag injected
+        run: |
+          CONFIGURATION=Release SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER JUYI_NATIVE_TRANSLATION_OVERLAY' scripts/build_macos_app.sh
+          for token in 'juyi-native-apple-translation-adapter-v1' 'The weather is pleasant today.' '开发：测试 Apple 离线翻译…' 'juyi-native-volc-translation-adapter-v1' 'io.github.Eim-aa.Juyi.debug.native-volc.active' 'Library/Application Support/io.github.Eim-aa.Juyi/NativeVolcDebug' 'NativeVolcTranslationAdapterSheet' '此页面连接真实火山翻译 API，不是模拟器。' '开发：测试火山云端翻译…'; do
+            if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
+          done
+          find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-release-all-flags.loads"
+          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
+            if grep -Fq "$framework" "$RUNNER_TEMP/legacy-release-all-flags.loads"; then exit 1; fi
+          done
       - name: Build legacy universal Apple Translation helper
         run: scripts/build_apple_helper.sh "$RUNNER_TEMP/apple-translation-helper"
       - name: Run Onboarding policy tests
@@ -229,6 +318,26 @@ jobs:
         run: |
           swiftc -swift-version 5 -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -framework CryptoKit macos/VolcV4RequestBuilder.swift macos/NativeTranslationDomain.swift macos/VolcTranslationResponseParser.swift tests/VolcTranslationResponseParserTests.swift -o "$RUNNER_TEMP/volc-response-parser-tests"
           "$RUNNER_TEMP/volc-response-parser-tests"
+      - name: Run native Volc Debug credential-store tests
+        run: |
+          swiftc -swift-version 5 -strict-concurrency=complete -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -D JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER -framework CryptoKit -framework Security -framework LocalAuthentication macos/VolcV4RequestBuilder.swift macos/NativeVolcDebugCredentialStore.swift tests/NativeVolcDebugCredentialStoreTests.swift -o "$RUNNER_TEMP/native-volc-debug-credential-store-tests"
+          "$RUNNER_TEMP/native-volc-debug-credential-store-tests"
+      - name: Run native Volc Debug interlock tests
+        run: |
+          swiftc -swift-version 5 -strict-concurrency=complete -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -D JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER macos/NativeVolcDebugInterlock.swift tests/NativeVolcDebugInterlockTests.swift -o "$RUNNER_TEMP/native-volc-debug-interlock-tests"
+          "$RUNNER_TEMP/native-volc-debug-interlock-tests"
+      - name: Run native Volc Debug transport tests
+        run: |
+          swiftc -swift-version 5 -strict-concurrency=complete -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -D JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER -framework CryptoKit macos/VolcV4RequestBuilder.swift macos/NativeTranslationDomain.swift macos/VolcTranslationResponseParser.swift macos/NativeVolcDebugInterlock.swift macos/NativeVolcDebugTransport.swift tests/NativeVolcDebugTransportTests.swift -o "$RUNNER_TEMP/native-volc-debug-transport-tests"
+          "$RUNNER_TEMP/native-volc-debug-transport-tests"
+      - name: Run native Volc Debug workflow tests
+        run: |
+          swiftc -swift-version 5 -strict-concurrency=complete -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -D JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER -framework CryptoKit -framework Security -framework LocalAuthentication macos/VolcV4RequestBuilder.swift macos/NativeTranslationDomain.swift macos/VolcTranslationResponseParser.swift macos/NativeVolcDebugCredentialStore.swift macos/NativeVolcDebugInterlock.swift macos/NativeVolcDebugTransport.swift macos/NativeVolcDebugWorkflow.swift tests/NativeVolcDebugWorkflowTests.swift -o "$RUNNER_TEMP/native-volc-debug-workflow-tests"
+          "$RUNNER_TEMP/native-volc-debug-workflow-tests"
+      - name: Run native Volc Translation adapter model tests
+        run: |
+          swiftc -swift-version 5 -strict-concurrency=complete -warnings-as-errors -parse-as-library -D DEBUG -D JUYI_NATIVE_TRANSLATION_DOMAIN -D JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER -framework CryptoKit -framework Security -framework LocalAuthentication -framework Combine macos/VolcV4RequestBuilder.swift macos/NativeTranslationDomain.swift macos/VolcTranslationResponseParser.swift macos/NativeVolcDebugCredentialStore.swift macos/NativeVolcDebugInterlock.swift macos/NativeVolcDebugTransport.swift macos/NativeVolcDebugWorkflow.swift macos/NativeVolcTranslationAdapterModel.swift tests/NativeVolcTranslationAdapterModelTests.swift -o "$RUNNER_TEMP/native-volc-translation-adapter-model-tests"
+          "$RUNNER_TEMP/native-volc-translation-adapter-model-tests"
 
   syntax:
     runs-on: ubuntu-latest

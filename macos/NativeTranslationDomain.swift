@@ -286,6 +286,8 @@ enum NativeTranslationFailure: Error, Equatable, Sendable, CustomStringConvertib
     case cloudCredentialUnverified
     case cloudCredentialSnapshotMismatch
     case volcCredential
+    case volcNetwork
+    case volcTransportSecurity
     case volcTimeout
     case volcQuota
     case volcService
@@ -308,6 +310,8 @@ enum NativeTranslationFailure: Error, Equatable, Sendable, CustomStringConvertib
         case .cloudCredentialUnverified: return "cloud_credential_unverified"
         case .cloudCredentialSnapshotMismatch: return "cloud_credential_snapshot_mismatch"
         case .volcCredential: return "volc_credential"
+        case .volcNetwork: return "volc_network"
+        case .volcTransportSecurity: return "volc_transport_security"
         case .volcTimeout: return "volc_timeout"
         case .volcQuota: return "volc_quota"
         case .volcService: return "volc_service"

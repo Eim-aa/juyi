@@ -33,17 +33,19 @@ def test_every_domain_file_has_one_exact_outer_debug_gate():
 
 
 def test_domain_has_no_runtime_entry_or_runtime_switch():
-    app_gate = (
+    app_gates = {
         "#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN "
-        "&& JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER"
-    )
+        "&& JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER",
+        "#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN "
+        "&& JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER",
+    }
     domain_flag_lines = [
         line.strip()
         for line in APP.splitlines()
         if "JUYI_NATIVE_TRANSLATION_DOMAIN" in line
     ]
     assert domain_flag_lines
-    assert all(line == app_gate for line in domain_flag_lines)
+    assert set(domain_flag_lines) == app_gates
     assert "NativeTranslationDomain" not in APP
     assert "VolcV4RequestBuilder" not in APP
     assert "VolcTranslationResponseParser" not in APP
@@ -51,6 +53,7 @@ def test_domain_has_no_runtime_entry_or_runtime_switch():
         assert "JUYI_NATIVE_TRANSLATION_DOMAIN" not in config
     assert 'if [[ "$CONFIGURATION" == "Debug" ]]' in LEGACY
     assert "JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER" in LEGACY
+    assert "JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER" in LEGACY
     assert "UserDefaults" not in ALL_SOURCE
     assert "ProcessInfo" not in ALL_SOURCE
     assert "public let nativeTranslationDomainBuildSentinel" in ALL_SOURCE
@@ -172,7 +175,9 @@ def test_v4_profile_is_deterministic_python_compatible_and_redacted():
         '[REDACTED]',
         "static let maximumCredentialBytes = 256",
         "static let maximumLanguageIdentifierBytes = 32",
-        "validSecretKey(credentials.secretKey)",
+        "credentialsAreValid(",
+        "secretKey: credentials.secretKey",
+        "validAccessKey(accessKey) && validSecretKey(secretKey)",
         "(0x21...0x7E).contains($0.value)",
         "(1...maximum).contains(value.utf8.count)",
     ):

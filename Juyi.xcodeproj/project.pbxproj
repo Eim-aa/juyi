@@ -38,6 +38,12 @@
 		A0000000000000000000007B /* VolcTranslationResponseParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000078 /* VolcTranslationResponseParser.swift */; };
 		A0000000000000000000007E /* NativeAppleTranslationAdapterModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000007C /* NativeAppleTranslationAdapterModel.swift */; };
 		A0000000000000000000007F /* NativeAppleTranslationAdapterHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000007D /* NativeAppleTranslationAdapterHost.swift */; };
+		A00000000000000000000086 /* NativeVolcDebugCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000080 /* NativeVolcDebugCredentialStore.swift */; };
+		A00000000000000000000087 /* NativeVolcDebugInterlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000081 /* NativeVolcDebugInterlock.swift */; };
+		A00000000000000000000088 /* NativeVolcDebugTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000082 /* NativeVolcDebugTransport.swift */; };
+		A00000000000000000000089 /* NativeVolcDebugWorkflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000083 /* NativeVolcDebugWorkflow.swift */; };
+		A0000000000000000000008A /* NativeVolcTranslationAdapterModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000084 /* NativeVolcTranslationAdapterModel.swift */; };
+		A0000000000000000000008B /* NativeVolcTranslationAdapterHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000085 /* NativeVolcTranslationAdapterHost.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -79,6 +85,12 @@
 		A00000000000000000000078 /* VolcTranslationResponseParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolcTranslationResponseParser.swift; sourceTree = "<group>"; };
 		A0000000000000000000007C /* NativeAppleTranslationAdapterModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAppleTranslationAdapterModel.swift; sourceTree = "<group>"; };
 		A0000000000000000000007D /* NativeAppleTranslationAdapterHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAppleTranslationAdapterHost.swift; sourceTree = "<group>"; };
+		A00000000000000000000080 /* NativeVolcDebugCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcDebugCredentialStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000081 /* NativeVolcDebugInterlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcDebugInterlock.swift; sourceTree = "<group>"; };
+		A00000000000000000000082 /* NativeVolcDebugTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcDebugTransport.swift; sourceTree = "<group>"; };
+		A00000000000000000000083 /* NativeVolcDebugWorkflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcDebugWorkflow.swift; sourceTree = "<group>"; };
+		A00000000000000000000084 /* NativeVolcTranslationAdapterModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcTranslationAdapterModel.swift; sourceTree = "<group>"; };
+		A00000000000000000000085 /* NativeVolcTranslationAdapterHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcTranslationAdapterHost.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -151,6 +163,12 @@
 				A00000000000000000000078 /* VolcTranslationResponseParser.swift */,
 				A0000000000000000000007C /* NativeAppleTranslationAdapterModel.swift */,
 				A0000000000000000000007D /* NativeAppleTranslationAdapterHost.swift */,
+				A00000000000000000000080 /* NativeVolcDebugCredentialStore.swift */,
+				A00000000000000000000081 /* NativeVolcDebugInterlock.swift */,
+				A00000000000000000000082 /* NativeVolcDebugTransport.swift */,
+				A00000000000000000000083 /* NativeVolcDebugWorkflow.swift */,
+				A00000000000000000000084 /* NativeVolcTranslationAdapterModel.swift */,
+				A00000000000000000000085 /* NativeVolcTranslationAdapterHost.swift */,
 				A00000000000000000000024 /* Info.plist */,
 				A00000000000000000000025 /* AppIcon.png */,
 				A0000000000000000000002C /* Assets.xcassets */,
@@ -299,6 +317,12 @@
 				A0000000000000000000007B /* VolcTranslationResponseParser.swift in Sources */,
 				A0000000000000000000007E /* NativeAppleTranslationAdapterModel.swift in Sources */,
 				A0000000000000000000007F /* NativeAppleTranslationAdapterHost.swift in Sources */,
+				A00000000000000000000086 /* NativeVolcDebugCredentialStore.swift in Sources */,
+				A00000000000000000000087 /* NativeVolcDebugInterlock.swift in Sources */,
+				A00000000000000000000088 /* NativeVolcDebugTransport.swift in Sources */,
+				A00000000000000000000089 /* NativeVolcDebugWorkflow.swift in Sources */,
+				A0000000000000000000008A /* NativeVolcTranslationAdapterModel.swift in Sources */,
+				A0000000000000000000008B /* NativeVolcTranslationAdapterHost.swift in Sources */,
 				A00000000000000000000032 /* OnboardingPolicy.swift in Sources */,
 				A00000000000000000000033 /* WindowFramePolicy.swift in Sources */,
 			);

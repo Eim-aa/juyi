@@ -1197,6 +1197,9 @@ final class AppModel: ObservableObject {
             #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
             NativeAppleTranslationAdapterCoordinator.shared.invalidate(.engineChanged)
             #endif
+            #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
+            NativeVolcTranslationAdapterCoordinator.shared.invalidate(.engineChanged)
+            #endif
             onChange?()
             return true
         } catch {
@@ -1763,12 +1766,18 @@ final class AppModel: ObservableObject {
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
         if paused != previous { NativeAppleTranslationAdapterCoordinator.shared.invalidate(.pause) }
         #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
+        if paused != previous { NativeVolcTranslationAdapterCoordinator.shared.invalidate(.pause) }
+        #endif
         onChange?()
     }
     func stopService() {
         guard serviceReady && !serviceBusy && !cloudBusy else { return }; serviceBusy = true
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
         NativeAppleTranslationAdapterCoordinator.shared.invalidate(.stop)
+        #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
+        NativeVolcTranslationAdapterCoordinator.shared.invalidate(.stop)
         #endif
         Task { _ = await Task.detached { AppModel.launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"]) }.value; try? await Task.sleep(for: .milliseconds(600)); await refresh(); serviceBusy = false; notice = "后台翻译组件已停止。需要时可点“自动修复”重新启动。" }
     }
@@ -2329,6 +2338,10 @@ private struct RootView: View {
     @ObservedObject private var nativeAppleTranslationAdapter =
         NativeAppleTranslationAdapterCoordinator.shared
     #endif
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
+    @ObservedObject private var nativeVolcTranslationAdapter =
+        NativeVolcTranslationAdapterCoordinator.shared
+    #endif
     var body: some View {
         Group {
             if model.onboardingPresented { OnboardingView(model: model) }
@@ -2348,6 +2361,18 @@ private struct RootView: View {
             NativeAppleTranslationAdapterSheet(
                 coordinator: nativeAppleTranslationAdapter
             )
+        }
+        #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
+        .sheet(
+            isPresented: Binding(
+                get: { nativeVolcTranslationAdapter.isPresented },
+                set: { presented in
+                    if !presented { nativeVolcTranslationAdapter.close() }
+                }
+            )
+        ) {
+            NativeVolcTranslationAdapterSheet(coordinator: nativeVolcTranslationAdapter)
         }
         #endif
     }
@@ -2384,6 +2409,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         NativeTranslationOverlayController.shared.setPaused(model.paused)
         #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        workspaceCenter.addObserver(
+            self, selector: #selector(nativeVolcWillSleep(_:)),
+            name: NSWorkspace.willSleepNotification, object: nil
+        )
+        workspaceCenter.addObserver(
+            self, selector: #selector(nativeVolcDidWake(_:)),
+            name: NSWorkspace.didWakeNotification, object: nil
+        )
+        workspaceCenter.addObserver(
+            self, selector: #selector(nativeVolcSessionResigned(_:)),
+            name: NSWorkspace.sessionDidResignActiveNotification, object: nil
+        )
+        #endif
         if !isLoginLaunch { showWindow() }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
@@ -2403,11 +2443,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
         NativeAppleTranslationAdapterCoordinator.shared.invalidate(.terminate)
         #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        NativeVolcTranslationAdapterCoordinator.shared.invalidate(.terminate)
+        #endif
         if model.onboardingPresented { model.deferOnboarding() }
     }
     func windowWillClose(_ notification: Notification) {
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
         NativeAppleTranslationAdapterCoordinator.shared.close()
+        #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
+        NativeVolcTranslationAdapterCoordinator.shared.close()
         #endif
         if model.onboardingPresented { model.deferOnboarding() }
     }
@@ -2441,6 +2488,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
         appleAdapter.target = self
         submenu.addItem(appleAdapter)
+        submenu.addItem(.separator())
+        #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
+        let volcAdapter = NSMenuItem(
+            title: "开发：测试火山云端翻译…",
+            action: #selector(testNativeVolcTranslationAdapter),
+            keyEquivalent: ""
+        )
+        volcAdapter.target = self
+        submenu.addItem(volcAdapter)
         submenu.addItem(.separator())
         #endif
         let quit = NSMenuItem(title: "退出句译", action: #selector(terminate), keyEquivalent: "q"); quit.target = self; submenu.addItem(quit)
@@ -2536,6 +2593,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func testNativeAppleTranslationAdapter() {
         showWindow()
         NativeAppleTranslationAdapterCoordinator.shared.open()
+    }
+    #endif
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
+    @objc private func testNativeVolcTranslationAdapter() {
+        showWindow()
+        NativeVolcTranslationAdapterCoordinator.shared.open()
+    }
+    @objc private func nativeVolcWillSleep(_ notification: Notification) {
+        NativeVolcTranslationAdapterCoordinator.shared.invalidate(.sleep)
+    }
+    @objc private func nativeVolcDidWake(_ notification: Notification) {
+        NativeVolcTranslationAdapterCoordinator.shared.invalidate(.wake)
+    }
+    @objc private func nativeVolcSessionResigned(_ notification: Notification) {
+        NativeVolcTranslationAdapterCoordinator.shared.invalidate(.sessionResigned)
     }
     #endif
     @objc private func apple() { model.chooseApple() }; @objc private func cloud() { model.chooseCloud(); showWindow() }; @objc private func pause() { model.togglePause() }; @objc private func diagnostics() { model.showDiagnostics = true; showWindow() }; @objc private func terminate() { NSApp.terminate(nil) }

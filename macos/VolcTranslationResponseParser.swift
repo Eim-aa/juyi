@@ -2,7 +2,7 @@
 import Foundation
 
 enum VolcTranslationResponseParser {
-    private static let maximumPayloadBytes = 1_048_576
+    static let maximumPayloadBytes = 1_048_576
 
     static func parse(statusCode: Int, data: Data) -> Result<String, NativeTranslationFailure> {
         guard (200...299).contains(statusCode) else {
@@ -35,7 +35,9 @@ enum VolcTranslationResponseParser {
             return .failure(classify(upstreamError.code))
         }
 
-        guard let translation = envelope.translationList?.first?.translation,
+        guard let translationList = envelope.resolvedTranslationList,
+              translationList.count == 1,
+              let translation = translationList[0].translation,
               !translation.unicodeScalars.allSatisfy({ $0.properties.isWhitespace })
         else {
             return .failure(.volcMalformedResponse)
@@ -51,7 +53,7 @@ enum VolcTranslationResponseParser {
         case "RequestTimeout", "RequestTimeoutException", "Timeout":
             return .volcTimeout
         case "FlowLimitExceeded", "LimitExceeded", "QuotaExceeded", "Throttling",
-             "TooManyRequests":
+             "TooManyRequests", "-429":
             return .volcQuota
         default:
             return .volcService
@@ -60,7 +62,22 @@ enum VolcTranslationResponseParser {
 
     private struct Envelope: Decodable {
         let translationList: [TranslationItem]?
+        let result: ResultEnvelope?
         let responseMetadata: ResponseMetadata?
+
+        var resolvedTranslationList: [TranslationItem]? {
+            let official = result?.translationList
+            switch (translationList, official) {
+            case (_?, _?):
+                return nil
+            case let (legacy?, nil):
+                return legacy
+            case let (nil, current?):
+                return current
+            case (nil, nil):
+                return nil
+            }
+        }
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -70,21 +87,35 @@ enum VolcTranslationResponseParser {
             )
             if responseMetadata?.error != nil {
                 translationList = nil
+                result = nil
             } else {
                 translationList = try container.decodeIfPresent(
                     [TranslationItem].self,
                     forKey: .translationList
+                )
+                result = try container.decodeIfPresent(
+                    ResultEnvelope.self,
+                    forKey: .result
                 )
             }
         }
 
         enum CodingKeys: String, CodingKey {
             case translationList = "TranslationList"
+            case result = "Result"
             case responseMetadata = "ResponseMetadata"
         }
     }
 
-    private struct TranslationItem: Decodable {
+    private struct ResultEnvelope: Decodable {
+        let translationList: [TranslationItem]?
+
+        enum CodingKeys: String, CodingKey {
+            case translationList = "TranslationList"
+        }
+    }
+
+    private struct TranslationItem: Decodable, Equatable {
         let translation: String?
 
         enum CodingKeys: String, CodingKey {
