@@ -25,6 +25,69 @@ enum NativeTranslationOverlayCopyPresentation: Equatable {
     }
 }
 
+#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+enum NativeTranslationAppleResultLabCopyAnnouncementOutcome: Equatable {
+    case copied
+    case failed
+}
+
+enum NativeTranslationAppleResultLabCopyAnnouncementPolicy {
+    static func message(
+        for outcome: NativeTranslationAppleResultLabCopyAnnouncementOutcome
+    ) -> String {
+        switch outcome {
+        case .copied:
+            return "句译，已复制 Debug 固定样例 Apple Translation 真实译文"
+        case .failed:
+            return "句译，复制失败；系统剪贴板内容可能已改变"
+        }
+    }
+}
+
+enum NativeTranslationAppleResultLabLoadingAnnouncementStage: Equatable {
+    case initial
+    case extended
+}
+
+/// One non-focus-stealing announcement per live loading stage and panel
+/// generation. Controller code supplies the lease/session currentness bit;
+/// stale updates therefore cannot reset the lifecycle or speak.
+struct NativeTranslationAppleResultLabLoadingAnnouncementLifecycle: Equatable {
+    private var generation: Int?
+    private var announcedInitial = false
+    private var announcedExtended = false
+
+    mutating func consume(
+        stage: NativeTranslationAppleResultLabLoadingAnnouncementStage,
+        generation: Int,
+        isCurrent: Bool
+    ) -> String? {
+        guard isCurrent else { return nil }
+        if self.generation != generation {
+            self.generation = generation
+            announcedInitial = false
+            announcedExtended = false
+        }
+        switch stage {
+        case .initial:
+            guard !announcedInitial else { return nil }
+            announcedInitial = true
+            return "句译，正在运行 Debug 固定样例 Apple Translation"
+        case .extended:
+            guard !announcedExtended else { return nil }
+            announcedExtended = true
+            return "句译，Debug 固定样例 Apple Translation 仍在处理中"
+        }
+    }
+
+    mutating func invalidate() {
+        generation = nil
+        announcedInitial = false
+        announcedExtended = false
+    }
+}
+#endif
+
 /// One-shot fixture feedback consumed by the next visible state. Keeping this
 /// separate from rendering prevents a preview-specific failure state from
 /// being reset before it reaches the reusable panel.

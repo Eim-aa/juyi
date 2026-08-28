@@ -5,6 +5,12 @@ import Foundation
 enum NativeTranslationDomainTests {
     private static var passed = 0
 
+    private static func fakeExecutor(
+        _ run: @escaping @Sendable (NativeTranslationEffectRequest) async -> NativeTranslationEffectResult
+    ) -> NativeTranslationExecutor {
+        NativeTranslationExecutor(run: run)
+    }
+
     private static func expect(
         _ condition: @autoclosure () -> Bool,
         _ message: String,
@@ -474,7 +480,7 @@ enum NativeTranslationDomainTests {
             let recorder = Recorder()
             let coordinator = NativeTranslationDomainCoordinator(
                 credentialLoader: { recorder.loadCredentials($0) },
-                executor: NativeTranslationFakeExecutor { request in
+                executor: fakeExecutor { request in
                     recorder.recordEffect(request)
                     return .success(text: "should not run")
                 },
@@ -497,7 +503,7 @@ enum NativeTranslationDomainTests {
         let early = Recorder()
         let coordinator = NativeTranslationDomainCoordinator(
             credentialLoader: { early.loadCredentials($0) },
-            executor: NativeTranslationFakeExecutor { request in
+            executor: fakeExecutor { request in
                 early.recordEffect(request)
                 return .success(text: "should not run")
             },
@@ -518,7 +524,7 @@ enum NativeTranslationDomainTests {
         let recorder = Recorder()
         let coordinator = NativeTranslationDomainCoordinator(
             credentialLoader: { recorder.loadCredentials($0) },
-            executor: NativeTranslationFakeExecutor { request in
+            executor: fakeExecutor { request in
                 recorder.recordEffect(request)
                 return .success(text: request.engine == .apple ? "苹果译文" : "火山译文")
             },
@@ -591,7 +597,7 @@ enum NativeTranslationDomainTests {
             credentialLoader: { _ in
                 VolcV4Credentials(accessKey: "AK", secretKey: "SK", fingerprint: "changed")
             },
-            executor: NativeTranslationFakeExecutor { request in
+            executor: fakeExecutor { request in
                 mismatch.recordEffect(request)
                 return .success(text: "should not run")
             },
@@ -614,7 +620,7 @@ enum NativeTranslationDomainTests {
             credentialLoader: { _ in
                 VolcV4Credentials(accessKey: "", secretKey: "", fingerprint: "verified-fingerprint")
             },
-            executor: NativeTranslationFakeExecutor { request in
+            executor: fakeExecutor { request in
                 emptySnapshot.recordEffect(request)
                 return .success(text: "should not run")
             },
@@ -636,7 +642,7 @@ enum NativeTranslationDomainTests {
         let appleFailure = Recorder()
         let appleFailureCoordinator = NativeTranslationDomainCoordinator(
             credentialLoader: { appleFailure.loadCredentials($0) },
-            executor: NativeTranslationFakeExecutor { request in
+            executor: fakeExecutor { request in
                 appleFailure.recordEffect(request)
                 return .failure(.appleExecutionFailed)
             },
@@ -658,7 +664,7 @@ enum NativeTranslationDomainTests {
             let volcFailure = Recorder()
             let volcFailureCoordinator = NativeTranslationDomainCoordinator(
                 credentialLoader: { volcFailure.loadCredentials($0) },
-                executor: NativeTranslationFakeExecutor { request in
+                executor: fakeExecutor { request in
                     volcFailure.recordEffect(request)
                     return .failure(failure)
                 },
@@ -686,7 +692,7 @@ enum NativeTranslationDomainTests {
         let recorder = Recorder()
         let coordinator = NativeTranslationDomainCoordinator(
             credentialLoader: { recorder.loadCredentials($0) },
-            executor: NativeTranslationFakeExecutor { request in
+            executor: fakeExecutor { request in
                 await controlled.run(request)
             },
             publisher: { recorder.publish($0, $1) }
@@ -743,7 +749,7 @@ enum NativeTranslationDomainTests {
             let sink = Recorder()
             let instance = NativeTranslationDomainCoordinator(
                 credentialLoader: { sink.loadCredentials($0) },
-                executor: NativeTranslationFakeExecutor { request in await delayed.run(request) },
+                executor: fakeExecutor { request in await delayed.run(request) },
                 publisher: { sink.publish($0, $1) }
             )
             _ = await instance.begin(
@@ -766,7 +772,7 @@ enum NativeTranslationDomainTests {
         let cancelledRecorder = Recorder()
         let cancelledCoordinator = NativeTranslationDomainCoordinator(
             credentialLoader: { cancelledRecorder.loadCredentials($0) },
-            executor: NativeTranslationFakeExecutor { _ in .cancelled },
+            executor: fakeExecutor { _ in .cancelled },
             publisher: { cancelledRecorder.publish($0, $1) }
         )
         _ = await cancelledCoordinator.begin(

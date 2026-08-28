@@ -35,15 +35,22 @@ def test_every_domain_file_has_one_exact_outer_debug_gate():
 def test_domain_has_no_runtime_entry_or_runtime_switch():
     app_gates = {
         "#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN "
-        "&& JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER",
+        "&& JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER "
+        "&& !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING",
         "#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN "
         "&& JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER",
         "#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN "
         "&& JUYI_NATIVE_TRANSLATION_OVERLAY "
-        "&& JUYI_NATIVE_TRANSLATION_RESULT_LAB",
+        "&& JUYI_NATIVE_TRANSLATION_RESULT_LAB "
+        "&& !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING",
+        "#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN "
+        "&& JUYI_NATIVE_TRANSLATION_OVERLAY "
+        "&& JUYI_NATIVE_TRANSLATION_RESULT_LAB "
+        "&& JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER "
+        "&& JUYI_NATIVE_APPLE_RESULT_LAB_BINDING",
     }
     domain_flag_lines = [
-        line.strip()
+        line.strip().replace("#elseif ", "#if ", 1)
         for line in APP.splitlines()
         if "JUYI_NATIVE_TRANSLATION_DOMAIN" in line
     ]
@@ -155,6 +162,14 @@ def test_input_privacy_and_generation_contracts_are_explicit():
     ):
         assert reason in domain
     assert domain.count("guard isCurrent(requestGeneration)") >= 4
+
+
+def test_domain_coordinator_depends_on_a_neutral_effect_executor():
+    domain = SOURCES["NativeTranslationDomain.swift"]
+    assert "struct NativeTranslationExecutor: Sendable" in domain
+    assert "private let executor: NativeTranslationExecutor" in domain
+    assert "executor: NativeTranslationExecutor," in domain
+    assert "NativeTranslationFakeExecutor" not in domain
 
 
 def test_v4_profile_is_deterministic_python_compatible_and_redacted():

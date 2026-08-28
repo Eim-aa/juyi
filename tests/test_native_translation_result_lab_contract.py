@@ -49,10 +49,15 @@ GATE = (
     "#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && "
     "JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB"
 )
-MIXED_GATE = (
+SIMULATED_GATE = GATE + " && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING"
+VOLC_CONFLICT_GATE = (
     "#if DEBUG && JUYI_NATIVE_TRANSLATION_RESULT_LAB && "
-    "(JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER || "
-    "JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER)"
+    "JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER"
+)
+APPLE_WITHOUT_BINDING_CONFLICT_GATE = (
+    "#if DEBUG && JUYI_NATIVE_TRANSLATION_RESULT_LAB && "
+    "JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && "
+    "!JUYI_NATIVE_APPLE_RESULT_LAB_BINDING"
 )
 
 
@@ -65,7 +70,7 @@ def _conditions_for_occurrences(source: str, token: str) -> list[tuple[str, ...]
             stack.append(stripped)
         elif stripped.startswith("#elseif "):
             if stack:
-                stack[-1] = stripped
+                stack[-1] = "#if " + stripped.removeprefix("#elseif ")
         elif stripped == "#endif":
             if stack:
                 stack.pop()
@@ -74,19 +79,26 @@ def _conditions_for_occurrences(source: str, token: str) -> list[tuple[str, ...]
     return conditions
 
 
-def _assert_whole_file_gate(source: str) -> None:
+def _assert_whole_file_gate(source: str, expected_gate: str) -> None:
     lines = source.strip().splitlines()
-    assert lines[0] == GATE
+    assert lines[0] == expected_gate
     assert lines[-1] == "#endif"
-    assert source.count(GATE) == 1
+    assert source.count(expected_gate) == 1
 
 
 def test_exact_four_gate_and_live_adapter_conflict_are_compile_time_only() -> None:
-    for source in (EXTERNAL, MODEL, HOST):
-        _assert_whole_file_gate(source)
-    assert PRESENTATION.count(GATE) == 1
-    assert PRESENTATION.startswith(MIXED_GATE)
-    assert '#error("Result Lab cannot be compiled with a live native translation adapter")' in PRESENTATION
+    _assert_whole_file_gate(EXTERNAL, GATE)
+    for source in (MODEL, HOST):
+        _assert_whole_file_gate(source, SIMULATED_GATE)
+    assert PRESENTATION.count(SIMULATED_GATE) == 1
+    assert PRESENTATION.startswith(VOLC_CONFLICT_GATE)
+    assert APPLE_WITHOUT_BINDING_CONFLICT_GATE in PRESENTATION
+    assert '#error("Result Lab cannot be compiled with the live Volc adapter")' in PRESENTATION
+    assert (
+        '#error("Result Lab and the Apple adapter require '
+        'JUYI_NATIVE_APPLE_RESULT_LAB_BINDING when compiled together")'
+        in PRESENTATION
+    )
     for token in (
         "NativeTranslationResultLabLive",
         "NativeTranslationResultLabSheet",
@@ -96,7 +108,7 @@ def test_exact_four_gate_and_live_adapter_conflict_are_compile_time_only() -> No
     ):
         occurrences = _conditions_for_occurrences(APP, token)
         assert occurrences
-        assert all(GATE in conditions for conditions in occurrences)
+        assert all(SIMULATED_GATE in conditions for conditions in occurrences)
     configs = "".join(
         (ROOT / path).read_text(encoding="utf-8")
         for path in ("Config/Debug.xcconfig", "Config/Release.xcconfig", "Config/Shared.xcconfig")
@@ -139,7 +151,8 @@ def test_open_is_disclosure_only_and_fixtures_use_real_4a_pure_policy() -> None:
     assert MODEL.count('"Good tools should feel effortless."') == 1
     assert "NativeTranslationDomainCoordinator(" in MODEL
     assert "NativeTranslationInputPolicy" not in MODEL or "coordinator.begin(" in MODEL
-    assert "NativeTranslationFakeExecutor" in MODEL
+    assert "NativeTranslationExecutor" in MODEL
+    assert "NativeTranslationFakeExecutor" not in MODEL
     assert "credentialLoader:" in MODEL
     assert "sourceText: NativeTranslationResultLabFixtures.source" in MODEL
     open_body = MODEL.split("func open()", 1)[1].split("func close()", 1)[0]

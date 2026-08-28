@@ -1,4 +1,4 @@
-#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
 import Combine
 import Foundation
 
@@ -81,7 +81,7 @@ struct NativeTranslationResultLabDomainFactory {
                       expectedFingerprint == credentials.fingerprint else { return nil }
                 return credentials
             },
-            executor: NativeTranslationFakeExecutor { request in
+            executor: NativeTranslationExecutor { request in
                 guard request.engine == engine else {
                     return .failure(.cloudCredentialSnapshotMismatch)
                 }

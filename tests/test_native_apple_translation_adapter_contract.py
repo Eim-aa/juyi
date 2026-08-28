@@ -14,6 +14,8 @@ DOC = (ROOT / "docs/NATIVE_APPLE_TRANSLATION_ADAPTER.md").read_text() if (
 ).exists() else ""
 
 GATE = "#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER"
+BINDING_EXCLUSION = " && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING"
+IMPLEMENTATION_GATE = GATE + BINDING_EXCLUSION
 FIXTURE = "The weather is pleasant today."
 MENU_TITLE = "开发：测试 Apple 离线翻译…"
 SENTINEL = "juyi-native-apple-translation-adapter-v1"
@@ -21,9 +23,9 @@ SENTINEL = "juyi-native-apple-translation-adapter-v1"
 
 def _assert_whole_file_gate(source: str) -> None:
     lines = source.strip().splitlines()
-    assert lines[0] == GATE
+    assert lines[0] == IMPLEMENTATION_GATE
     assert lines[-1] == "#endif"
-    assert source.count(GATE) == 1
+    assert source.count(IMPLEMENTATION_GATE) == 1
 
 
 def _conditions_for_occurrences(source: str, token: str) -> list[tuple[str, ...]]:
@@ -33,6 +35,9 @@ def _conditions_for_occurrences(source: str, token: str) -> list[tuple[str, ...]
         stripped = line.strip()
         if stripped.startswith("#if "):
             stack.append(stripped)
+        elif stripped.startswith("#elseif "):
+            if stack:
+                stack[-1] = "#if " + stripped.removeprefix("#elseif ")
         elif stripped == "#endif":
             if stack:
                 stack.pop()
@@ -52,7 +57,7 @@ def test_new_implementation_and_every_app_entry_are_triple_gated() -> None:
     ):
         occurrences = _conditions_for_occurrences(APP, token)
         assert occurrences
-        assert all(GATE in stack for stack in occurrences)
+        assert all(IMPLEMENTATION_GATE in stack for stack in occurrences)
     assert "JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER" not in (
         (ROOT / "Config/Debug.xcconfig").read_text()
         + (ROOT / "Config/Release.xcconfig").read_text()

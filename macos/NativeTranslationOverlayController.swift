@@ -5,6 +5,8 @@ import QuartzCore
 
 #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
 
+#if !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+
 private enum NativeTranslationOverlayFixture: CaseIterable {
     case loading
     case appleSuccess
@@ -167,6 +169,7 @@ private enum NativeTranslationOverlayFixture: CaseIterable {
         }
     }
 }
+#endif
 
 private final class NativeTranslationOverlayButton: NSButton {
     var keyboardFocusEnabled = false {
@@ -191,6 +194,24 @@ private final class NativeTranslationOverlayPanel: NSPanel {
     }
 }
 
+#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+private enum NativeTranslationOverlayExternalIdentity: Equatable {
+    case simulated(NativeTranslationEngine)
+    #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+    case realAppleFixed
+    #endif
+
+    var engine: NativeTranslationEngine {
+        switch self {
+        case let .simulated(engine): return engine
+        #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        case .realAppleFixed: return .apple
+        #endif
+        }
+    }
+}
+#endif
+
 @MainActor
 private final class NativeTranslationOverlayContentView: NSVisualEffectView {
     var closeHandler: (() -> Void)?
@@ -214,7 +235,7 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
     private let metadataStack = NSStackView()
     private let actionsStack = NSStackView()
     #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
-    private var usesResultLabCopyDisclosure = false
+    private var resultLabIdentity: NativeTranslationOverlayExternalIdentity?
     #endif
     private let footerStack = NSStackView()
     private var bodyHeightConstraint: NSLayoutConstraint!
@@ -263,26 +284,38 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         )
         copyButton.isHidden = !state.canCopy
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
-        let copyTitle = usesResultLabCopyDisclosure && copyPresentation == .idle
+        #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        let copyTitle = resultLabIdentity == .realAppleFixed && copyPresentation == .idle
+            ? "复制 Apple 译文"
+            : copyPresentation.buttonTitle
+        #else
+        let copyTitle = resultLabIdentity != nil && copyPresentation == .idle
             ? "复制固定译文"
             : copyPresentation.buttonTitle
+        #endif
         #else
         let copyTitle = copyPresentation.buttonTitle
         #endif
         copyButton.title = copyTitle
         copyButton.setAccessibilityLabel(copyTitle)
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+        #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         copyButton.setAccessibilityHelp(
-            state.canCopy
-                ? (usesResultLabCopyDisclosure
-                    ? "复制完整固定译文并替换系统剪贴板；其他 App 或剪贴板管理器之后可能读取并保留它"
-                    : "复制完整译文，浮窗会继续保留")
-                : nil
+            state.canCopy && resultLabIdentity == .realAppleFixed
+                ? "复制完整真实 Apple 固定样例译文并替换系统剪贴板；其他 App 或剪贴板管理器之后可能读取并保留它"
+                : (state.canCopy ? "复制完整译文，浮窗会继续保留" : nil)
         )
+        #else
+        copyButton.setAccessibilityHelp(
+            state.canCopy && resultLabIdentity != nil
+                ? "复制完整固定译文并替换系统剪贴板；其他 App 或剪贴板管理器之后可能读取并保留它"
+                : (state.canCopy ? "复制完整译文，浮窗会继续保留" : nil)
+        )
+        #endif
         closeButton.setAccessibilityLabel("关闭")
         closeButton.setAccessibilityHelp(
-            usesResultLabCopyDisclosure
-                ? "关闭当前 Result Lab 浮窗并停止本次模拟；迟到结果不会显示或复制"
+            resultLabIdentity != nil
+                ? "关闭当前 Result Lab 浮窗并停止本次请求；迟到结果不会显示或复制"
                 : "关闭当前译文，不停止句译"
         )
         #else
@@ -328,8 +361,10 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
     }
 
     #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
-    func setResultLabPresentation(_ enabled: Bool) {
-        usesResultLabCopyDisclosure = enabled
+    func setResultLabPresentation(
+        _ identity: NativeTranslationOverlayExternalIdentity?
+    ) {
+        resultLabIdentity = identity
     }
     #endif
 
@@ -806,12 +841,22 @@ final class NativeTranslationOverlayController: NSObject {
     private var navigationHandler: ((NativeTranslationOverlayCTA) -> Void)?
     private var pendingDismissReason: NativeTranslationOverlayDismissReason?
     private var preservesVisibleContentForNextSessionBegin = false
+    #if !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
     private var nextFixtureIndex = 0
+    #endif
     #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
     private let externalPresentationRegistry =
         NativeTranslationOverlayExternalPresentationRegistry()
-    private var isResultLabPresentation = false
-    private var resultLabEngine: NativeTranslationEngine?
+    private var resultLabIdentity: NativeTranslationOverlayExternalIdentity?
+    #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+    private var realAppleResultLabLease: NativeTranslationOverlayExternalPresentationLease?
+    private var realAppleLoadingAnnouncementLifecycle =
+        NativeTranslationAppleResultLabLoadingAnnouncementLifecycle()
+    #endif
+    private var isResultLabPresentation: Bool { resultLabIdentity != nil }
+    private var resultLabEngine: NativeTranslationEngine? {
+        resultLabIdentity?.engine
+    }
     #endif
 
     private override init() {
@@ -836,6 +881,7 @@ final class NativeTranslationOverlayController: NSObject {
         navigationHandler = handler
     }
 
+    #if !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
     var nextFixturePreviewTitle: String {
         let fixtures = NativeTranslationOverlayFixture.allCases
         let fixture = fixtures[nextFixtureIndex % fixtures.count]
@@ -861,9 +907,13 @@ final class NativeTranslationOverlayController: NSObject {
             )
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
         let replacedExternalPresentation = externalPresentationRegistry.currentLease
-        isResultLabPresentation = false
-        resultLabEngine = nil
-        overlayView.setResultLabPresentation(false)
+        #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        if realAppleResultLabLease == replacedExternalPresentation {
+            realAppleResultLabLease = nil
+        }
+        #endif
+        resultLabIdentity = nil
+        overlayView.setResultLabPresentation(nil)
         resetPanelAccessibilityIdentity()
         #endif
         let generation = session.begin()
@@ -880,8 +930,10 @@ final class NativeTranslationOverlayController: NSObject {
         }
         #endif
     }
+    #endif
 
     #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+    #if !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
     /// Creates the only panel session that an external Result Lab request may
     /// resolve. It is called before simulated domain work begins.
     func beginExternal(
@@ -899,9 +951,9 @@ final class NativeTranslationOverlayController: NSObject {
                 panelIsVisible: panel.isVisible,
                 presentationPhase: presentationLifecycle.phase
             )
-        isResultLabPresentation = true
-        resultLabEngine = requestedEngine
-        overlayView.setResultLabPresentation(true)
+        let identity = NativeTranslationOverlayExternalIdentity.simulated(requestedEngine)
+        resultLabIdentity = identity
+        overlayView.setResultLabPresentation(identity)
         let engineLabel = requestedEngine == .apple ? "Apple" : "火山"
         panel.title = "句译 Debug 固定样例 \(engineLabel) 模拟结果"
         panel.setAccessibilityTitle("句译 Debug 固定样例 \(engineLabel) 模拟结果")
@@ -941,11 +993,170 @@ final class NativeTranslationOverlayController: NSObject {
         )
         return true
     }
+    #endif
+
+    #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+    /// Reserves an opaque owner capability without reading an anchor, creating
+    /// a panel session, scheduling visual work or posting accessibility output.
+    /// Fresh availability and exact host claim must both succeed before the
+    /// same lease can be activated.
+    func reserveRealAppleExternal(
+        onDismiss: @escaping (NativeTranslationOverlayDismissReason) -> Void
+    ) -> NativeTranslationOverlayExternalPresentationLease? {
+        guard !isPaused,
+              !externalPresentationRegistry.hasActiveLease,
+              realAppleResultLabLease == nil else { return nil }
+        let anticipatedGeneration = session.generation + 1
+        let lease = externalPresentationRegistry.begin(
+            sessionGeneration: anticipatedGeneration,
+            onDismiss: onDismiss
+        )
+        guard externalPresentationRegistry.isCurrent(
+            lease,
+            sessionGeneration: anticipatedGeneration
+        ) else {
+            _ = externalPresentationRegistry.invalidate(lease, reason: .stop)
+            return nil
+        }
+        realAppleResultLabLease = lease
+        return lease
+    }
+
+    @discardableResult
+    func activateRealAppleExternal(
+        loading: NativeTranslationAppleResultLabValidatedPresentation,
+        lease: NativeTranslationOverlayExternalPresentationLease
+    ) -> Bool {
+        let anticipatedGeneration = session.generation + 1
+        guard !isPaused,
+              loading.category == .loading,
+              realAppleResultLabLease == lease,
+              externalPresentationRegistry.matches(
+                  lease,
+                  sessionGeneration: anticipatedGeneration
+              ) else { return false }
+        sourceApplication = externalFrontmostApplication()
+        anchorMousePoint = NSEvent.mouseLocation
+        guard prepareAnchor() else {
+            realAppleResultLabLease = nil
+            _ = externalPresentationRegistry.invalidate(lease, reason: .displayRemoved)
+            return false
+        }
+        fixtureCopyPresentationLifecycle.queue(.idle)
+        pendingPresentationLifecycle.cancel()
+        preservesVisibleContentForNextSessionBegin =
+            NativeTranslationOverlayVisibleReplacementPolicy.preservesCurrentContent(
+                panelIsVisible: panel.isVisible,
+                presentationPhase: presentationLifecycle.phase
+            )
+        resultLabIdentity = .realAppleFixed
+        overlayView.setResultLabPresentation(.realAppleFixed)
+        panel.title = "句译 Debug 固定样例 Apple Translation 真实结果"
+        panel.setAccessibilityTitle("句译 Debug 固定样例 Apple Translation 真实结果")
+        let generation = session.beginAppleResultLabPresentation(loading: loading)
+        guard generation == anticipatedGeneration,
+              externalPresentationRegistry.matches(
+                  lease,
+                  sessionGeneration: generation
+              ) else {
+            session.invalidate()
+            resultLabIdentity = nil
+            overlayView.setResultLabPresentation(nil)
+            resetPanelAccessibilityIdentity()
+            realAppleResultLabLease = nil
+            _ = externalPresentationRegistry.invalidate(lease, reason: .stop)
+            return false
+        }
+        announceRealAppleLoading(
+            stage: .initial,
+            generation: generation,
+            lease: lease
+        )
+        return true
+    }
+
+    @discardableResult
+    func updateRealAppleLoading(
+        _ loading: NativeTranslationAppleResultLabValidatedPresentation,
+        lease: NativeTranslationOverlayExternalPresentationLease
+    ) -> Bool {
+        guard loading.category == .loading,
+              resultLabIdentity == .realAppleFixed,
+              realAppleResultLabLease == lease,
+              externalPresentationRegistry.isCurrent(
+                  lease,
+                  sessionGeneration: session.generation
+              ) else { return false }
+        let generation = session.generation
+        session.updateAppleResultLabLoading(loading, for: generation)
+        let isCurrent = externalPresentationRegistry.isCurrent(
+            lease,
+            sessionGeneration: generation
+        )
+        if isCurrent, loading == .loading(isExtended: true) {
+            announceRealAppleLoading(
+                stage: .extended,
+                generation: generation,
+                lease: lease
+            )
+        }
+        return isCurrent
+    }
+
+    @discardableResult
+    func resolveRealAppleExternal(
+        presentation: NativeTranslationAppleResultLabValidatedPresentation,
+        lease: NativeTranslationOverlayExternalPresentationLease
+    ) -> Bool {
+        guard presentation.overlayState.isTerminal,
+              resultLabIdentity == .realAppleFixed,
+              realAppleResultLabLease == lease,
+              externalPresentationRegistry.acceptTerminal(
+                  lease,
+                  sessionGeneration: session.generation
+              ) else { return false }
+        session.resolveAppleResultLabPresentation(
+            presentation,
+            for: session.generation
+        )
+        return externalPresentationRegistry.matches(
+            lease,
+            sessionGeneration: session.generation
+        )
+    }
+
+    private func announceRealAppleLoading(
+        stage: NativeTranslationAppleResultLabLoadingAnnouncementStage,
+        generation: Int,
+        lease: NativeTranslationOverlayExternalPresentationLease
+    ) {
+        let isCurrent = resultLabIdentity == .realAppleFixed
+            && realAppleResultLabLease == lease
+            && externalPresentationRegistry.isCurrent(
+                lease,
+                sessionGeneration: generation
+            )
+        guard let announcement = realAppleLoadingAnnouncementLifecycle.consume(
+            stage: stage,
+            generation: generation,
+            isCurrent: isCurrent
+        ) else { return }
+        postAnnouncement(announcement)
+    }
+    #endif
 
     func invalidate(
         lease: NativeTranslationOverlayExternalPresentationLease,
         reason: NativeTranslationOverlayDismissReason
     ) {
+        #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        if realAppleResultLabLease == lease,
+           resultLabIdentity == nil {
+            realAppleResultLabLease = nil
+            _ = externalPresentationRegistry.invalidate(lease, reason: reason)
+            return
+        }
+        #endif
         guard externalPresentationRegistry.matches(
             lease,
             sessionGeneration: session.generation
@@ -953,13 +1164,14 @@ final class NativeTranslationOverlayController: NSObject {
         pendingDismissReason = reason
         session.invalidate()
         pendingDismissReason = nil
-        isResultLabPresentation = false
-        resultLabEngine = nil
-        overlayView.setResultLabPresentation(false)
+        resultLabIdentity = nil
+        #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        realAppleResultLabLease = nil
+        #endif
+        overlayView.setResultLabPresentation(nil)
         resetPanelAccessibilityIdentity()
         _ = externalPresentationRegistry.invalidate(lease, reason: reason)
     }
-
     #endif
 
     func focusCurrentOverlay() {
@@ -1001,9 +1213,15 @@ final class NativeTranslationOverlayController: NSObject {
 
     private func configurePanel() {
         panel.contentView = overlayView
+        #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        panel.identifier = NSUserInterfaceItemIdentifier(
+            nativeTranslationAppleResultLabBindingBuildSentinel
+        )
+        #else
         panel.identifier = NSUserInterfaceItemIdentifier(
             NativeTranslationOverlayFixture.buildSentinel
         )
+        #endif
         panel.title = "句译译文"
         panel.titleVisibility = .hidden
         panel.isOpaque = false
@@ -1292,6 +1510,9 @@ final class NativeTranslationOverlayController: NSObject {
         copyResetTask = nil
         copyPresentation = .idle
         announcedTerminalGeneration = nil
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        realAppleLoadingAnnouncementLifecycle.invalidate()
+        #endif
         let hadExplicitKeyboardFocus = keyboardMode
         let sourceToRestore = sourceApplication
         keyboardMode = false
@@ -1336,9 +1557,11 @@ final class NativeTranslationOverlayController: NSObject {
             session.invalidate()
             #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
             if hadExternalPresentation {
-                isResultLabPresentation = false
-                resultLabEngine = nil
-                overlayView.setResultLabPresentation(false)
+                resultLabIdentity = nil
+                #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+                realAppleResultLabLease = nil
+                #endif
+                overlayView.setResultLabPresentation(nil)
                 resetPanelAccessibilityIdentity()
                 externalPresentationRegistry.invalidateActive(reason: reason)
             }
@@ -1348,9 +1571,11 @@ final class NativeTranslationOverlayController: NSObject {
         session.invalidate()
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
         if hadExternalPresentation {
-            isResultLabPresentation = false
-            resultLabEngine = nil
-            overlayView.setResultLabPresentation(false)
+            resultLabIdentity = nil
+            #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+            realAppleResultLabLease = nil
+            #endif
+            overlayView.setResultLabPresentation(nil)
             resetPanelAccessibilityIdentity()
             externalPresentationRegistry.invalidateActive(reason: reason)
         }
@@ -1397,17 +1622,36 @@ final class NativeTranslationOverlayController: NSObject {
         case .copied:
             copyPresentation = .copied
             #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+            #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+            postAnnouncement(
+                resultLabIdentity == .realAppleFixed
+                    ? NativeTranslationAppleResultLabCopyAnnouncementPolicy.message(
+                        for: .copied
+                    )
+                    : "句译，已复制译文"
+            )
+            #else
             postAnnouncement(
                 isResultLabPresentation
                     ? "句译，已复制 Debug 固定样例 \(resultLabEngine == .volc ? "火山" : "Apple") 模拟译文"
                     : "句译，已复制译文"
             )
+            #endif
             #else
             postAnnouncement("句译，已复制译文")
             #endif
             shouldResetPresentation = true
         case .failed:
             copyPresentation = .failed
+            #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+            if resultLabIdentity == .realAppleFixed {
+                postAnnouncement(
+                    NativeTranslationAppleResultLabCopyAnnouncementPolicy.message(
+                        for: .failed
+                    )
+                )
+            }
+            #endif
             shouldResetPresentation = false
         case .unavailable:
             return

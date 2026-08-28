@@ -10,6 +10,11 @@ Engineering note: [NATIVE_TRANSLATION_OVERLAY.md](NATIVE_TRANSLATION_OVERLAY.md)
 records the compile-time-gated native overlay component preview. It uses fixed
 Debug fixtures only; the active translation popup remains Hammerspoon.
 
+Engineering note:
+[NATIVE_TRANSLATION_APPLE_RESULT_LAB_BINDING.md](NATIVE_TRANSLATION_APPLE_RESULT_LAB_BINDING.md)
+records the default-off six-gate 4D-A binding for one real Apple Translation
+fixed sample. It remains an activation-gated development slice.
+
 ## demo.gif
 
 The workflow in a real TextEdit window: a sentence is selected, the Option key

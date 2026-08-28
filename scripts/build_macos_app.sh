@@ -39,6 +39,11 @@ if [[ "$CONFIGURATION" == "Debug" ]]; then
     ACTIVE_CONDITIONS=" ${SWIFT_ACTIVE_COMPILATION_CONDITIONS:-} "
     HAS_NATIVE_DOMAIN=false
     HAS_NATIVE_OVERLAY=false
+    # Forward the binding flag independently so its compile-time prerequisite
+    # checks still fail closed when a caller omits any required slice.
+    if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_APPLE_RESULT_LAB_BINDING "* ]]; then
+        SWIFT_FLAGS+=(-D JUYI_NATIVE_APPLE_RESULT_LAB_BINDING)
+    fi
     if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_TRANSLATION_OVERLAY "* ]]; then
         HAS_NATIVE_OVERLAY=true
         SWIFT_FLAGS+=(-D JUYI_NATIVE_TRANSLATION_OVERLAY)
@@ -97,6 +102,9 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/NativeTranslationResultLabPresentation.swift" \
         "$ROOT/macos/NativeTranslationResultLabModel.swift" \
         "$ROOT/macos/NativeTranslationResultLabHost.swift" \
+        "$ROOT/macos/NativeTranslationAppleResultLabBindingPresentation.swift" \
+        "$ROOT/macos/NativeTranslationAppleResultLabBindingModel.swift" \
+        "$ROOT/macos/NativeTranslationAppleResultLabBindingHost.swift" \
         "$ROOT/macos/OnboardingPolicy.swift" \
         "$ROOT/macos/WindowFramePolicy.swift" \
         "$ROOT/macos/JuyiMenuBar.swift"

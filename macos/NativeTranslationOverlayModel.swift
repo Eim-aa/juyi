@@ -447,7 +447,7 @@ final class NativeTranslationOverlaySession {
         )
     }
 
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
     @discardableResult
     func beginResultLabPresentation(
         engine: NativeTranslationEngine,
@@ -462,9 +462,44 @@ final class NativeTranslationOverlaySession {
     }
     #endif
 
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+    @discardableResult
+    func beginAppleResultLabPresentation(
+        loading: NativeTranslationAppleResultLabValidatedPresentation
+    ) -> Int {
+        beginInternal(
+            initialLoadingState: loading.overlayState,
+            extendedLoadingState: nil,
+            includesTimeout: false
+        )
+    }
+
+    func updateAppleResultLabLoading(
+        _ presentation: NativeTranslationAppleResultLabValidatedPresentation,
+        for expectedGeneration: Int
+    ) {
+        guard generation == expectedGeneration,
+              terminalGeneration != expectedGeneration,
+              presentation.category == .loading else { return }
+        // The owner-wide two-second stage may beat this session's delayed
+        // 150 ms initial publish when availability/claim consumed most of the
+        // budget. Cancel the older visual task before publishing the monotonic
+        // extended state so loading can never regress.
+        cancelScheduledTasks()
+        publish(presentation.overlayState)
+    }
+
+    func resolveAppleResultLabPresentation(
+        _ presentation: NativeTranslationAppleResultLabValidatedPresentation,
+        for expectedGeneration: Int
+    ) {
+        resolveTerminal(presentation.overlayState, for: expectedGeneration)
+    }
+    #endif
+
     private func beginInternal(
         initialLoadingState: NativeTranslationOverlayState,
-        extendedLoadingState: NativeTranslationOverlayState,
+        extendedLoadingState: NativeTranslationOverlayState?,
         includesTimeout: Bool
     ) -> Int {
         generation += 1
@@ -475,8 +510,10 @@ final class NativeTranslationOverlaySession {
         schedule(after: 0.15, generation: requestGeneration) { [weak self] in
             self?.publish(initialLoadingState)
         }
-        schedule(after: 2.0, generation: requestGeneration) { [weak self] in
-            self?.publish(extendedLoadingState)
+        if let extendedLoadingState {
+            schedule(after: 2.0, generation: requestGeneration) { [weak self] in
+                self?.publish(extendedLoadingState)
+            }
         }
         if includesTimeout {
             schedule(after: 12.0, generation: requestGeneration) { [weak self] in
@@ -496,7 +533,7 @@ final class NativeTranslationOverlaySession {
         )
     }
 
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
     func resolveResultLabPresentation(
         _ presentation: NativeTranslationResultLabValidatedPresentation,
         for expectedGeneration: Int

@@ -48,6 +48,9 @@
 		A00000000000000000000091 /* NativeTranslationResultLabPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008D /* NativeTranslationResultLabPresentation.swift */; };
 		A00000000000000000000092 /* NativeTranslationResultLabModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008E /* NativeTranslationResultLabModel.swift */; };
 		A00000000000000000000093 /* NativeTranslationResultLabHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008F /* NativeTranslationResultLabHost.swift */; };
+		A00000000000000000000097 /* NativeTranslationAppleResultLabBindingPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000094 /* NativeTranslationAppleResultLabBindingPresentation.swift */; };
+		A00000000000000000000098 /* NativeTranslationAppleResultLabBindingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000095 /* NativeTranslationAppleResultLabBindingModel.swift */; };
+		A00000000000000000000099 /* NativeTranslationAppleResultLabBindingHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000096 /* NativeTranslationAppleResultLabBindingHost.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -99,6 +102,9 @@
 		A0000000000000000000008D /* NativeTranslationResultLabPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationResultLabPresentation.swift; sourceTree = "<group>"; };
 		A0000000000000000000008E /* NativeTranslationResultLabModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationResultLabModel.swift; sourceTree = "<group>"; };
 		A0000000000000000000008F /* NativeTranslationResultLabHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationResultLabHost.swift; sourceTree = "<group>"; };
+		A00000000000000000000094 /* NativeTranslationAppleResultLabBindingPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationAppleResultLabBindingPresentation.swift; sourceTree = "<group>"; };
+		A00000000000000000000095 /* NativeTranslationAppleResultLabBindingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationAppleResultLabBindingModel.swift; sourceTree = "<group>"; };
+		A00000000000000000000096 /* NativeTranslationAppleResultLabBindingHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationAppleResultLabBindingHost.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -181,6 +187,9 @@
 				A0000000000000000000008D /* NativeTranslationResultLabPresentation.swift */,
 				A0000000000000000000008E /* NativeTranslationResultLabModel.swift */,
 				A0000000000000000000008F /* NativeTranslationResultLabHost.swift */,
+				A00000000000000000000094 /* NativeTranslationAppleResultLabBindingPresentation.swift */,
+				A00000000000000000000095 /* NativeTranslationAppleResultLabBindingModel.swift */,
+				A00000000000000000000096 /* NativeTranslationAppleResultLabBindingHost.swift */,
 				A00000000000000000000024 /* Info.plist */,
 				A00000000000000000000025 /* AppIcon.png */,
 				A0000000000000000000002C /* Assets.xcassets */,
@@ -339,6 +348,9 @@
 				A00000000000000000000091 /* NativeTranslationResultLabPresentation.swift in Sources */,
 				A00000000000000000000092 /* NativeTranslationResultLabModel.swift in Sources */,
 				A00000000000000000000093 /* NativeTranslationResultLabHost.swift in Sources */,
+				A00000000000000000000097 /* NativeTranslationAppleResultLabBindingPresentation.swift in Sources */,
+				A00000000000000000000098 /* NativeTranslationAppleResultLabBindingModel.swift in Sources */,
+				A00000000000000000000099 /* NativeTranslationAppleResultLabBindingHost.swift in Sources */,
 				A00000000000000000000032 /* OnboardingPolicy.swift in Sources */,
 				A00000000000000000000033 /* WindowFramePolicy.swift in Sources */,
 			);

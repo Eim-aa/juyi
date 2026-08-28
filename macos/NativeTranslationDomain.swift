@@ -389,7 +389,7 @@ struct NativeTranslationEffectRequest: Sendable, CustomStringConvertible,
     var debugDescription: String { description }
 }
 
-struct NativeTranslationFakeExecutor: Sendable {
+struct NativeTranslationExecutor: Sendable {
     let run: @Sendable (NativeTranslationEffectRequest) async -> NativeTranslationEffectResult
 
     func execute(_ request: NativeTranslationEffectRequest) async -> NativeTranslationEffectResult {
@@ -413,7 +413,7 @@ actor NativeTranslationDomainCoordinator {
     typealias Publisher = @Sendable (UInt64, NativeTranslationOutcome) -> Void
 
     private let credentialLoader: CredentialLoader
-    private let executor: NativeTranslationFakeExecutor
+    private let executor: NativeTranslationExecutor
     private let publisher: Publisher
 
     private var generation: UInt64 = 0
@@ -422,7 +422,7 @@ actor NativeTranslationDomainCoordinator {
 
     init(
         credentialLoader: @escaping CredentialLoader,
-        executor: NativeTranslationFakeExecutor,
+        executor: NativeTranslationExecutor,
         publisher: @escaping Publisher
     ) {
         self.credentialLoader = credentialLoader

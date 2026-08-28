@@ -1194,7 +1194,9 @@ final class AppModel: ObservableObject {
             try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             try "\(engine)\n".write(to: engineFile, atomically: true, encoding: .utf8)
             selectedEngine = engine
-            #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+            #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+            NativeTranslationAppleResultLabLive.shared.invalidate(.engineChanged)
+            #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
             NativeAppleTranslationAdapterCoordinator.shared.invalidate(.engineChanged)
             #endif
             #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
@@ -1763,7 +1765,9 @@ final class AppModel: ObservableObject {
         paused.toggle()
         do { try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true); try (paused ? "1\n" : "0\n").write(to: pauseFile, atomically: true, encoding: .utf8) }
         catch { paused.toggle(); notice = "暂时无法更改状态。" }
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        if paused != previous { NativeTranslationAppleResultLabLive.shared.invalidate(.pause) }
+        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         if paused != previous { NativeAppleTranslationAdapterCoordinator.shared.invalidate(.pause) }
         #endif
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
@@ -1773,7 +1777,9 @@ final class AppModel: ObservableObject {
     }
     func stopService() {
         guard serviceReady && !serviceBusy && !cloudBusy else { return }; serviceBusy = true
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        NativeTranslationAppleResultLabLive.shared.invalidate(.stop)
+        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         NativeAppleTranslationAdapterCoordinator.shared.invalidate(.stop)
         #endif
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
@@ -2334,7 +2340,7 @@ private struct AppView: View {
 
 private struct RootView: View {
     @ObservedObject var model: AppModel
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
     @ObservedObject private var nativeAppleTranslationAdapter =
         NativeAppleTranslationAdapterCoordinator.shared
     #endif
@@ -2342,9 +2348,13 @@ private struct RootView: View {
     @ObservedObject private var nativeVolcTranslationAdapter =
         NativeVolcTranslationAdapterCoordinator.shared
     #endif
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
     @ObservedObject private var nativeTranslationResultLab =
         NativeTranslationResultLabLive.shared
+    #endif
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+    @ObservedObject private var nativeAppleResultLab =
+        NativeTranslationAppleResultLabLive.shared
     #endif
     var body: some View {
         Group {
@@ -2353,7 +2363,7 @@ private struct RootView: View {
         }
         .sheet(isPresented: $model.showCloudSetup) { CloudSetupView(model: model) }
         .sheet(isPresented: $model.showDiagnostics) { DiagnosticsView(model: model) }
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         .sheet(
             isPresented: Binding(
                 get: { nativeAppleTranslationAdapter.isPresented },
@@ -2379,7 +2389,7 @@ private struct RootView: View {
             NativeVolcTranslationAdapterSheet(coordinator: nativeVolcTranslationAdapter)
         }
         #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         .sheet(
             isPresented: Binding(
                 get: { nativeTranslationResultLab.isPresented },
@@ -2389,6 +2399,18 @@ private struct RootView: View {
             )
         ) {
             NativeTranslationResultLabSheet(coordinator: nativeTranslationResultLab)
+        }
+        #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        .sheet(
+            isPresented: Binding(
+                get: { nativeAppleResultLab.isPresented },
+                set: { presented in
+                    if !presented { nativeAppleResultLab.close() }
+                }
+            )
+        ) {
+            NativeTranslationAppleResultLabSheet(coordinator: nativeAppleResultLab)
         }
         #endif
     }
@@ -2407,8 +2429,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     #if DEBUG
     private let nativeOptionDevelopmentHarness = NativeOptionDevelopmentHarness()
     #endif
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
     private var nativeOverlayPreviewMenuItem: NSMenuItem?
+    #endif
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+    private var nativeAppleResultLabAccessibilityStatus = AccessibilityController.status
     #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -2419,13 +2444,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         nativeOptionDevelopmentHarness.setPaused(model.paused)
         nativeOptionDevelopmentHarness.startIfEnabled()
         #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         NativeTranslationOverlayController.shared.configureNavigation {
             [weak self] cta in self?.handleNativeOverlayCTA(cta)
         }
+        #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
         NativeTranslationOverlayController.shared.setPaused(model.paused)
         #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        workspaceCenter.addObserver(
+            self, selector: #selector(nativeAppleResultLabWillSleep(_:)),
+            name: NSWorkspace.willSleepNotification, object: nil
+        )
+        workspaceCenter.addObserver(
+            self, selector: #selector(nativeAppleResultLabSessionResigned(_:)),
+            name: NSWorkspace.sessionDidResignActiveNotification, object: nil
+        )
+        workspaceCenter.addObserver(
+            self, selector: #selector(nativeAppleResultLabSpaceChanged(_:)),
+            name: NSWorkspace.activeSpaceDidChangeNotification, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(nativeAppleResultLabDisplayChanged(_:)),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil
+        )
+        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
         let workspaceCenter = NSWorkspace.shared.notificationCenter
         workspaceCenter.addObserver(
             self, selector: #selector(nativeVolcWillSleep(_:)),
@@ -2448,18 +2493,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         #if DEBUG
         nativeOptionDevelopmentHarness.applicationBecameActive()
         #endif
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        let currentAccessibilityStatus = AccessibilityController.status
+        if nativeAppleResultLabAccessibilityStatus == .authorized,
+           currentAccessibilityStatus == .notAuthorized {
+            NativeTranslationAppleResultLabLive.shared.invalidate(.accessibilityRevoked)
+        }
+        nativeAppleResultLabAccessibilityStatus = currentAccessibilityStatus
+        #endif
     }
     func applicationWillTerminate(_ notification: Notification) {
         #if DEBUG
         nativeOptionDevelopmentHarness.stop()
         #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
+        NativeTranslationAppleResultLabLive.shared.invalidate(.ownerChanged)
+        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         NativeTranslationResultLabLive.shared.invalidate(.ownerChanged)
         #endif
         #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
         NativeTranslationOverlayController.shared.shutdown()
         #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         NativeAppleTranslationAdapterCoordinator.shared.invalidate(.terminate)
         #endif
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
@@ -2469,10 +2530,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if model.onboardingPresented { model.deferOnboarding() }
     }
     func windowWillClose(_ notification: Notification) {
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        NativeTranslationAppleResultLabLive.shared.close()
+        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         NativeTranslationResultLabLive.shared.close()
         #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         NativeAppleTranslationAdapterCoordinator.shared.close()
         #endif
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
@@ -2497,7 +2560,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func installMainMenu() {
         let main = NSMenu(), app = NSMenuItem(), submenu = NSMenu()
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        let resultLab = NSMenuItem(
+            title: "开发：真实 Apple 结果实验室…",
+            action: #selector(openNativeAppleResultLab),
+            keyEquivalent: ""
+        )
+        resultLab.target = self
+        submenu.addItem(resultLab)
+        let focusResult = NSMenuItem(
+            title: "聚焦当前结果",
+            action: #selector(focusNativeAppleResultLab),
+            keyEquivalent: ""
+        )
+        focusResult.target = self
+        submenu.addItem(focusResult)
+        submenu.addItem(.separator())
+        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         let resultLab = NSMenuItem(
             title: "开发：结果界面实验室…",
             action: #selector(openNativeTranslationResultLab),
@@ -2518,7 +2597,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let focus = NSMenuItem(title: "聚焦当前译文", action: #selector(focusNativeOverlay), keyEquivalent: ""); focus.target = self; submenu.addItem(focus)
         submenu.addItem(.separator())
         #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         let appleAdapter = NSMenuItem(
             title: "开发：测试 Apple 离线翻译…",
             action: #selector(testNativeAppleTranslationAdapter),
@@ -2600,7 +2679,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         showWindow()
     }
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+    @objc private func openNativeAppleResultLab() {
+        showWindow()
+        NativeTranslationAppleResultLabLive.shared.open()
+    }
+    @objc private func focusNativeAppleResultLab() {
+        NativeTranslationAppleResultLabLive.shared.focusCurrentResult()
+    }
+    #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
     @objc private func openNativeTranslationResultLab() {
         showWindow()
         NativeTranslationResultLabLive.shared.open()
@@ -2610,7 +2697,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     #endif
 
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
     @objc private func previewNativeOverlay() {
         NativeTranslationOverlayController.shared.showFixturePreview()
         nativeOverlayPreviewMenuItem?.title = NativeTranslationOverlayController.shared
@@ -2637,7 +2724,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
     #endif
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
     @objc private func testNativeAppleTranslationAdapter() {
         showWindow()
         NativeAppleTranslationAdapterCoordinator.shared.open()
@@ -2658,14 +2745,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NativeVolcTranslationAdapterCoordinator.shared.invalidate(.sessionResigned)
     }
     #endif
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+    @objc private func nativeAppleResultLabWillSleep(_ notification: Notification) {
+        NativeTranslationAppleResultLabLive.shared.invalidate(.ownerChanged)
+    }
+    @objc private func nativeAppleResultLabSessionResigned(_ notification: Notification) {
+        NativeTranslationAppleResultLabLive.shared.invalidate(.ownerChanged)
+    }
+    @objc private func nativeAppleResultLabSpaceChanged(_ notification: Notification) {
+        NativeTranslationAppleResultLabLive.shared.invalidate(.ownerChanged)
+    }
+    @objc private func nativeAppleResultLabDisplayChanged(_ notification: Notification) {
+        NativeTranslationAppleResultLabLive.shared.invalidate(.ownerChanged)
+    }
+    #endif
     @objc private func apple() {
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        NativeTranslationAppleResultLabLive.shared.invalidate(.engineChanged)
+        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         NativeTranslationResultLabLive.shared.invalidate(.engineChanged)
         #endif
         model.chooseApple()
     }
     @objc private func cloud() {
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        NativeTranslationAppleResultLabLive.shared.invalidate(.engineChanged)
+        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         NativeTranslationResultLabLive.shared.invalidate(.engineChanged)
         #endif
         model.chooseCloud(); showWindow()
@@ -2673,7 +2778,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func pause() { model.togglePause() }; @objc private func diagnostics() { model.showDiagnostics = true; showWindow() }; @objc private func terminate() { NSApp.terminate(nil) }
 }
 
-#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
+#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+extension AppDelegate: NSMenuItemValidation {
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(focusNativeAppleResultLab) {
+            return NativeTranslationAppleResultLabLive.shared.hasVisibleResult
+        }
+        return true
+    }
+}
+#elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
 extension AppDelegate: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(focusNativeTranslationResultLab) {

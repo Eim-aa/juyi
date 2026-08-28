@@ -159,7 +159,7 @@ def test_panel_is_singleton_passive_reused_and_focus_is_explicit():
     assert "panel.close()" not in CONTROLLER
 
     show = CONTROLLER.split("func showFixturePreview()", 1)[1].split(
-        "func focusCurrentOverlay", 1
+        "\n    }\n    #endif", 1
     )[0]
     assert "activate" not in show
     assert "makeKey" not in show

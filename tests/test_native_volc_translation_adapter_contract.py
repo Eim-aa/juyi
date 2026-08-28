@@ -44,6 +44,9 @@ def _conditions_for_occurrences(source: str, token: str) -> list[tuple[str, ...]
         stripped = line.strip()
         if stripped.startswith("#if "):
             stack.append(stripped)
+        elif stripped.startswith("#elseif "):
+            if stack:
+                stack[-1] = "#if " + stripped.removeprefix("#elseif ")
         elif stripped == "#endif":
             if stack:
                 stack.pop()
