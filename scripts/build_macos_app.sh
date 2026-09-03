@@ -172,6 +172,9 @@ xcrun actool "$ROOT/macos/Assets.xcassets" \
     --app-icon AppIcon \
     --output-partial-info-plist "$ASSET_INFO" >/dev/null
 
+cp "$ROOT/hammerspoon/argos-translator.lua" "$BUILD/Contents/Resources/argos-translator.lua"
+cp "$ROOT/scripts/hammerspoon_hook.sh" "$BUILD/Contents/Resources/hammerspoon_hook.sh"
+
 cp "$ROOT/macos/Info.plist" "$BUILD/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING_VERSION" "$BUILD/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $CURRENT_PROJECT_VERSION" "$BUILD/Contents/Info.plist"

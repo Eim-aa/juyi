@@ -43,6 +43,8 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     private var lifecycleGeneration: UInt64 = 0
     private var isPaused = false
     private var appleEngineSelected = true
+    private var shortcutDeploymentReady = false
+    private var lifecycleActivationAllowed = false
     private var pipelineGeneration: UInt64 = 0
     private var overlayGeneration: Int?
     private var translationTask: Task<Void, Never>?
@@ -82,10 +84,20 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     }
 
     func enableByUser() {
+        guard shortcutDeploymentReady else {
+            phase = .unavailable
+            detail = "请先部署并重新载入当前快捷键模块。"
+            return
+        }
         guard actionIsEnabled, !isPaused, appleEngineSelected else { return }
         if phase == .active {
             pendingUserEnable = false
             disable(reason: .user)
+        } else if !lifecycleActivationAllowed {
+            pendingUserEnable = true
+            UserDefaults.standard.set(true, forKey: Self.enabledKey)
+            phase = .disabled
+            detail = "系统会话恢复后会继续启用原生双 Option。"
         } else {
             pendingUserEnable = true
             Task { await enable(promptForAccessibility: true) }
@@ -96,6 +108,14 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         if activation?.phase == .idle || activation?.phase == .recoveryRequired {
             activation?.recoverAndReturnToLegacy()
         }
+        guard shortcutDeploymentReady else {
+            if phase != .disabled {
+                phase = .disabled
+                detail = "快捷键模块需要更新后才能恢复原生双 Option。"
+            }
+            return
+        }
+        guard lifecycleActivationAllowed else { return }
         guard UserDefaults.standard.bool(forKey: Self.enabledKey) else {
             if activation?.phase == .returnedToLegacy {
                 phase = .disabled
@@ -114,6 +134,25 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
               phase != .waitingForHammerspoon else { return }
         resumeRequestedAfterRevocation = false
         Task { await enable(promptForAccessibility: false) }
+    }
+
+    func setShortcutDeploymentReady(_ ready: Bool) {
+        guard shortcutDeploymentReady != ready else { return }
+        shortcutDeploymentReady = ready
+        if !ready {
+            pendingUserEnable = false
+            disable(reason: .stop, preservePreference: true)
+        }
+    }
+
+    func setLifecycleActivationAllowed(
+        _ allowed: Bool,
+        reason: NativeOwnerActivationCoordinator.DeactivationReason? = nil
+    ) {
+        lifecycleActivationAllowed = allowed
+        if !allowed, let reason {
+            invalidate(reason)
+        }
     }
 
     func setAppleEngineSelected(_ selected: Bool) {
@@ -165,6 +204,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     }
 
     func applicationBecameActive() {
+        guard lifecycleActivationAllowed else { return }
         guard phase == .active else {
             if pendingUserEnable,
                !enableInProgress,
@@ -189,7 +229,9 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     }
 
     private func enable(promptForAccessibility: Bool) async {
-        guard !enableInProgress, !isPaused, appleEngineSelected else { return }
+        guard !enableInProgress, !isPaused, appleEngineSelected,
+              shortcutDeploymentReady,
+              lifecycleActivationAllowed else { return }
         enableInProgress = true
         let generation = lifecycleGeneration
         defer { enableInProgress = false }
@@ -212,7 +254,9 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
         guard generation == lifecycleGeneration,
               !isPaused,
-              appleEngineSelected else { return }
+              appleEngineSelected,
+              shortcutDeploymentReady,
+              lifecycleActivationAllowed else { return }
         pendingUserEnable = false
 
         switch await apple.readiness() {
@@ -234,7 +278,9 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
 
         guard generation == lifecycleGeneration,
               !isPaused,
-              appleEngineSelected else { return }
+              appleEngineSelected,
+              shortcutDeploymentReady,
+              lifecycleActivationAllowed else { return }
 
         if activation.phase == .recoveryRequired {
             activation.recoverAndReturnToLegacy()
@@ -351,6 +397,8 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             && UserDefaults.standard.bool(forKey: Self.enabledKey)
             && !isPaused
             && appleEngineSelected
+            && shortcutDeploymentReady
+            && lifecycleActivationAllowed
         resumeRequestedAfterRevocation = false
         phase = .disabled
         if shouldResume {

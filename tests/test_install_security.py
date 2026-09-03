@@ -91,6 +91,37 @@ def test_non_target_hammerspoon_symlink_is_never_repointed(tmp_path):
     assert "refusing to replace" in result.stderr
 
 
+def test_exact_broken_legacy_symlink_is_migrated_without_claiming_other_links(tmp_path):
+    hs_dir = tmp_path / ".hammerspoon"
+    hs_dir.mkdir()
+    init = hs_dir / "init.lua"
+    init.write_text(f"{REQUIRE}\n", encoding="utf-8")
+    legacy = tmp_path / ".local/share/argos-translator/hammerspoon/argos-translator.lua"
+    module = hs_dir / "argos-translator.lua"
+    module.symlink_to(legacy)
+    assert module.is_symlink() and not module.exists()
+
+    result = run(HOOK, tmp_path, "install")
+
+    assert result.returncode == 0, result.stderr
+    assert module.resolve() == ROOT / "hammerspoon" / "argos-translator.lua"
+
+
+def test_arbitrary_broken_hammerspoon_symlink_is_never_repointed(tmp_path):
+    hs_dir = tmp_path / ".hammerspoon"
+    hs_dir.mkdir()
+    module = hs_dir / "argos-translator.lua"
+    target = tmp_path / "missing-custom.lua"
+    module.symlink_to(target)
+
+    result = run(HOOK, tmp_path, "install")
+
+    assert result.returncode != 0
+    assert module.is_symlink()
+    assert os.readlink(module) == str(target)
+    assert "refusing to replace" in result.stderr
+
+
 def test_install_migrates_legacy_require_and_is_idempotent(tmp_path):
     hs_dir = tmp_path / ".hammerspoon"
     hs_dir.mkdir()
@@ -236,6 +267,7 @@ def test_hammerspoon_reload_never_uses_killall():
     assert "killall Hammerspoon" not in INSTALL
     assert "hs.reload()" in hook
     assert "Reload Config" in hook
+    assert "command -v hs" not in hook
 
 
 def test_launchd_install_restores_previous_plist_and_service_on_failure():

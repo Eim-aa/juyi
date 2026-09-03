@@ -1029,6 +1029,19 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
         case .unavailable:
             return .temporarilyUnavailable
         }
+        // The first Copy intentionally remains on the pasteboard while the
+        // independent confirmation starts. If cancellation or a focus/context
+        // change prevents that second attempt, restore the original snapshot
+        // only while our first candidate is still the newest pasteboard state.
+        // A successful second attempt advances changeCount, so this fallback
+        // cannot overwrite its candidate or any concurrent external write.
+        defer {
+            _ = restorePasteboardSnapshot(
+                snapshot,
+                to: pasteboard,
+                onlyIfChangeCount: firstCandidateSnapshot.changeCount
+            )
+        }
         guard !cancellationCheck() else { return .cancelled }
 
         // A pasteboard change has no source identity. Require WPS to reproduce

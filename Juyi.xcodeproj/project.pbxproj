@@ -12,6 +12,8 @@
 		A00000000000000000000033 /* WindowFramePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000023 /* WindowFramePolicy.swift */; };
 		A00000000000000000000034 /* TranslationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000027 /* TranslationHelper.swift */; };
 		A00000000000000000000035 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002C /* Assets.xcassets */; };
+		B00000000000000000000003 /* argos-translator.lua in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000001 /* argos-translator.lua */; };
+		B00000000000000000000004 /* hammerspoon_hook.sh in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000002 /* hammerspoon_hook.sh */; };
 		A00000000000000000000036 /* AccessibilityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002D /* AccessibilityController.swift */; };
 		A00000000000000000000037 /* DoubleOptionStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002E /* DoubleOptionStateMachine.swift */; };
 		A00000000000000000000038 /* NativeOptionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002F /* NativeOptionMonitor.swift */; };
@@ -123,6 +125,8 @@
 		A000000000000000000000A6 /* NativeOwnerHandoffLabModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffLabModel.swift; sourceTree = "<group>"; };
 		A000000000000000000000A8 /* NativeOwnerHandoffLabHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffLabHost.swift; sourceTree = "<group>"; };
 		A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerActivationCoordinator.swift; sourceTree = "<group>"; };
+		B00000000000000000000001 /* argos-translator.lua */ = {isa = PBXFileReference; lastKnownFileType = text; path = "hammerspoon/argos-translator.lua"; sourceTree = SOURCE_ROOT; };
+		B00000000000000000000002 /* hammerspoon_hook.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = scripts/hammerspoon_hook.sh; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -159,6 +163,8 @@
 				A00000000000000000000004 /* macos */,
 				A00000000000000000000005 /* apple */,
 				A00000000000000000000006 /* Config */,
+				B00000000000000000000001 /* argos-translator.lua */,
+				B00000000000000000000002 /* hammerspoon_hook.sh */,
 				A00000000000000000000007 /* Frameworks */,
 				A00000000000000000000003 /* Products */,
 			);
@@ -338,6 +344,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				A00000000000000000000035 /* Assets.xcassets in Resources */,
+				B00000000000000000000003 /* argos-translator.lua in Resources */,
+				B00000000000000000000004 /* hammerspoon_hook.sh in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

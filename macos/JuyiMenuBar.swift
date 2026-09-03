@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreGraphics
 import CryptoKit
 import Darwin
 import ServiceManagement
@@ -14,6 +15,7 @@ private let volcKeychainService = "io.github.Eim-aa.juyi.volc"
 private let volcKeychainAccount = "volc"
 private let volcPendingKeychainService = "io.github.Eim-aa.juyi.volc.pending"
 private let volcPendingKeychainAccount = "pending"
+private let shortcutDeploymentFingerprintDefaultsKey = "bundledShortcutDeploymentFingerprint"
 
 struct Health: Decodable {
     let ok: Bool
@@ -57,6 +59,10 @@ struct HotkeyStatus: Decodable {
     let watcher_active: Bool
     let paused: Bool?
     let updated_at: Double?
+    let owner_protocol_version: Int?
+    let legacy_instance_id: String?
+    let owner_state: String?
+    let status_sequence: Int?
 }
 
 private struct TranslationResponse: Decodable {
@@ -68,7 +74,7 @@ private struct TranslationResponse: Decodable {
 }
 
 enum HotkeyProblem: Equatable {
-    case notInstalled, notRunning, heartbeatExpired, notAuthorized, notLoaded, paused, ready
+    case notInstalled, notRunning, heartbeatExpired, needsUpdate, notAuthorized, notLoaded, paused, ready
 }
 
 enum LoginItemState: Equatable {
@@ -77,6 +83,26 @@ enum LoginItemState: Equatable {
 
 private enum LoginItemBackend {
     case serviceManagement, launchAgent
+}
+
+private final class BoundedProcessOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = Data()
+
+    func append(_ data: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        // External status commands should remain small. Keep draining the pipe
+        // after this cap so an unexpected child cannot deadlock or exhaust RAM.
+        let remaining = max(0, 1_048_576 - storage.count)
+        if remaining > 0 { storage.append(contentsOf: data.prefix(remaining)) }
+    }
+
+    func snapshot() -> Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
 }
 
 @MainActor
@@ -107,6 +133,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var loginItemNotice = ""
     @Published var permissionTroubleshooting = false
     @Published var practiceTroubleshooting = false
+    @Published private(set) var shortcutRepairBusy = false
 
     var onChange: (() -> Void)?
     private var timer: Timer?
@@ -116,11 +143,11 @@ final class AppModel: ObservableObject {
     private var loginItemBackend: LoginItemBackend = .serviceManagement
     private var localCloudCredentialFingerprint: String?
     private let loginItemRegistrationKey = "loginItemInitialRegistrationAttempted"
+    private let hotkeyStatusReader = NativeOwnerHandoffStatusReader.live()
     private let home = FileManager.default.homeDirectoryForCurrentUser
     private var configDir: URL { home.appendingPathComponent(".config/argos-translator") }
     private var engineFile: URL { configDir.appendingPathComponent("hs-engine") }
     private var pauseFile: URL { configDir.appendingPathComponent("hs-paused") }
-    private var hotkeyFile: URL { configDir.appendingPathComponent("hs-status.json") }
     private var envFile: URL { configDir.appendingPathComponent("volc.env") }
     private var authTokenFile: URL { configDir.appendingPathComponent("auth-token") }
     private var cloudRemovalMarker: URL { configDir.appendingPathComponent("cloud-removal-pending") }
@@ -137,6 +164,41 @@ final class AppModel: ObservableObject {
         return home.appendingPathComponent(".local/share/argos-translator", isDirectory: true)
     }
     private var helper: URL { installRoot.appendingPathComponent("bin/apple-translation-helper") }
+    private var bundledShortcutModule: URL? {
+        Bundle.main.url(forResource: "argos-translator", withExtension: "lua")
+    }
+    private var bundledShortcutDeploymentFingerprint: String? {
+        guard let module = bundledShortcutModule,
+              let data = try? Data(contentsOf: module),
+              !data.isEmpty else { return nil }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+    private var bundleIsInApplicationsFolder: Bool {
+        let bundleParent = Bundle.main.bundleURL.deletingLastPathComponent()
+            .standardizedFileURL.resolvingSymlinksInPath()
+        let userApplications = home.appendingPathComponent("Applications", isDirectory: true)
+            .standardizedFileURL.resolvingSymlinksInPath()
+        return bundleParent.path == "/Applications"
+            || bundleParent.path == userApplications.path
+    }
+    private var bundledShortcutIsCurrent: Bool {
+        guard let bundledModule = bundledShortcutModule,
+              let fingerprint = bundledShortcutDeploymentFingerprint,
+              UserDefaults.standard.string(
+                forKey: shortcutDeploymentFingerprintDefaultsKey
+              ) == fingerprint else { return false }
+        let installedModule = home
+            .appendingPathComponent(".hammerspoon", isDirectory: true)
+            .appendingPathComponent("argos-translator.lua")
+        guard let rawTarget = try? FileManager.default.destinationOfSymbolicLink(
+            atPath: installedModule.path
+        ) else { return false }
+        let target = rawTarget.hasPrefix("/")
+            ? URL(fileURLWithPath: rawTarget)
+            : installedModule.deletingLastPathComponent().appendingPathComponent(rawTarget)
+        return target.standardizedFileURL.resolvingSymlinksInPath()
+            == bundledModule.standardizedFileURL.resolvingSymlinksInPath()
+    }
 
     private var onboardingDisposition: OnboardingDisposition {
         get {
@@ -163,13 +225,17 @@ final class AppModel: ObservableObject {
     init() {
         try? FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: configDir.path)
+        // Preserve the user's preference across updates, but do not allow it
+        // to resume native ownership until this exact bundle resource has been
+        // deployed and observed from a fresh Hammerspoon process.
+        NativeProductionTranslationCoordinator.shared.setShortcutDeploymentReady(
+            bundledShortcutIsCurrent
+        )
         // A persisted removal transaction takes precedence over legacy
         // migration; never recreate an active credential while removal is
-        // waiting to finish.
-        if readCloudRemovalMarker() == .notFound {
-            migrateLegacyCloudCredentialsIfNeeded()
-        }
-        localCloudCredentialFingerprint = credentialFingerprint(readCloudCredentials())
+        // waiting to finish. Keychain commands are deliberately deferred so
+        // the Apple-only startup path never waits on `security` on MainActor.
+        let shouldMigrateLegacyCloud = readCloudRemovalMarker() == .notFound
         migrateOnboardingState()
         let explicitEngine = readExplicitEngineChoice()
         readLocalState()
@@ -181,7 +247,7 @@ final class AppModel: ObservableObject {
         case .neverStarted:
             onboardingScreen = .welcome; onboardingPresented = true
         case .inProgress:
-            onboardingScreen = .prepare; onboardingPresented = true
+            onboardingScreen = .permission; onboardingPresented = true
         case .deferred, .completed:
             onboardingPresented = false
         }
@@ -190,6 +256,12 @@ final class AppModel: ObservableObject {
         // yield, so the setup UI cannot race crash recovery during launch.
         cloudBusy = true
         Task {
+            if shouldMigrateLegacyCloud {
+                await migrateLegacyCloudCredentialsIfNeeded()
+            }
+            localCloudCredentialFingerprint = credentialFingerprint(
+                await readCloudCredentialsOffMainActor()
+            )
             await recoverInterruptedCloudConfiguration()
             await refresh()
             if onboardingPresented && onboardingDisposition == .inProgress {
@@ -218,6 +290,21 @@ final class AppModel: ObservableObject {
         NativeProductionTranslationCoordinator.shared.isEnabled
             || hotkeyProblem == .ready
     }
+    var nativeOwnerBridgeReady: Bool {
+        guard let hotkey,
+              hotkey.module_loaded,
+              hotkey.owner_protocol_version == NativeOwnerHandoffProtocol.version,
+              let instanceText = hotkey.legacy_instance_id,
+              let instance = UUID(uuidString: instanceText),
+              instance.uuidString.lowercased() == instanceText.lowercased(),
+              let sequence = hotkey.status_sequence,
+              sequence > 0,
+              let updated = hotkey.updated_at,
+              updated.isFinite else { return false }
+        let age = Date().timeIntervalSince1970 - updated
+        return age >= -NativeOwnerHandoffProtocol.maximumFutureClockSkew
+            && age < 6
+    }
     var hotkeyProblem: HotkeyProblem {
         if NativeProductionTranslationCoordinator.shared.isEnabled {
             return .ready
@@ -225,7 +312,16 @@ final class AppModel: ObservableObject {
         if !hammerspoonInstalled { return .notInstalled }
         if !hammerspoonRunning { return .notRunning }
         guard let hotkey, let updated = hotkey.updated_at,
-              Date().timeIntervalSince1970 - updated < 6 else { return .heartbeatExpired }
+              updated.isFinite else { return .heartbeatExpired }
+        let age = Date().timeIntervalSince1970 - updated
+        guard age >= -NativeOwnerHandoffProtocol.maximumFutureClockSkew,
+              age < 6 else { return .heartbeatExpired }
+        guard hotkey.owner_protocol_version == NativeOwnerHandoffProtocol.version,
+              let instanceText = hotkey.legacy_instance_id,
+              let instance = UUID(uuidString: instanceText),
+              instance.uuidString.lowercased() == instanceText.lowercased(),
+              let sequence = hotkey.status_sequence,
+              sequence > 0 else { return .needsUpdate }
         if hotkey.accessibility != true { return .notAuthorized }
         if paused || hotkey.paused == true { return .paused }
         if hotkey.module_loaded != true || hotkey.watcher_active != true { return .notLoaded }
@@ -292,6 +388,7 @@ final class AppModel: ObservableObject {
         case .notInstalled: return "需要先安装 Hammerspoon 快捷键助手。"
         case .notRunning: return "Hammerspoon 尚未运行，请打开它。"
         case .heartbeatExpired: return "快捷键助手没有响应，请重新打开 Hammerspoon。"
+        case .needsUpdate: return "快捷键模块需要更新，请让句译部署当前版本并重新载入。"
         case .notAuthorized: return "请在辅助功能中允许 Hammerspoon。"
         case .notLoaded: return "快捷键配置尚未载入，请在 Hammerspoon 中重新载入配置。"
         case .paused: return "恢复后即可继续使用双击 Option 翻译。"
@@ -343,9 +440,8 @@ final class AppModel: ObservableObject {
             current: onboardingDisposition,
             preservesCompletion: onboardingPreservesCompletion
         )
-        onboardingScreen = .prepare
+        onboardingScreen = .permission
         onboardingPresented = true
-        verifyOnboardingEngine()
         onChange?()
     }
 
@@ -387,7 +483,7 @@ final class AppModel: ObservableObject {
             guard onboardingEngineReady else { return }
             onboardingScreen = .permission
         case .permission:
-            guard hotkeyReady else { return }
+            guard NativeProductionTranslationCoordinator.shared.isEnabled else { return }
             onboardingScreen = .practice
         case .practice: confirmHotkeyWorked()
         case .complete: finishOnboarding()
@@ -401,11 +497,7 @@ final class AppModel: ObservableObject {
     }
 
     private func firstIncompleteScreen() -> OnboardingScreen {
-        OnboardingPolicy.firstIncompleteScreen(
-            serviceReady: serviceReady,
-            engineReady: engineReady,
-            hotkeyReady: hotkeyReady
-        )
+        NativeProductionTranslationCoordinator.shared.isEnabled ? .practice : .permission
     }
 
     func verifyOnboardingEngine() {
@@ -454,7 +546,181 @@ final class AppModel: ObservableObject {
         practiceTroubleshooting = false
         onboardingScreen = .permission
         onboardingPresented = true
+        installBundledShortcut(enableNativeAfterInstall: false)
         onChange?()
+    }
+
+    func enableNativeShortcut() {
+        notice = ""
+        let native = NativeProductionTranslationCoordinator.shared
+        guard selectedEngine == "apple" || setEngine("apple") else { return }
+        if native.isEnabled {
+            native.enableByUser()
+            return
+        }
+        readLocalState()
+        let deploymentIsCurrent = bundledShortcutIsCurrent
+        native.setShortcutDeploymentReady(deploymentIsCurrent)
+        if nativeOwnerBridgeReady && deploymentIsCurrent {
+            native.enableByUser()
+            return
+        }
+        installBundledShortcut(enableNativeAfterInstall: true)
+    }
+
+    private func installBundledShortcut(enableNativeAfterInstall: Bool) {
+        guard !shortcutRepairBusy else { return }
+        guard hammerspoonInstalled else {
+            notice = "请先安装 Hammerspoon；安装后句译会自动部署当前快捷键模块。"
+            return
+        }
+        guard bundleIsInApplicationsFolder else {
+            notice = "请先把句译拖到“应用程序”文件夹，再启用双 Option。"
+            return
+        }
+        guard let hook = Bundle.main.url(
+            forResource: "hammerspoon_hook", withExtension: "sh"
+        ), let deploymentFingerprint = bundledShortcutDeploymentFingerprint else {
+            notice = "这个句译安装包缺少快捷键模块，请重新下载。"
+            return
+        }
+
+        readLocalState()
+        let previousOwnerInstanceID = canonicalOwnerInstanceID(hotkey)
+        let previousOwnerUpdatedAt = hotkey?.updated_at
+        NativeProductionTranslationCoordinator.shared
+            .setShortcutDeploymentReady(false)
+        shortcutRepairBusy = true
+        notice = "正在安全部署当前快捷键模块并重新启动 Hammerspoon…"
+        let hookPath = hook.path
+        Task {
+            let code = await Task.detached { () -> Int32 in
+                for command in ["check", "install"] {
+                    let result = Self.runHammerspoonHook(
+                        path: hookPath, command: command
+                    )
+                    if result != 0 { return result }
+                }
+                return 0
+            }.value
+            let restartStartedAt = Date().timeIntervalSince1970
+            let hammerspoonRestarted = code == 0
+                ? await restartHammerspoonAfterInstall()
+                : false
+
+            var deployedOwnerReady = false
+            var fallbackCandidateInstanceID: String?
+            var fallbackCandidateSequence: Int?
+            if code == 0 && hammerspoonRestarted {
+                for _ in 0..<30 {
+                    try? await Task.sleep(for: .milliseconds(200))
+                    readLocalState()
+                    if ownerBridgeIsFreshAfterRestart(
+                        previousInstanceID: previousOwnerInstanceID,
+                        previousUpdatedAt: previousOwnerUpdatedAt,
+                        restartStartedAt: restartStartedAt,
+                        fallbackCandidateInstanceID: &fallbackCandidateInstanceID,
+                        fallbackCandidateSequence: &fallbackCandidateSequence
+                    ) {
+                        deployedOwnerReady = true
+                        break
+                    }
+                }
+            }
+            shortcutRepairBusy = false
+            if code != 0 {
+                notice = "快捷键模块未能完成部署；句译不会覆盖自定义普通文件。请检查 Hammerspoon 配置后重试。"
+            } else if !hammerspoonRestarted {
+                notice = "模块已部署，但无法自动重新启动 Hammerspoon。请手动退出并重新打开 Hammerspoon。"
+            } else if deployedOwnerReady {
+                UserDefaults.standard.set(
+                    deploymentFingerprint,
+                    forKey: shortcutDeploymentFingerprintDefaultsKey
+                )
+                notice = "当前快捷键模块已载入。"
+                let native = NativeProductionTranslationCoordinator.shared
+                native.setShortcutDeploymentReady(true)
+                if enableNativeAfterInstall && !native.isEnabled {
+                    native.enableByUser()
+                } else {
+                    native.resumeIfEnabled()
+                }
+            } else {
+                notice = "模块已部署，但 Hammerspoon 尚未完成重新载入，请打开它后再试。"
+            }
+            onChange?()
+        }
+    }
+
+    private func canonicalOwnerInstanceID(_ status: HotkeyStatus?) -> String? {
+        guard let text = status?.legacy_instance_id,
+              let value = UUID(uuidString: text),
+              value.uuidString.lowercased() == text.lowercased() else { return nil }
+        return value.uuidString.lowercased()
+    }
+
+    private func ownerBridgeIsFreshAfterRestart(
+        previousInstanceID: String?,
+        previousUpdatedAt: TimeInterval?,
+        restartStartedAt: TimeInterval,
+        fallbackCandidateInstanceID: inout String?,
+        fallbackCandidateSequence: inout Int?
+    ) -> Bool {
+        guard nativeOwnerBridgeReady,
+              let currentInstanceID = canonicalOwnerInstanceID(hotkey),
+              let updatedAt = hotkey?.updated_at,
+              let currentSequence = hotkey?.status_sequence else { return false }
+        if let previousInstanceID {
+            return currentInstanceID != previousInstanceID
+                && updatedAt >= floor(restartStartedAt)
+        }
+        // With no trustworthy previous UUID, wait past the restart second.
+        // Lua timestamps have one-second precision, so this excludes a stale
+        // status written just before restart in the same wall-clock second.
+        guard updatedAt >= ceil(restartStartedAt) else { return false }
+        if let previousUpdatedAt, updatedAt <= previousUpdatedAt { return false }
+        if fallbackCandidateInstanceID == currentInstanceID,
+           let candidateSequence = fallbackCandidateSequence,
+           currentSequence > candidateSequence {
+            return true
+        }
+        fallbackCandidateInstanceID = currentInstanceID
+        fallbackCandidateSequence = currentSequence
+        return false
+    }
+
+    private func restartHammerspoonAfterInstall() async -> Bool {
+        let bundleIdentifier = "org.hammerspoon.Hammerspoon"
+        guard let applicationURL = NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: bundleIdentifier
+        ) else { return false }
+
+        let running = NSRunningApplication.runningApplications(
+            withBundleIdentifier: bundleIdentifier
+        )
+        if !running.isEmpty {
+            for application in running {
+                _ = application.terminate()
+            }
+            for _ in 0..<15 {
+                if running.allSatisfy({ $0.isTerminated }) { break }
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            guard running.allSatisfy({ $0.isTerminated }) else { return false }
+        }
+
+        NSWorkspace.shared.openApplication(
+            at: applicationURL,
+            configuration: NSWorkspace.OpenConfiguration(),
+            completionHandler: nil
+        )
+        for _ in 0..<15 {
+            if !NSRunningApplication.runningApplications(
+                withBundleIdentifier: bundleIdentifier
+            ).isEmpty { return true }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        return false
     }
 
     func applicationBecameActive() {
@@ -765,8 +1031,13 @@ final class AppModel: ObservableObject {
         if paused != wasPaused {
             NativeProductionTranslationCoordinator.shared.setPaused(paused)
         }
-        if let data = try? Data(contentsOf: hotkeyFile), let decoded = try? JSONDecoder().decode(HotkeyStatus.self, from: data) { hotkey = decoded }
-        else { hotkey = nil }
+        if let hotkeyStatusReader,
+           case let .present(data) = hotkeyStatusReader.read(),
+           let decoded = try? JSONDecoder().decode(HotkeyStatus.self, from: data) {
+            hotkey = decoded
+        } else {
+            hotkey = nil
+        }
     }
 
     private func readExplicitEngineChoice() -> String? {
@@ -809,6 +1080,17 @@ final class AppModel: ObservableObject {
 
     private func readCloudCredentials() -> CloudCredentials? {
         switch AppModel.readKeychainCloudCredentials() {
+        case .found(let credentials): return credentials
+        case .notFound: return readLegacyCloudCredentials()
+        case .invalid, .unavailable: return nil
+        }
+    }
+
+    private func readCloudCredentialsOffMainActor() async -> CloudCredentials? {
+        let keychainState = await Task.detached {
+            AppModel.readKeychainCloudCredentials()
+        }.value
+        switch keychainState {
         case .found(let credentials): return credentials
         case .notFound: return readLegacyCloudCredentials()
         case .invalid, .unavailable: return nil
@@ -979,19 +1261,24 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func migrateLegacyCloudCredentialsIfNeeded() {
+    private func migrateLegacyCloudCredentialsIfNeeded() async {
         guard let legacy = readLegacyCloudCredentials() else { return }
         guard case .found(let oldEnvironment) = readEnvironmentFile() else { return }
         let oldEnvironmentFingerprint = SHA256.hash(data: oldEnvironment).map { String(format: "%02x", $0) }.joined()
         let legacyWasVerified = oldEnvironmentFingerprint == UserDefaults.standard.string(forKey: "cloudVerifiedFingerprint")
-        let keychainState = AppModel.readKeychainCloudCredentials()
+        let keychainState = await Task.detached {
+            AppModel.readKeychainCloudCredentials()
+        }.value
         let activeCredentials: CloudCredentials
         switch keychainState {
         case .found(let credentials):
             activeCredentials = credentials
         case .notFound:
-            guard AppModel.saveKeychainCloudCredentials(legacy),
-                  AppModel.readKeychainCloudCredentials() == .found(legacy) else { return }
+            let saved = await Task.detached {
+                AppModel.saveKeychainCloudCredentials(legacy)
+                    && AppModel.readKeychainCloudCredentials() == .found(legacy)
+            }.value
+            guard saved else { return }
             activeCredentials = legacy
         case .invalid, .unavailable:
             // Never overwrite an item that merely could not be read.
@@ -1030,14 +1317,114 @@ final class AppModel: ObservableObject {
         onChange?()
     }
 
-    nonisolated private static func launchctl(_ args: [String]) -> (Int32, String) {
-        let process = Process(), pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl"); process.arguments = args
-        process.standardOutput = pipe; process.standardError = pipe
+    nonisolated private static func runBoundedProcess(
+        executablePath: String,
+        arguments: [String],
+        input: Data? = nil,
+        captureOutput: Bool = false,
+        mergeStandardError: Bool = false,
+        timeout: DispatchTimeInterval
+    ) -> (status: Int32, output: Data) {
+        // All current stdin payloads are small Keychain JSON values. Preloading
+        // a bounded pipe before launch avoids a writer that could outlive a
+        // timed-out child while keeping the secret out of argv and disk.
+        guard (input?.count ?? 0) <= 4_096 else { return (1, Data()) }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
+
+        var inputPipe: Pipe?
+        if let input {
+            let pipe = Pipe()
+            do {
+                try pipe.fileHandleForWriting.write(contentsOf: input)
+                try pipe.fileHandleForWriting.close()
+            } catch {
+                pipe.fileHandleForWriting.closeFile()
+                pipe.fileHandleForReading.closeFile()
+                return (1, Data())
+            }
+            inputPipe = pipe
+            process.standardInput = pipe
+        } else {
+            process.standardInput = FileHandle.nullDevice
+        }
+
+        let outputPipe = captureOutput ? Pipe() : nil
+        let outputBuffer = BoundedProcessOutput()
+        let outputFinished = DispatchSemaphore(value: 0)
+        if let outputPipe {
+            process.standardOutput = outputPipe
+            process.standardError = mergeStandardError
+                ? outputPipe
+                : FileHandle.nullDevice
+            outputPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty {
+                    handle.readabilityHandler = nil
+                    outputFinished.signal()
+                } else {
+                    outputBuffer.append(data)
+                }
+            }
+        } else {
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+        }
+
+        let processFinished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in processFinished.signal() }
+        defer {
+            outputPipe?.fileHandleForReading.readabilityHandler = nil
+            outputPipe?.fileHandleForReading.closeFile()
+            inputPipe?.fileHandleForReading.closeFile()
+        }
+
         do {
-            try process.run(); process.waitUntilExit()
-            return (process.terminationStatus, String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "")
-        } catch { return (1, error.localizedDescription) }
+            try process.run()
+        } catch {
+            return (1, Data(error.localizedDescription.utf8))
+        }
+
+        let completed = processFinished.wait(timeout: .now() + timeout) == .success
+        if !completed {
+            process.terminate()
+            if processFinished.wait(timeout: .now() + .milliseconds(500)) == .timedOut {
+                let pid = process.processIdentifier
+                if pid > 1 { _ = Darwin.kill(pid, SIGKILL) }
+                _ = processFinished.wait(timeout: .now() + .milliseconds(500))
+            }
+        }
+        if outputPipe != nil {
+            _ = outputFinished.wait(timeout: .now() + .milliseconds(500))
+        }
+        return (completed ? process.terminationStatus : 124, outputBuffer.snapshot())
+    }
+
+    nonisolated private static func launchctl(_ args: [String]) -> (Int32, String) {
+        let result = runBoundedProcess(
+            executablePath: "/bin/launchctl",
+            arguments: args,
+            captureOutput: true,
+            mergeStandardError: true,
+            timeout: .seconds(5)
+        )
+        return (
+            result.status,
+            String(data: result.output, encoding: .utf8) ?? ""
+        )
+    }
+
+    nonisolated private static func runHammerspoonHook(
+        path: String,
+        command: String
+    ) -> Int32 {
+        runBoundedProcess(
+            executablePath: "/bin/bash",
+            arguments: [path, command],
+            timeout: .seconds(8)
+        ).status
     }
 
     nonisolated private static func launchctlPID(from output: String) -> pid_t? {
@@ -1057,25 +1444,14 @@ final class AppModel: ObservableObject {
     }
 
     nonisolated private static func runSecurity(_ arguments: [String], input: Data? = nil) -> (Int32, Data) {
-        let process = Process(), output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        process.arguments = arguments
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        let inputPipe = input == nil ? nil : Pipe()
-        process.standardInput = inputPipe ?? FileHandle.nullDevice
-        do {
-            try process.run()
-            if let input, let inputPipe {
-                inputPipe.fileHandleForWriting.write(input)
-                inputPipe.fileHandleForWriting.closeFile()
-            }
-            process.waitUntilExit()
-            return (process.terminationStatus, output.fileHandleForReading.readDataToEndOfFile())
-        } catch {
-            inputPipe?.fileHandleForWriting.closeFile()
-            return (1, Data())
-        }
+        let result = runBoundedProcess(
+            executablePath: "/usr/bin/security",
+            arguments: arguments,
+            input: input,
+            captureOutput: true,
+            timeout: .seconds(8)
+        )
+        return (result.status, result.output)
     }
 
     nonisolated private static func readKeychainCloudCredentials(
@@ -1772,7 +2148,25 @@ final class AppModel: ObservableObject {
         applePreparing = true
         notice = "请在系统窗口中确认下载中英语言包。"
         let path = helper.path
-        Task { let code = await Task.detached { () -> Int32 in let p = Process(); p.executableURL = URL(fileURLWithPath: path); p.arguments = ["--prepare"]; try? p.run(); p.waitUntilExit(); return p.terminationStatus }.value; applePreparing = false; appleNeedsPreparation = code != 0; notice = code == 0 ? "Apple 离线翻译已准备好。" : "语言包还没有准备完成，请重试。"; announce(notice); await refresh(); if onboardingPresented && onboardingScreen == .prepare { verifyOnboardingEngine() } }
+        Task {
+            let code = await Task.detached {
+                AppModel.runBoundedProcess(
+                    executablePath: path,
+                    arguments: ["--prepare"],
+                    timeout: .seconds(300)
+                ).status
+            }.value
+            applePreparing = false
+            appleNeedsPreparation = code != 0
+            notice = code == 0
+                ? "Apple 离线翻译已准备好。"
+                : "语言包还没有准备完成，请重试。"
+            announce(notice)
+            await refresh()
+            if onboardingPresented && onboardingScreen == .prepare {
+                verifyOnboardingEngine()
+            }
+        }
     }
 
     func openAccessibility() { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!) }
@@ -1784,7 +2178,7 @@ final class AppModel: ObservableObject {
         else { NSWorkspace.shared.open(URL(string: "https://www.hammerspoon.org/")!) }
     }
     func confirmHotkeyWorked() {
-        guard hotkeyReady else { return }
+        guard NativeProductionTranslationCoordinator.shared.isEnabled else { return }
         onboardingDisposition = .completed
         onboardingPreservesCompletion = true
         onboardingScreen = .complete
@@ -1869,47 +2263,14 @@ private struct EngineCard: View {
     }
 }
 
-/// AppKit text view is intentional: unlike a SwiftUI Text label it supports
-/// real mouse, keyboard and VoiceOver selection for the end-to-end hotkey test.
-private struct SelectablePracticeText: NSViewRepresentable {
-    let text: String
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView()
-        scroll.drawsBackground = false
-        scroll.borderType = .noBorder
-        scroll.hasVerticalScroller = false
-        let textView = NSTextView()
-        textView.string = text
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.isRichText = false
-        textView.drawsBackground = false
-        textView.font = .systemFont(ofSize: 16, weight: .medium)
-        textView.textColor = .labelColor
-        textView.textContainerInset = NSSize(width: 12, height: 12)
-        textView.isHorizontallyResizable = false
-        textView.isVerticallyResizable = true
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.widthTracksTextView = true
-        textView.setAccessibilityLabel("练习文本：Good tools should feel effortless。请选择这段文字，然后连按两次 Option。")
-        scroll.documentView = textView
-        return scroll
-    }
-
-    func updateNSView(_ scroll: NSScrollView, context: Context) {
-        guard let textView = scroll.documentView as? NSTextView else { return }
-        if textView.string != text { textView.string = text }
-        textView.textColor = .labelColor
-    }
-}
-
 private enum OnboardingAccessibilityFocus: Hashable {
     case pageTitle, statusSummary
 }
 
 private struct OnboardingView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject private var nativeTranslation =
+        NativeProductionTranslationCoordinator.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AccessibilityFocusState private var accessibilityFocus: OnboardingAccessibilityFocus?
     @State private var showPermissionExplanation = false
@@ -1952,6 +2313,12 @@ private struct OnboardingView: View {
             announce("快捷键状态：\(state.title)。\(state.detail)")
             DispatchQueue.main.async { accessibilityFocus = .statusSummary }
         }
+        .onChange(of: nativeTranslation.phase) {
+            guard model.onboardingScreen == .permission else { return }
+            let state = shortcutStatus
+            announce("快捷键状态：\(state.title)。\(state.detail)")
+            DispatchQueue.main.async { accessibilityFocus = .statusSummary }
+        }
     }
 
     @ViewBuilder private var onboardingFooter: some View {
@@ -1968,7 +2335,7 @@ private struct OnboardingView: View {
                 Button("没有出现译文") { model.practiceTroubleshooting.toggle() }
                 Spacer()
                 Button("我看到了译文") { model.confirmHotkeyWorked() }
-                    .keyboardShortcut(.defaultAction).disabled(!model.hotkeyReady)
+                    .keyboardShortcut(.defaultAction).disabled(!nativeTranslation.isEnabled)
             }
         case .complete:
             HStack { Spacer(); Button("开始使用") { model.finishOnboarding() }.keyboardShortcut(.defaultAction) }
@@ -1977,18 +2344,18 @@ private struct OnboardingView: View {
 
     private var progressText: String? {
         switch model.onboardingScreen {
-        case .prepare: return "步骤 1，共 3 步"
-        case .permission: return "步骤 2，共 3 步"
-        case .practice: return "步骤 3，共 3 步"
+        case .prepare: return "准备翻译"
+        case .permission: return "步骤 1，共 2 步"
+        case .practice: return "步骤 2，共 2 步"
         case .welcome, .complete: return nil
         }
     }
 
     private var progressAccessibilityLabel: String {
         switch model.onboardingScreen {
-        case .prepare: return "步骤 1，共 3 步：准备翻译"
-        case .permission: return "步骤 2，共 3 步：允许快捷键"
-        case .practice: return "步骤 3，共 3 步：实际试用"
+        case .prepare: return "准备翻译"
+        case .permission: return "步骤 1，共 2 步：启用原生快捷键"
+        case .practice: return "步骤 2，共 2 步：实际试用"
         case .welcome, .complete: return ""
         }
     }
@@ -2077,13 +2444,19 @@ private struct OnboardingView: View {
 
     private var permission: some View {
         VStack(alignment: .leading, spacing: 18) {
-            stepTitle("允许句译响应快捷键", subtitle: "句译通过 Hammerspoon 读取你主动选中的文字，并响应双击 Option。")
+            stepTitle("启用原生双 Option", subtitle: "句译原生读取你主动选中的文字并响应双击 Option；Hammerspoon 只通过现有 owner 协议安全让出旧快捷键。")
             DisclosureGroup("这项权限有什么作用？", isExpanded: $showPermissionExplanation) {
-                Text("macOS 将它归入“辅助功能”权限。句译只在你触发翻译时读取选中的文字；你可以随时在系统设置中关闭权限。")
+                Text("macOS 将选区读取和全局按键归入“辅助功能”权限。句译只在你触发翻译时读取选中的文字；你可以随时在系统设置中关闭权限。")
                     .font(.callout).foregroundStyle(.secondary).padding(.top, 8)
             }
             shortcutStatusCard
-            if model.hotkeyProblem != .ready {
+            if !model.notice.isEmpty {
+                Label(model.notice, systemImage: "info.circle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !nativeTranslation.isEnabled {
                 HStack(spacing: 12) {
                     Button("重新检查") { Task { await model.refresh() } }
                     Button("仍然无法完成…") { model.permissionTroubleshooting.toggle() }.buttonStyle(.link)
@@ -2092,7 +2465,7 @@ private struct OnboardingView: View {
             if model.permissionTroubleshooting {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("仍然无法完成？").font(.subheadline.weight(.medium))
-                    Text("确认 Hammerspoon 已打开；在辅助功能中关闭再打开它的开关；然后从 Hammerspoon 菜单选择 Reload Config。")
+                    Text("确认 Hammerspoon 已打开并载入当前模块；同时在辅助功能中允许句译。模块更新失败时，句译不会覆盖你的自定义配置。")
                         .font(.callout).foregroundStyle(.secondary)
                     Button("打开诊断") { model.showDiagnostics = true }.buttonStyle(.link)
                 }
@@ -2108,7 +2481,16 @@ private struct OnboardingView: View {
                 VStack(alignment: .leading, spacing: 5) { Text(state.title).font(.headline); Text(state.detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
                 Spacer()
             }
-            if model.hotkeyProblem == .notAuthorized {
+            if nativeTranslation.phase == .unavailable
+                && AccessibilityController.status != .authorized {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("辅助功能").fontWeight(.medium)
+                    Text("请在列表中找到句译，并打开它右侧的系统开关；然后回到句译重试。")
+                        .foregroundStyle(.secondary)
+                }
+                .padding(10).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityHidden(true)
+            } else if model.hotkeyProblem == .notAuthorized {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("辅助功能").fontWeight(.medium)
                     Text("请在列表中找到 Hammerspoon，并打开它右侧的系统开关。").foregroundStyle(.secondary)
@@ -2122,10 +2504,37 @@ private struct OnboardingView: View {
     }
 
     private var shortcutStatus: (symbol: String, color: Color, title: String, detail: String) {
+        if nativeTranslation.isEnabled {
+            return ("checkmark.circle.fill", Color(nsColor: .systemGreen), "原生双 Option 已启用", "Hammerspoon 已安全让出快捷键，句译会原生读取选区并显示译文。")
+        }
+        if model.shortcutRepairBusy {
+            return ("arrow.triangle.2.circlepath", .secondary, "正在更新快捷键模块…", "完成重新载入后，句译会继续启用原生双 Option。")
+        }
+        switch nativeTranslation.phase {
+        case .requestingAccessibility:
+            return ("hand.raised.fill", .secondary, "正在等待辅助功能权限…", nativeTranslation.detail)
+        case .waitingForHammerspoon:
+            return ("arrow.left.arrow.right.circle.fill", .secondary, "正在安全交接快捷键…", nativeTranslation.detail)
+        case .languagePackRequired:
+            return ("arrow.down.circle.fill", Color(nsColor: .systemOrange), nativeTranslation.isPreparingLanguages ? "正在准备 Apple 语言包…" : "需要准备 Apple 语言包", nativeTranslation.detail)
+        case .unsupported:
+            return ("xmark.circle.fill", Color(nsColor: .systemRed), "这台 Mac 不支持 Apple 离线翻译", nativeTranslation.detail)
+        case .unavailable:
+            return ("exclamationmark.circle.fill", Color(nsColor: .systemOrange), "原生双 Option 尚未启用", nativeTranslation.detail)
+        case .active, .disabled:
+            break
+        }
+        if model.selectedEngine != "apple" {
+            return ("lock.shield.fill", Color(nsColor: .systemOrange), "原生双 Option 使用 Apple 离线翻译", "点击下一步会明确切换到 Apple 离线；现有火山云端密钥不会被删除。")
+        }
+        if model.nativeOwnerBridgeReady {
+            return ("hand.tap.fill", Color(nsColor: .systemOrange), "可以启用原生双 Option", "当前 owner 协议已载入；下一步由 macOS 请求句译的辅助功能权限。")
+        }
         switch model.hotkeyProblem {
         case .notInstalled: return ("arrow.down.app.fill", Color(nsColor: .systemOrange), "需要安装一次快捷键助手", "安装完成后回到句译，这里会自动继续。")
         case .notRunning: return ("play.circle.fill", Color(nsColor: .systemOrange), "打开 Hammerspoon", "它会在后台响应双击 Option。")
         case .heartbeatExpired: return ("clock.badge.exclamationmark.fill", Color(nsColor: .systemOrange), "快捷键助手没有响应", "请打开 Hammerspoon，并从它的菜单重新载入配置。")
+        case .needsUpdate: return ("arrow.down.circle.fill", Color(nsColor: .systemOrange), "快捷键模块需要更新", "句译会部署安装包内的当前 owner 协议，然后重新载入 Hammerspoon。")
         case .notAuthorized: return ("hand.raised.fill", Color(nsColor: .systemOrange), "还没有检测到权限", "请在“系统设置 → 隐私与安全性 → 辅助功能”中打开 Hammerspoon。")
         case .notLoaded: return ("arrow.clockwise.circle.fill", Color(nsColor: .systemOrange), "快捷键配置尚未载入", "请打开 Hammerspoon，并选择 Reload Config。")
         case .paused: return ("pause.circle.fill", Color(nsColor: .systemOrange), "句译目前已暂停", "恢复句译后即可练习双击 Option。")
@@ -2134,27 +2543,61 @@ private struct OnboardingView: View {
     }
 
     @ViewBuilder private var shortcutFooter: some View {
-        switch model.hotkeyProblem {
-        case .ready: footer(primary: "继续", primaryEnabled: true) { model.advanceOnboarding() }
-        case .notInstalled: footer(primary: "前往下载 Hammerspoon", primaryEnabled: true) { model.openHammerspoon() }
-        case .notRunning: footer(primary: "打开 Hammerspoon", primaryEnabled: true) { model.openHammerspoon() }
-        case .notAuthorized: footer(primary: "打开辅助功能设置", primaryEnabled: true) { model.openAccessibility() }
-        case .paused: footer(primary: "恢复句译", primaryEnabled: true) { model.togglePause() }
-        case .heartbeatExpired, .notLoaded:
-            footer(primary: "打开 Hammerspoon", primaryEnabled: true) { model.openHammerspoon(); model.permissionTroubleshooting = true }
+        if nativeTranslation.isEnabled {
+            footer(primary: "继续", primaryEnabled: true) { model.advanceOnboarding() }
+        } else if model.shortcutRepairBusy {
+            footer(primary: "正在更新…", primaryEnabled: false) {}
+        } else {
+            switch nativeTranslation.phase {
+            case .requestingAccessibility, .waitingForHammerspoon:
+                footer(primary: nativeTranslation.actionTitle, primaryEnabled: false) {}
+            case .languagePackRequired:
+                footer(primary: nativeTranslation.isPreparingLanguages ? "正在准备…" : "准备 Apple 语言包", primaryEnabled: !nativeTranslation.isPreparingLanguages) { nativeTranslation.prepareLanguages() }
+            case .unsupported:
+                footer(primary: "重新检查 Apple 翻译", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
+            case .unavailable where AccessibilityController.status != .authorized:
+                footer(primary: "打开辅助功能设置", primaryEnabled: true) { model.openAccessibility() }
+            case .unavailable:
+                footer(primary: "重新尝试", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
+            case .active:
+                footer(primary: "继续", primaryEnabled: true) { model.advanceOnboarding() }
+            case .disabled:
+                if model.selectedEngine != "apple" {
+                    footer(primary: "切换到 Apple 离线并启用", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
+                } else if model.nativeOwnerBridgeReady || model.hotkeyProblem == .ready {
+                    footer(primary: "启用原生双 Option", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
+                } else {
+                    switch model.hotkeyProblem {
+                    case .notInstalled: footer(primary: "前往下载 Hammerspoon", primaryEnabled: true) { model.openHammerspoon() }
+                    case .notRunning: footer(primary: "部署并启用原生双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
+                    case .notAuthorized: footer(primary: "打开辅助功能设置", primaryEnabled: true) { model.openAccessibility() }
+                    case .paused: footer(primary: "恢复句译", primaryEnabled: true) { model.togglePause() }
+                    case .heartbeatExpired, .needsUpdate, .notLoaded:
+                        footer(primary: "更新并启用原生双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
+                    case .ready:
+                        footer(primary: "启用原生双 Option", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
+                    }
+                }
+            }
         }
     }
 
     private var practice: some View {
         VStack(alignment: .leading, spacing: 18) {
-            stepTitle("试一次，马上就会", subtitle: "拖动选中下面这句英文，再快速连按两次 Option。")
+            stepTitle("试一次，马上就会", subtitle: "切换到另一个 App，选中一段英文，再快速连按两次 Option。")
             VStack(alignment: .leading, spacing: 14) {
-                SelectablePracticeText(text: "Good tools should feel effortless.")
-                    .frame(height: 52).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
+                Label("在文本编辑、浏览器或 PDF 阅读器中选中英文", systemImage: "macwindow.on.rectangle")
+                    .font(.headline)
                 HStack { Spacer(); keycap("⌥"); keycap("⌥"); Spacer() }
                 Text("译文会出现在选中文字附近。").font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .center)
+                Text("句译不会读取自身窗口中的文字；这是为了避免把设置页误当成翻译目标。")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.modifier(Surface())
-            if !model.hotkeyReady { Label("快捷键当前未就绪，请先返回检查。", systemImage: "exclamationmark.circle.fill").foregroundStyle(Color(nsColor: .systemOrange)); Button("返回检查快捷键") { model.showPermissionStep() } }
+            if !nativeTranslation.isEnabled {
+                Label(nativeTranslation.detail, systemImage: "exclamationmark.circle.fill")
+                    .foregroundStyle(Color(nsColor: .systemOrange))
+                Button("返回检查快捷键") { model.showPermissionStep() }
+            }
             if model.practiceTroubleshooting {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("没有出现译文？").font(.subheadline.weight(.medium))
@@ -2385,13 +2828,17 @@ private struct AppView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack {
-                        Button(nativeTranslation.actionTitle) {
-                            nativeTranslation.enableByUser()
+                        Button(model.shortcutRepairBusy
+                            ? "正在更新快捷键…"
+                            : (model.selectedEngine == "apple"
+                                ? nativeTranslation.actionTitle
+                                : "切换到 Apple 离线并启用")) {
+                            model.enableNativeShortcut()
                         }
                         .disabled(
                             !nativeTranslation.actionIsEnabled
+                                || model.shortcutRepairBusy
                                 || model.paused
-                                || model.selectedEngine != "apple"
                         )
                         if nativeTranslation.phase == .languagePackRequired {
                             Button(nativeTranslation.isPreparingLanguages
@@ -2630,11 +3077,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             name: NSWorkspace.sessionDidResignActiveNotification, object: nil
         )
         #endif
+        nativeProductionSessionIsActive = Self.currentSessionAllowsNativeActivation
+        if nativeProductionSessionIsActive {
+            resumeNativeProductionIfEligible()
+        } else {
+            NativeProductionTranslationCoordinator.shared
+                .setLifecycleActivationAllowed(false, reason: .sessionResigned)
+        }
         if !isLoginLaunch { showWindow() }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showWindow(); return true }
     func applicationDidBecomeActive(_ notification: Notification) {
         model.applicationBecameActive()
+        nativeProductionSessionIsActive = Self.currentSessionAllowsNativeActivation
         resumeNativeProductionIfEligible()
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         let currentAccessibilityStatus = AccessibilityController.status
@@ -2928,15 +3383,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     #endif
     @objc private func nativeProductionWillSleep(_ notification: Notification) {
         nativeProductionIsAwake = false
-        NativeProductionTranslationCoordinator.shared.invalidate(.sleep)
+        NativeProductionTranslationCoordinator.shared
+            .setLifecycleActivationAllowed(false, reason: .sleep)
     }
     @objc private func nativeProductionDidWake(_ notification: Notification) {
         nativeProductionIsAwake = true
+        nativeProductionSessionIsActive = Self.currentSessionAllowsNativeActivation
         resumeNativeProductionIfEligible()
     }
     @objc private func nativeProductionSessionResigned(_ notification: Notification) {
         nativeProductionSessionIsActive = false
-        NativeProductionTranslationCoordinator.shared.invalidate(.sessionResigned)
+        NativeProductionTranslationCoordinator.shared
+            .setLifecycleActivationAllowed(false, reason: .sessionResigned)
     }
     @objc private func nativeProductionSessionBecameActive(_ notification: Notification) {
         nativeProductionSessionIsActive = true
@@ -2944,8 +3402,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func resumeNativeProductionIfEligible() {
         guard nativeProductionIsAwake,
-              nativeProductionSessionIsActive else { return }
-        NativeProductionTranslationCoordinator.shared.applicationBecameActive()
+              nativeProductionSessionIsActive,
+              Self.currentSessionAllowsNativeActivation else {
+            NativeProductionTranslationCoordinator.shared
+                .setLifecycleActivationAllowed(false, reason: .sessionResigned)
+            return
+        }
+        let native = NativeProductionTranslationCoordinator.shared
+        native.setLifecycleActivationAllowed(true)
+        native.applicationBecameActive()
+    }
+    private static var currentSessionAllowsNativeActivation: Bool {
+        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any],
+              session[kCGSessionOnConsoleKey as String] as? Bool == true,
+              session[kCGSessionLoginDoneKey as String] as? Bool == true,
+              session["CGSSessionScreenIsLocked"] as? Bool != true else {
+            return false
+        }
+        return true
     }
     #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
     @objc private func nativeOwnerHandoffWillSleep(_ notification: Notification) {

@@ -9,7 +9,7 @@
 
 English: [README_EN.md](README_EN.md)
 
-> **原生 macOS App**：运行 `scripts/install_macos_app.sh` 可安装 `/Applications/句译.app`。简洁的首次设置会检查后台组件、引导辅助功能授权并让用户实际试用 ⌥⌥；主界面可选择 Apple 离线或火山云端、验证云端密钥、测试翻译和自动恢复错误。技术细节默认隐藏。详见 [docs/MENU_BAR_APP.md](docs/MENU_BAR_APP.md)。
+> **原生 macOS App**：运行 `scripts/install_macos_app.sh` 可安装 `/Applications/句译.app`。首次设置分两步：启用原生双 Option 并为 **句译** 授予辅助功能权限，然后到另一个 App 中实际试用 ⌥⌥；主界面可选择 Apple 离线或火山云端、验证云端密钥、测试翻译和自动恢复错误。技术细节默认隐藏。详见 [docs/MENU_BAR_APP.md](docs/MENU_BAR_APP.md)。
 
 公开版工程基线要求 macOS 15.0，并通过共享 Xcode scheme 构建 Universal 2 App 与 helper；版本、签名基线和当前尚未完成的公证/打包边界见 [docs/RELEASE_BASELINE.md](docs/RELEASE_BASELINE.md)。
 
@@ -28,7 +28,7 @@ English: [README_EN.md](README_EN.md)
 | -------------- | ------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------- | -------------- |
 | 100% 离线      | ✓ 默认（可选切云端）            | 部分                                                  | ✗（需 API key）                                                             | ✓              |
 | 系统级热键     | ✓（双击 Option）                | ✓                                                     | ✓                                                                           | ✗              |
-| 常见 app 划词  | ✓（AX + 剪贴板兜底，兼容性因 App 而异） | ✓                                               | ✓                                                                           | 受限           |
+| 常见 app 划词  | ✓（原生 AX；仅 WPS PDF 有受限剪贴板兼容） | ✓                                             | ✓                                                                           | 受限           |
 | 翻译引擎       | 苹果端上（离线）+ 火山（云端） | 多家                                                  | OpenAI 等                                                                   | 系统级         |
 | 语言对         | 仅英→中                         | 55 种                                                 | 55 种                                                                       | 系统级         |
 | 延迟           | 端上暖机后通常约百毫秒，冷启动可能更高 | 网络往返                                          | 网络往返                                                                    | 系统级         |
@@ -45,11 +45,11 @@ English: [README_EN.md](README_EN.md)
 请按 https://github.com/Eim-aa/juyi 的 AGENTS.md 帮我安装 句译（juyi）。
 ```
 
-Agent 可以：克隆仓库、检查依赖、编译苹果端上翻译助手、注册后台服务、接好 Hammerspoon、跑通可自动化的验证。详细步骤见 [AGENTS.md](AGENTS.md)。
+Agent 可以：克隆仓库、检查依赖、编译苹果端上翻译助手、注册后台服务、接好 Hammerspoon owner 交接模块、跑通可自动化的验证。详细步骤见 [AGENTS.md](AGENTS.md)。
 
 只有**两件事机器替不了**，需要你本人动手：
 
-1. **授权（必做）**：在「系统设置 → 隐私与安全性 → 辅助功能」里给 **Hammerspoon** 打勾。这是 macOS 的安全限制（TCC），任何脚本或 Agent 都无法代劳。
+1. **授权（必做）**：按句译首次设置的提示，在「系统设置 → 隐私与安全性 → 辅助功能」里给 **句译** 打勾。这是 macOS 的安全限制（TCC），任何脚本或 Agent 都无法代劳。
 2. **云端 API Key（只有想用云端时才需要）**：去[火山引擎控制台](https://console.volcengine.com/)注册、开通「机器翻译」、创建一对 AK/SK，并由你本人在句译 App 中录入。密钥保存在 macOS 钥匙串中，不需要粘贴给 Agent。
 
 > 安全提示：不要把 Secret Key 粘进聊天、源码、终端历史或提交到 Git。旧版 `volc.env` 密钥会在 App 启动时迁移到 macOS 钥匙串；该文件之后只保留非敏感的引擎偏好。
@@ -75,12 +75,12 @@ git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
 
 **默认是苹果端上翻译引擎（macOS 15+）**。应用无需手动安装模型；首次使用时系统可能弹出一次中英语言包下载确认，之后可以离线工作。云端引擎为可选，见下方“翻译引擎”。
 
-装完后：
+装完后打开“句译”，按两步首次设置完成启用：
 
-1. 打开安装脚本已准备好的 Hammerspoon。
-2. 在“系统设置 → 隐私与安全性 → 辅助功能”里授权 Hammerspoon。
-3. 重新加载 Hammerspoon 配置。
-4. 在常用 app 中选中英文，**双击 Option（⌥⌥）**。个别不支持系统取词或拦截复制的 App 可能无法取到选区。
+1. 点击启用原生双 Option。必要时，句译会部署安装包内的当前 Hammerspoon owner 交接模块并重新启动 Hammerspoon；随后会提示你在“系统设置 → 隐私与安全性 → 辅助功能”中授权 **句译**，授权后回到句译即可继续。
+2. 切换到文本编辑器、浏览器或 PDF 阅读器等另一个 App，选中英文并**双击 Option（⌥⌥）**。看到原生译文浮窗后回到句译确认。个别不提供可访问选区的 App 可能无法取词。
+
+原生 Apple 链路由句译负责双 Option 监听、AX 取词、端上翻译和浮窗；Hammerspoon 不再处理这条链的取词或显示，只按现有 owner 协议安全停止并让出旧监听、请求和浮窗。
 
 > Fork 后发布前，把所有 `Eim-aa` 替换为你的 GitHub 用户名：
 > `grep -rl Eim-aa . | xargs sed -i '' "s/Eim-aa/<你的用户名>/g"`
@@ -110,7 +110,7 @@ git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
 
 火山引擎用 AK/SK V4 签名（实现见 [`volc_engine.py`](volc_engine.py)，纯标准库）。此模式下选中文本会经 HTTPS 发往火山 API；是否更适合你的内容，应以自己的语料对比为准（见“隐私”）。
 
-### 苹果端上引擎（macOS 15+，安装时自动启用）
+### 苹果端上引擎（macOS 15+，默认且推荐）
 
 macOS 15 起系统自带端上翻译（Translation framework）。安装脚本检测到 macOS 15+ 且有 `swiftc` 时，会把 [`apple/TranslationHelper.swift`](apple/TranslationHelper.swift) 编译成一个约 140 KB 的小助手，作为**默认离线引擎** `apple` 接入：
 
@@ -130,24 +130,20 @@ macOS 15 起系统自带端上翻译（Translation framework）。安装脚本�
 
 ```mermaid
 flowchart LR
-    subgraph HS["Hammerspoon · Lua 客户端"]
-        H1["双击 ⌥ 触发"] --> H2["AX selectedText"]
-        H2 -.失败兜底.-> H3["Cmd+C + 剪贴板快照/恢复"]
-        H2 & H3 --> H4["Bearer 认证的 HTTP POST 127.0.0.1:54321"]
+    U["用户在句译中启用原生双 Option"] --> O["owner 协议交接"]
+    O --> H["Hammerspoon 停止旧监听、请求和浮窗"]
+
+    subgraph APP["句译原生 Apple 链路"]
+        N1["全局双击 ⌥ 监听"] --> N2["AX 读取当前外部 App 选区"]
+        N2 -.仅 WPS PDF 兼容路径.-> N3["两次定向 Copy + 剪贴板快照恢复"]
+        N2 & N3 --> N4["Apple Translation 端上翻译"]
+        N4 --> N5["原生 AppKit 译文浮窗"]
     end
 
-    H4 ==> S1
-
-    subgraph BE["FastAPI 服务 · Python 后端"]
-        S1{"LRU 缓存命中?"} -->|hit| S5
-        S1 -->|miss| S2{"engine?"}
-        S2 -->|apple · 端上| S3["apple-translation-helper（系统翻译）"]
-        S2 -->|volc · 云端| S4["火山 TranslateText（AK/SK 签名）"]
-        S3 & S4 --> S5["JSON 响应"]
-    end
-
-    S5 ==> H5["hs.canvas 浮窗显示"]
+    H --> N1
 ```
+
+切换到火山云端会停用这条 Apple 原生链并安全归还 Hammerspoon owner；可选云端翻译仍通过本地 FastAPI 服务调用火山 API。
 
 ## 常用命令
 
@@ -162,7 +158,7 @@ flowchart LR
 
 | 现象                | 诊断                                                                                            | 修复                                                                                            |
 | ------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| 双击无反应          | 打开 Hammerspoon Console                                                                        | 在"系统设置 → 隐私与安全性 → 辅助功能"给 Hammerspoon 权限，然后 Reload Config；或调慢双击窗口 `DOUBLE_TAP_WINDOW_S` |
+| 双击无反应          | 打开句译的“诊断与帮助”，检查原生双 Option 与 owner 状态                                         | 在“系统设置 → 隐私与安全性 → 辅助功能”给句译权限；若 owner 模块需要更新，回到句译点“更新并启用原生双 Option” |
 | 服务无法访问        | `launchctl print gui/$(id -u)/io.github.Eim-aa.argos-translator`                          | 跑 `scripts/launchd_install.sh`                                                                 |
 | `/health` 失败      | `curl -s http://127.0.0.1:54321/health`                                                         | 看 `~/Library/Logs/argos-translator.err.log`                                                    |
 | 火山返回报错        | 浮窗显示「⚠️ 云端翻译出错」及脱敏原因                                                            | 在句译中重新验证钥匙串里的 AK/SK，并确认已授 `TranslateFullAccess`、机器翻译已开通             |
@@ -180,7 +176,7 @@ flowchart LR
 
 - macOS [Translation framework](https://developer.apple.com/documentation/translation)——默认端上翻译引擎
 - [火山翻译 / Volcengine](https://www.volcengine.com/product/machine-translation)——可选云端翻译引擎
-- [Hammerspoon](https://www.hammerspoon.org/)——macOS 自动化框架
+- [Hammerspoon](https://www.hammerspoon.org/)——旧快捷键链与当前原生链之间的 owner 交接桥接
 - [Argos Translate](https://github.com/argosopentech/argos-translate) / [CTranslate2](https://github.com/OpenNMT/CTranslate2) / [Stanza](https://github.com/stanfordnlp/stanza)——早期版本的离线引擎，在此致谢
 
 ## License

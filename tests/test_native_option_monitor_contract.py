@@ -70,12 +70,32 @@ def test_capture_runs_on_serial_worker_and_discards_stale_text_early():
 
 def test_production_permission_prompt_is_reached_only_from_explicit_enable():
     assert "NativeProductionTranslationCoordinator.shared" in APP
-    assert "nativeTranslation.enableByUser()" in APP
+    assert "model.enableNativeShortcut()" in APP
+    explicit_enable = APP.split("func enableNativeShortcut()", 1)[1].split(
+        "private func installBundledShortcut", 1
+    )[0]
+    assert "native.enableByUser()" in explicit_enable
     assert "Task { await enable(promptForAccessibility: true) }" in FEATURE
     assert "if authorization != .authorized, promptForAccessibility" in FEATURE
     assert "AccessibilityController.requestAuthorization()" in FEATURE
     assert "requestAuthorization" not in APP
     assert "NativeSelectionReader" not in APP
+    assert "nativeOwnerBridgeReady && deploymentIsCurrent" in explicit_enable
+    assert "setShortcutDeploymentReady(deploymentIsCurrent)" in explicit_enable
+    assert "private var shortcutDeploymentReady = false" in FEATURE
+    assert "guard shortcutDeploymentReady else" in FEATURE
+    assert "private var lifecycleActivationAllowed = false" in FEATURE
+    assert "guard lifecycleActivationAllowed else" in FEATURE
+    assert "ownerBridgeIsFreshAfterRestart" in APP
+    fresh_owner = APP.split("private func ownerBridgeIsFreshAfterRestart", 1)[1].split(
+        "private func restartHammerspoonAfterInstall", 1
+    )[0]
+    assert "currentInstanceID != previousInstanceID" in fresh_owner
+    assert "updatedAt >= ceil(restartStartedAt)" in fresh_owner
+    assert "updatedAt <= previousUpdatedAt" in fresh_owner
+    assert "currentSequence > candidateSequence" in fresh_owner
+    assert "fallbackCandidateInstanceID = currentInstanceID" in fresh_owner
+    assert "else if deployedOwnerReady" in APP
 
     assert "requestAuthorization()" in ACCESSIBILITY
     assert "AXIsProcessTrustedWithOptions" in ACCESSIBILITY
@@ -102,15 +122,24 @@ def test_production_owner_resumes_after_wake_and_session_reactivation():
     )[1].split("#if DEBUG", 1)[0]
     assert "resumeNativeProductionIfEligible()" in wake
     assert "resumeNativeProductionIfEligible()" in session
+    assert "setLifecycleActivationAllowed(false, reason: .sleep)" in APP
+    assert "setLifecycleActivationAllowed(false, reason: .sessionResigned)" in APP
     resume = APP.split(
         "private func resumeNativeProductionIfEligible", 1
     )[1].split("#if DEBUG", 1)[0]
     assert "guard nativeProductionIsAwake" in resume
-    assert "nativeProductionSessionIsActive else { return }" in resume
-    assert (
-        "NativeProductionTranslationCoordinator.shared.applicationBecameActive()"
-        in resume
-    )
+    assert "nativeProductionSessionIsActive," in resume
+    assert "native.setLifecycleActivationAllowed(true)" in resume
+    assert "Self.currentSessionAllowsNativeActivation" in resume
+    launch = APP.split("func applicationDidFinishLaunching", 1)[1].split(
+        "func applicationShouldHandleReopen", 1
+    )[0]
+    assert "nativeProductionSessionIsActive = Self.currentSessionAllowsNativeActivation" in launch
+    assert "resumeNativeProductionIfEligible()" in launch
+    assert "CGSessionCopyCurrentDictionary()" in APP
+    assert "kCGSessionOnConsoleKey" in APP
+    assert "kCGSessionLoginDoneKey" in APP
+    assert "native.applicationBecameActive()" in resume
 
     assert "private var resumeRequestedAfterRevocation = false" in FEATURE
     resume_feature = FEATURE.split("func resumeIfEnabled()", 1)[1].split(
@@ -254,6 +283,15 @@ def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
     assert "let confirmationDeadline = ProcessInfo.processInfo.systemUptime" in SELECTION
     assert "confirmedText == firstText" in SELECTION
     assert "confirmedSnapshot.hasSamePayload(as: firstCandidateSnapshot)" in SELECTION
+    first_candidate_cleanup = SELECTION.split("switch firstAttempt", 1)[1].split(
+        "// A pasteboard change has no source identity", 1
+    )[0]
+    assert "defer {" in first_candidate_cleanup
+    assert "restorePasteboardSnapshot(" in first_candidate_cleanup
+    assert (
+        "onlyIfChangeCount: firstCandidateSnapshot.changeCount"
+        in first_candidate_cleanup
+    )
     assert "let restoredContextIsCurrent = isCurrentWPSPDFContext(" in SELECTION
     assert "guard restoredContextIsCurrent," in SELECTION
     assert "postCopyKeystroke(to: target.processIdentifier)" in SELECTION

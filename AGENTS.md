@@ -4,8 +4,11 @@ Instructions for an AI coding agent (Claude Code, OpenHands, Codex, etc.) asked
 to install or deploy **juyi** (句译) on the user's behalf.
 
 This is a macOS-only, English→Chinese, selection-translation tool: select English
-text in a compatible app, double-tap the Option key, and a popup shows Chinese. It runs a
-local FastAPI service on `127.0.0.1:54321` and a Hammerspoon Lua client.
+text in a compatible app, double-tap the Option key, and a popup shows Chinese.
+The production Apple path uses the native app for the Option monitor, Accessibility
+selection read, on-device translation, and popup. A Hammerspoon Lua module remains
+only to participate in the existing owner handoff protocol. The optional cloud path
+also uses a local FastAPI service on `127.0.0.1:54321`.
 
 Read this whole file before acting. Most steps you can run yourself; **two steps
 require the human** and are marked `HUMAN STEP`. Do not try to automate those.
@@ -42,17 +45,26 @@ brew install --cask hammerspoon
 open -a Hammerspoon
 ```
 
-## Step 3 — Grant Accessibility permission `HUMAN STEP`
+## Step 3 — Finish Juyi's two-step setup `HUMAN STEP`
 
-Hammerspoon needs Accessibility permission to read the selected text and send the
-hotkey. This is gated by macOS TCC and **cannot be granted by a script or agent**.
+Open `/Applications/句译.app`. In setup step 1, choose to enable native double
+Option. When needed, Juyi deploys the bundled Hammerspoon owner module,
+observes a fresh Hammerspoon process, and then asks for Accessibility permission
+for **句译**.
+This permission lets the native app monitor Option and read the selection; it is
+gated by macOS TCC and **cannot be granted by a script or agent**.
 
 Stop and ask the human to do this:
 
 > Open System Settings → Privacy & Security → Accessibility, and enable the
-> toggle for **Hammerspoon**. Then reload the Hammerspoon config.
+> toggle for **句译**. Return to Juyi after granting it; Juyi will recheck the
+> permission and continue the owner handoff.
 
 Do not attempt to edit the TCC database or otherwise bypass this.
+
+In setup step 2, the human must switch to another app, select English text, and
+double-tap Option. Juyi intentionally does not translate selections from its own
+window. After the native popup appears, they can return to Juyi and confirm it.
 
 ## Step 4 — Choose the engine
 
@@ -102,9 +114,10 @@ JUYI_INSTALL_ROOT="${DEST:-$HOME/.local/share/argos-translator}"
 "$JUYI_INSTALL_ROOT/venv/bin/python" "$JUYI_INSTALL_ROOT/scripts/smoke.py"
 ```
 
-A non-empty Chinese `result` means the service works. The end-to-end hotkey
-(select text → double-tap Option → popup) can only be confirmed by the human,
-since it depends on the Accessibility grant from Step 3. Tell them to try it.
+A non-empty Chinese `result` means the service works. It does not replace the
+native end-to-end check. That check (in another app: select text → double-tap
+Option → native popup) can only be confirmed by the human because it depends on
+the Accessibility grant from Step 3. Tell them to complete setup step 2.
 
 Full diagnostics: `~/.local/share/argos-translator/scripts/test.sh`.
 

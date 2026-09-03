@@ -1,6 +1,6 @@
 # macOS 公开版构建基线
 
-当前仓库已经有可提交的原生 Xcode 工程基座。它统一构建现有句译 SwiftUI 控制中心和 Apple Translation helper，但**还不是可直接公开分发的签名、公证安装包**；Python 后端与 Hammerspoon 行为在这一阶段保持不变。
+当前仓库已经有可提交的原生 Xcode 工程基座。它统一构建句译 SwiftUI App 和 Apple Translation helper，但**还不是可直接公开分发的签名、公证安装包**。生产 Apple 链已由原生 App 负责双 Option 监听、AX 取词、端上翻译和浮窗；Hammerspoon 只通过现有 owner 协议让出旧链，Python 后端继续服务可选云端和兼容路径。
 
 ## 工程与兼容性
 
@@ -12,7 +12,7 @@
 - App Sandbox：关闭。当前控制中心需要管理现有用户级后台进程、LaunchAgent、钥匙串和 Hammerspoon，不能在没有架构改造的情况下直接启用沙盒。
 - Hardened Runtime：工程设置已开启。默认 Xcode 本地构建的 ad-hoc 签名实测包含 `runtime` flag，但没有 Developer ID 身份、可信 timestamp 或公证，不能作为公开发行签名。CI 会传入 `CODE_SIGNING_ALLOWED=NO`，因此 CI 的 `.app` bundle 是未签名门禁产物，只验证编译、版本、架构和 deployment target，不做签名声明。
 
-工程只显式引用需要的源码与资源，不使用仓库根目录同步文件组；本地辅助脚本或未跟踪文件不会自动进入 App bundle。
+工程只显式引用需要的源码与资源，不使用仓库根目录同步文件组；本地辅助脚本或未跟踪文件不会自动进入 App bundle。Xcode 与兼容构建脚本都会把当前 `argos-translator.lua` 和 `hammerspoon_hook.sh` 放入 App Resources，供图形界面的 owner 模块部署流程使用。
 
 `bootstrap.sh`、完整安装器和独立 App 安装器都会在下载/更新 checkout、创建 token/venv、修改服务或 Hammerspoon、构建、退出旧 App 之前独立检查 macOS 15。旧系统会直接退出并保留现有安装。
 
@@ -65,6 +65,6 @@ macOS CI 同时构建 Debug 与 Release Xcode 配置，并验证：
 1. 配置稳定的 Developer ID Application 团队与临时 CI keychain。
 2. 用 Xcode Archive/Export 生成 Release；先签 helper，再签 App，启用 Hardened Runtime 与 timestamp。
 3. 完成 `notarytool` 公证、staple、Gatekeeper 验证，再制作并签名 DMG/PKG。
-4. 把 Python 运行时、后端和全局触发链打包进单一安装体验，或按后续架构阶段迁移为原生实现。
+4. 把仍需的 Python 运行时、后端与 Hammerspoon owner 桥接打包进单一安装体验，或在后续架构阶段消除这些兼容依赖；全局 Apple 触发链已经是原生实现。
 
 在这些步骤完成前，README 中的源码安装流程仍是开发/现有用户路径，不应把本地产物描述成已经可以面向公众双击安装的发行包。

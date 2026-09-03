@@ -2,10 +2,20 @@
 # Safely install, remove, or reload the Juyi Hammerspoon hook.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 HS_DIR="$HOME/.hammerspoon"
 MODULE="$HS_DIR/argos-translator.lua"
-MODULE_TARGET="$ROOT/hammerspoon/argos-translator.lua"
+if [[ -f "$ROOT/hammerspoon/argos-translator.lua" ]]; then
+    MODULE_TARGET="$ROOT/hammerspoon/argos-translator.lua"
+elif [[ -f "$SCRIPT_DIR/argos-translator.lua" ]]; then
+    # Xcode flattens individual Copy Bundle Resources entries. A released App
+    # therefore carries this hook and its Lua module side by side.
+    MODULE_TARGET="$SCRIPT_DIR/argos-translator.lua"
+else
+    echo "ERROR: missing bundled Hammerspoon module" >&2
+    exit 1
+fi
 INIT="$HS_DIR/init.lua"
 BEGIN_MARKER="-- BEGIN argos-translator managed block"
 END_MARKER="-- END argos-translator managed block"
@@ -57,6 +67,21 @@ module_is_managed() {
     [[ "$actual" == "$expected" ]]
 }
 
+legacy_module_is_managed() {
+    [[ -L "$MODULE" ]] || return 1
+
+    local raw_target default_target file
+    raw_target="$(readlink "$MODULE")" || return 1
+    default_target="$HOME/.local/share/argos-translator/hammerspoon/argos-translator.lua"
+    # The old checkout may already have been removed, leaving the previously
+    # installer-owned symlink broken. Accept only that exact absolute target;
+    # arbitrary or relative links remain conflicts and are never repointed.
+    [[ "$raw_target" == "$default_target" ]] || return 1
+    file="$(init_storage_path)" || return 1
+    [[ -f "$file" ]] || return 1
+    [[ "$(awk -v require="$REQUIRE_LINE" '$0 == require { count++ } END { print count + 0 }' "$file")" -eq 1 ]]
+}
+
 module_conflict() {
     cat >&2 <<EOF
 ERROR: refusing to replace $MODULE because it is not a symlink managed by this Juyi checkout.
@@ -73,7 +98,7 @@ EOF
 check_module_path() {
     [[ -f "$MODULE_TARGET" ]] || fail "missing Hammerspoon source module: $MODULE_TARGET"
     if [[ -L "$MODULE" ]]; then
-        module_is_managed || module_conflict
+        module_is_managed || legacy_module_is_managed || module_conflict
     elif [[ -e "$MODULE" ]]; then
         module_conflict
     fi
@@ -254,11 +279,23 @@ install_hook() {
     check_module_path
     check_init_path
     mkdir -p "$HS_DIR"
-    if [[ ! -L "$MODULE" ]]; then
+    if module_is_managed; then
+        echo "[kept managed symlink $MODULE]"
+    elif [[ -L "$MODULE" ]] && legacy_module_is_managed; then
+        local staging
+        staging="$(mktemp -d "$HS_DIR/.juyi-module-link.XXXXXX")"
+        if ! ln -s "$MODULE_TARGET" "$staging/argos-translator.lua" \
+            || ! /bin/mv -fh "$staging/argos-translator.lua" "$MODULE"; then
+            rm -f "$staging/argos-translator.lua"
+            rmdir "$staging" 2>/dev/null || true
+            fail "could not migrate the managed Hammerspoon module"
+        fi
+        rmdir "$staging"
+        module_is_managed || fail "managed Hammerspoon module migration did not finish safely"
+        echo "[migrated managed symlink $MODULE -> $MODULE_TARGET]"
+    else
         ln -s "$MODULE_TARGET" "$MODULE"
         echo "[linked $MODULE -> $MODULE_TARGET]"
-    else
-        echo "[kept managed symlink $MODULE]"
     fi
     rewrite_init_for_install
 }
@@ -276,28 +313,56 @@ uninstall_hook() {
 }
 
 reload_hammerspoon() {
-    if ! command -v pgrep >/dev/null 2>&1 || ! pgrep -x Hammerspoon >/dev/null 2>&1; then
+    [[ -x /usr/bin/pgrep ]] || fail "cannot check whether Hammerspoon is running"
+    local hammerspoon_running=0
+    if /usr/bin/pgrep -x Hammerspoon >/dev/null 2>&1; then
+        hammerspoon_running=1
+    else
+        local pgrep_status=$?
+        [[ "$pgrep_status" -eq 1 ]] || fail "could not inspect the running Hammerspoon process"
+    fi
+
+    if [[ "$hammerspoon_running" -eq 0 ]]; then
         if [[ -d /Applications/Hammerspoon.app || -d "$HOME/Applications/Hammerspoon.app" ]]; then
             echo "[starting Hammerspoon]"
-            /usr/bin/open -a Hammerspoon || warn "could not open Hammerspoon; start it manually"
+            /usr/bin/open -a Hammerspoon || fail "could not open Hammerspoon; start it manually"
         else
-            warn "Hammerspoon is not running; install and open it, then reload its config"
+            fail "Hammerspoon is not running; install and open it, then reload its config"
         fi
         return 0
     fi
 
     local hs_cli=""
-    if command -v hs >/dev/null 2>&1; then
-        hs_cli="$(command -v hs)"
-    elif [[ -x /Applications/Hammerspoon.app/Contents/Frameworks/hs/hs ]]; then
+    if [[ -x /Applications/Hammerspoon.app/Contents/Frameworks/hs/hs ]]; then
         hs_cli="/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs"
     elif [[ -x "$HOME/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs" ]]; then
         hs_cli="$HOME/Applications/Hammerspoon.app/Contents/Frameworks/hs/hs"
     fi
-    if [[ -n "$hs_cli" ]] && "$hs_cli" -c 'hs.reload()' >/dev/null 2>&1; then
+
+    [[ -n "$hs_cli" ]] || fail "Hammerspoon CLI is unavailable; choose Hammerspoon > Reload Config"
+    "$hs_cli" -c 'hs.reload()' >/dev/null 2>&1 &
+    local hs_pid=$!
+    local checks=0
+    while /bin/kill -0 "$hs_pid" >/dev/null 2>&1; do
+        if [[ "$checks" -ge 40 ]]; then
+            /bin/kill -TERM "$hs_pid" >/dev/null 2>&1 || true
+            for _ in {1..5}; do
+                /bin/kill -0 "$hs_pid" >/dev/null 2>&1 || break
+                /bin/sleep 0.1
+            done
+            if /bin/kill -0 "$hs_pid" >/dev/null 2>&1; then
+                /bin/kill -KILL "$hs_pid" >/dev/null 2>&1 || true
+            fi
+            wait "$hs_pid" 2>/dev/null || true
+            fail "Hammerspoon reload timed out; choose Hammerspoon > Reload Config"
+        fi
+        /bin/sleep 0.1
+        checks=$((checks + 1))
+    done
+    if wait "$hs_pid"; then
         echo "[reloaded the running Hammerspoon config]"
     else
-        warn "Hammerspoon is running. Choose Hammerspoon > Reload Config to activate Juyi."
+        fail "Hammerspoon did not reload its config; choose Hammerspoon > Reload Config"
     fi
 }
 

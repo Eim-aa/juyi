@@ -19,17 +19,17 @@ def test_versioned_disposition_and_legacy_migration_exist():
     assert 'defaults.removeObject(forKey: "onboardingConfirmed")' in SWIFT
 
 
-def test_completion_requires_ready_hotkey_and_explicit_confirmation():
+def test_completion_requires_active_native_hotkey_and_explicit_confirmation():
     body = SWIFT.split("func confirmHotkeyWorked()", 1)[1].split("func togglePause()", 1)[0]
-    assert "guard hotkeyReady else" in body
+    assert "guard NativeProductionTranslationCoordinator.shared.isEnabled else" in body
     assert "onboardingDisposition = .completed" in body
     assert "last_translation_at" not in SWIFT
 
 
-def test_real_selectable_practice_and_separate_root_are_present():
-    assert "struct SelectablePracticeText: NSViewRepresentable" in SWIFT
-    assert "textView.isEditable = false" in SWIFT
-    assert "textView.isSelectable = true" in SWIFT
+def test_practice_uses_an_external_app_and_separate_root_is_present():
+    assert "SelectablePracticeText" not in SWIFT
+    assert "切换到另一个 App，选中一段英文" in SWIFT
+    assert "句译不会读取自身窗口中的文字" in SWIFT
     assert "struct OnboardingView: View" in SWIFT
     assert "struct RootView: View" in SWIFT
 
@@ -41,9 +41,10 @@ def test_close_defers_and_help_can_rerun_without_reset_path():
     assert "removeCloud()" not in SWIFT.split('Button("重新运行完整设置…")', 1)[1][:200]
 
 
-def test_engine_choice_and_routing_use_pure_policy():
+def test_engine_choice_uses_policy_and_native_routing_is_explicit():
     assert "OnboardingPolicy.preferredEngine" in SWIFT
-    assert "OnboardingPolicy.firstIncompleteScreen" in SWIFT
+    assert "NativeProductionTranslationCoordinator.shared.isEnabled ? .practice : .permission" in SWIFT
+    assert "切换到 Apple 离线并启用" in SWIFT
     assert 'if hasCloudConfiguration { return "volc" }' not in POLICY
     assert "onboardingEngineReady" not in POLICY.split("firstIncompleteScreen", 1)[1].split("}", 1)[0]
 
