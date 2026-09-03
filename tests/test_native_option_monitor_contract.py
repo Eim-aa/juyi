@@ -250,8 +250,25 @@ def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
     assert "candidate == markerValue" in SELECTION
     assert "candidate == snapshot.originalString" in SELECTION
     assert SELECTION.count("captureStableWPSClipboardCandidate(") == 3
+    assert "let firstDeadline = ProcessInfo.processInfo.systemUptime" in SELECTION
+    assert "let confirmationDeadline = ProcessInfo.processInfo.systemUptime" in SELECTION
     assert "confirmedText == firstText" in SELECTION
     assert "confirmedSnapshot.hasSamePayload(as: firstCandidateSnapshot)" in SELECTION
+    assert "let restoredContextIsCurrent = isCurrentWPSPDFContext(" in SELECTION
+    assert "guard restoredContextIsCurrent," in SELECTION
+    assert "postCopyKeystroke(to: target.processIdentifier)" in SELECTION
+    assert SELECTION.count(".postToPid(processIdentifier)") == 2
+    assert "let postedCopyDrainDeadline = max(" in SELECTION
+    assert "var drainOnly = false" in SELECTION
+    assert "guard !drainOnly else { continue }" in SELECTION
+    settlement = SELECTION.split("let postedCopyDrainDeadline = max(", 1)[1].split(
+        "let finalChangeCount = pasteboard.changeCount", 1
+    )[0]
+    assert "while ProcessInfo.processInfo.systemUptime < postedCopyDrainDeadline" in settlement
+    assert "drainOnly = true" in settlement
+    assert "pasteboard.string(forType:" not in settlement
+    assert "PasteboardSnapshot(pasteboard:" not in settlement
+    assert "return .candidate" not in settlement
     assert "performCriticalEffect:" in COORDINATOR
     assert "performIfCurrent(captureGeneration, action)" in COORDINATOR
     assert "performCleanupEffect:" in COORDINATOR

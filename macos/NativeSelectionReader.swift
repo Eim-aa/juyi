@@ -1005,7 +1005,7 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
         guard let snapshot = PasteboardSnapshot(pasteboard: pasteboard) else {
             return .temporarilyUnavailable
         }
-        let deadline = ProcessInfo.processInfo.systemUptime
+        let firstDeadline = ProcessInfo.processInfo.systemUptime
             + Self.clipboardCopyTimeout
         let firstAttempt = captureStableWPSClipboardCandidate(
             pasteboard: pasteboard,
@@ -1014,7 +1014,7 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
             context: context,
             application: application,
             target: target,
-            deadline: deadline
+            deadline: firstDeadline
         )
         let firstText: String
         let firstCandidateSnapshot: PasteboardSnapshot
@@ -1034,6 +1034,8 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
         // A pasteboard change has no source identity. Require WPS to reproduce
         // the same selection after a second, independently marked Copy before
         // any text is allowed into the translation pipeline.
+        let confirmationDeadline = ProcessInfo.processInfo.systemUptime
+            + Self.clipboardCopyTimeout
         let confirmation = captureStableWPSClipboardCandidate(
             pasteboard: pasteboard,
             snapshot: snapshot,
@@ -1041,10 +1043,22 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
             context: context,
             application: application,
             target: target,
-            deadline: deadline
+            deadline: confirmationDeadline
         )
-        guard case let .candidate(confirmedText, confirmedSnapshot) = confirmation,
-              confirmedText == firstText,
+        let confirmedText: String
+        let confirmedSnapshot: PasteboardSnapshot
+        switch confirmation {
+        case let .candidate(text, candidateSnapshot):
+            confirmedText = text
+            confirmedSnapshot = candidateSnapshot
+        case .noCandidate:
+            return primaryResult
+        case .cancelled:
+            return .cancelled
+        case .unavailable:
+            return .temporarilyUnavailable
+        }
+        guard confirmedText == firstText,
               confirmedSnapshot.hasSamePayload(as: firstCandidateSnapshot) else {
             return .temporarilyUnavailable
         }
@@ -1061,6 +1075,20 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
             to: pasteboard,
             onlyIfChangeCount: confirmedSnapshot.changeCount
         ) else { return .temporarilyUnavailable }
+        guard !cancellationCheck(),
+              frontmostApplication?.hasSameProcess(as: target) == true else {
+            return .cancelled
+        }
+        let restoredContextIsCurrent = isCurrentWPSPDFContext(
+            context,
+            application: application,
+            target: target
+        )
+        guard restoredContextIsCurrent,
+              !cancellationCheck(),
+              frontmostApplication?.hasSameProcess(as: target) == true else {
+            return .cancelled
+        }
         return .text(firstText)
     }
 
@@ -1147,7 +1175,7 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
                   frontmostApplication?.hasSameProcess(as: target) == true else {
                 return false
             }
-            return postCopyKeystroke()
+            return postCopyKeystroke(to: target.processIdentifier)
         }
         guard postedCopy else {
             _ = restorePasteboardSnapshot(
@@ -1157,76 +1185,74 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
             )
             return cancellationCheck() ? .cancelled : .unavailable
         }
+        // CGEvent delivery is asynchronous. Once Copy has been posted, keep
+        // this reader (and therefore the native owner lease) alive for a full
+        // bounded response window even if cancellation or focus loss arrives.
+        // Posting directly to WPS prevents an already queued Copy from being
+        // rerouted to whichever application becomes frontmost next.
+        let postedCopyDrainDeadline = max(
+            deadline,
+            ProcessInfo.processInfo.systemUptime + Self.clipboardCopyTimeout
+        )
 
-        var candidateText: String?
-        var candidateChangeCount: Int?
-        var stableSince: TimeInterval?
-        while ProcessInfo.processInfo.systemUptime < deadline {
+        var observedChangeCount = markerChangeCount
+        var stableSince = ProcessInfo.processInfo.systemUptime
+        var drainOnly = false
+        while ProcessInfo.processInfo.systemUptime < postedCopyDrainDeadline {
             Thread.sleep(forTimeInterval: 0.02)
+            let now = ProcessInfo.processInfo.systemUptime
             let changeCount = pasteboard.changeCount
+            if changeCount != observedChangeCount {
+                observedChangeCount = changeCount
+                stableSince = now
+            }
+            guard !drainOnly else { continue }
             guard !cancellationCheck(),
-                  frontmostApplication?.hasSameProcess(as: target) == true,
-                  isCurrentWPSPDFContext(
+                  frontmostApplication?.hasSameProcess(as: target) == true else {
+                drainOnly = true
+                continue
+            }
+            let contextIsCurrent = isCurrentWPSPDFContext(
                     context,
                     application: application,
                     target: target
-                  ) else {
-                if changeCount == markerChangeCount {
-                    _ = restorePasteboardSnapshot(
-                        snapshot,
-                        to: pasteboard,
-                        onlyIfChangeCount: markerChangeCount
-                    )
-                }
-                return .cancelled
-            }
-            guard changeCount != markerChangeCount else { continue }
-            guard let candidate = pasteboard.string(forType: .string),
-                  !candidate.isEmpty else {
-                return .unavailable
-            }
-            // Marker rewrites and restoration of the previous plain text do
-            // not prove WPS handled Copy. Restore the exact snapshot only
-            // while the rejected write is still the newest pasteboard state.
-            if candidate == markerValue {
-                guard restorePasteboardSnapshot(
-                    snapshot,
-                    to: pasteboard,
-                    onlyIfChangeCount: changeCount
-                ) else { return .unavailable }
-                return .noCandidate
-            }
-            if candidate == snapshot.originalString {
-                guard let currentSnapshot = PasteboardSnapshot(
-                    pasteboard: pasteboard
-                ), currentSnapshot.changeCount == changeCount else {
-                    return .unavailable
-                }
-                guard currentSnapshot.hasSamePayload(as: snapshot) else {
-                    // The same plain string with different rich/file payload is
-                    // an unknown concurrent write. Leave it untouched.
-                    return .unavailable
-                }
-                return .noCandidate
-            }
-            if candidateChangeCount != changeCount {
-                candidateChangeCount = changeCount
-                candidateText = candidate
-                stableSince = ProcessInfo.processInfo.systemUptime
-            } else if let stableSince,
-                      ProcessInfo.processInfo.systemUptime - stableSince
-                        >= Self.clipboardStableInterval,
-                      let candidateText {
-                guard let candidateSnapshot = PasteboardSnapshot(
-                    pasteboard: pasteboard
-                ), candidateSnapshot.changeCount == changeCount else {
-                    return .unavailable
-                }
-                return .candidate(text: candidateText, snapshot: candidateSnapshot)
+                )
+            guard contextIsCurrent,
+                  !cancellationCheck(),
+                  frontmostApplication?.hasSameProcess(as: target) == true else {
+                drainOnly = true
+                continue
             }
         }
 
         let finalChangeCount = pasteboard.changeCount
+        if drainOnly || cancellationCheck() ||
+            frontmostApplication?.hasSameProcess(as: target) != true {
+            if finalChangeCount == markerChangeCount {
+                _ = restorePasteboardSnapshot(
+                    snapshot,
+                    to: pasteboard,
+                    onlyIfChangeCount: markerChangeCount
+                )
+            }
+            return .cancelled
+        }
+        let finalContextIsCurrent = isCurrentWPSPDFContext(
+            context,
+            application: application,
+            target: target
+        )
+        if !finalContextIsCurrent || cancellationCheck() ||
+            frontmostApplication?.hasSameProcess(as: target) != true {
+            if finalChangeCount == markerChangeCount {
+                _ = restorePasteboardSnapshot(
+                    snapshot,
+                    to: pasteboard,
+                    onlyIfChangeCount: markerChangeCount
+                )
+            }
+            return .cancelled
+        }
         if finalChangeCount == markerChangeCount {
             guard restorePasteboardSnapshot(
                 snapshot,
@@ -1235,7 +1261,68 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
             ) else { return .unavailable }
             return .noCandidate
         }
-        return .unavailable
+        guard finalChangeCount == observedChangeCount,
+              ProcessInfo.processInfo.systemUptime - stableSince
+                >= Self.clipboardStableInterval,
+              let candidate = pasteboard.string(forType: .string),
+              !candidate.isEmpty,
+              pasteboard.changeCount == finalChangeCount else {
+            return .unavailable
+        }
+        guard !cancellationCheck(),
+              frontmostApplication?.hasSameProcess(as: target) == true else {
+            return .cancelled
+        }
+        let contextAfterStringIsCurrent = isCurrentWPSPDFContext(
+            context,
+            application: application,
+            target: target
+        )
+        guard contextAfterStringIsCurrent,
+              !cancellationCheck(),
+              frontmostApplication?.hasSameProcess(as: target) == true,
+              pasteboard.changeCount == finalChangeCount else {
+            return .cancelled
+        }
+        // Marker rewrites and restoration of the previous plain text do not
+        // prove WPS handled Copy. Restore the exact snapshot only while the
+        // rejected write is still the newest pasteboard state.
+        if candidate == markerValue {
+            guard restorePasteboardSnapshot(
+                snapshot,
+                to: pasteboard,
+                onlyIfChangeCount: finalChangeCount
+            ) else { return .unavailable }
+            return .noCandidate
+        }
+        guard let candidateSnapshot = PasteboardSnapshot(pasteboard: pasteboard),
+              candidateSnapshot.changeCount == finalChangeCount else {
+            return .unavailable
+        }
+        guard !cancellationCheck(),
+              frontmostApplication?.hasSameProcess(as: target) == true else {
+            return .cancelled
+        }
+        let finalValidatedContext = isCurrentWPSPDFContext(
+            context,
+            application: application,
+            target: target
+        )
+        guard finalValidatedContext,
+              !cancellationCheck(),
+              frontmostApplication?.hasSameProcess(as: target) == true,
+              pasteboard.changeCount == finalChangeCount else {
+            return .cancelled
+        }
+        if candidate == snapshot.originalString {
+            guard candidateSnapshot.hasSamePayload(as: snapshot) else {
+                // The same plain string with different rich/file payload is an
+                // unknown concurrent write. Leave it untouched.
+                return .unavailable
+            }
+            return .noCandidate
+        }
+        return .candidate(text: candidate, snapshot: candidateSnapshot)
     }
 
     private func restorePasteboardSnapshot(
@@ -1313,7 +1400,7 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
             && expected.documentIdentifier == current.documentIdentifier
     }
 
-    private func postCopyKeystroke() -> Bool {
+    private func postCopyKeystroke(to processIdentifier: pid_t) -> Bool {
         guard let source = CGEventSource(stateID: .combinedSessionState),
               let keyDown = CGEvent(
                 keyboardEventSource: source,
@@ -1327,9 +1414,9 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
               ) else { return false }
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
-        keyDown.post(tap: .cghidEventTap)
+        keyDown.postToPid(processIdentifier)
         Thread.sleep(forTimeInterval: 0.05)
-        keyUp.post(tap: .cghidEventTap)
+        keyUp.postToPid(processIdentifier)
         return true
     }
 
