@@ -111,10 +111,41 @@ enum NativeSelectionCaptureCoordinatorTests {
         expect(results.isEmpty, "cancellation invalidates an already queued completion")
     }
 
+    private static func testCancellationReportsQuiescenceAfterActiveReaderFinishes() {
+        let worker = ManualScheduler()
+        let completion = ManualScheduler()
+        var coordinator: NativeSelectionCaptureCoordinator!
+        var cancelReportedIdle: Bool?
+        var quiesced = false
+        coordinator = NativeSelectionCaptureCoordinator(
+            reader: { _ in
+                cancelReportedIdle = coordinator.cancelAll {
+                    quiesced = true
+                }
+                return .cancelled
+            },
+            workScheduler: worker.schedule,
+            completionScheduler: completion.schedule
+        )
+
+        coordinator.capture(target: firstTarget) { _ in }
+        worker.run(0)
+        expect(
+            cancelReportedIdle == false,
+            "active cancellation keeps owner revocation pending"
+        )
+        expect(!quiesced, "quiescence callback is not run inside the reader")
+        expect(completion.count == 1, "reader completion schedules one quiescence callback")
+        completion.run(0)
+        expect(quiesced, "quiescence callback runs after cleanup-capable reader exits")
+        expect(coordinator.cancelAll(), "subsequent cancellation is immediately quiescent")
+    }
+
     static func main() {
         testCaptureIsDeferredAndLatestWins()
         testCancellationDropsQueuedText()
         testCancellationDropsAlreadyScheduledCompletion()
+        testCancellationReportsQuiescenceAfterActiveReaderFinishes()
         print("NativeSelectionCaptureCoordinatorTests: \(passed) passed")
     }
 }

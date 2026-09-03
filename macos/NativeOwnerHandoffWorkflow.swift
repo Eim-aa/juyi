@@ -1,8 +1,3 @@
-#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB && (JUYI_NATIVE_SELECTION_CAPTURE_LAB || JUYI_NATIVE_OPTION_MONITOR || JUYI_NATIVE_TRANSLATION_DOMAIN || JUYI_NATIVE_TRANSLATION_OVERLAY || JUYI_NATIVE_TRANSLATION_RESULT_LAB || JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER || JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER || JUYI_NATIVE_APPLE_RESULT_LAB_BINDING)
-#error("JUYI_NATIVE_OWNER_HANDOFF_LAB is an isolated handoff-only build and cannot be mixed with capture, Option, or translation development flags")
-#endif
-
-#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
 import Foundation
 
 protocol NativeOwnerHandoffStoring: AnyObject {
@@ -127,7 +122,10 @@ final class NativeOwnerHandoffWorkflow {
     /// Explicit recovery can only remove a canonical crash residue. It never
     /// yields `.legacyYielded` and therefore cannot authorize native effects.
     func recoverAndReturnToLegacy() {
-        guard activeLease == nil else { return }
+        if activeLease != nil {
+            returnActiveLeaseToLegacy(reason: .recoveredCrashResidue)
+            return
+        }
         latestUnsafeReason = nil
         acceptedLegacyLease = nil
         switch store.recoverForReturnToLegacy() {
@@ -165,4 +163,3 @@ final class NativeOwnerHandoffWorkflow {
         }
     }
 }
-#endif

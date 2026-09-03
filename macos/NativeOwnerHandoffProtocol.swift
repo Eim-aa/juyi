@@ -2,7 +2,7 @@ import Foundation
 
 /// Pure protocol policy for transferring the double-Option owner from the
 /// legacy Hammerspoon module to the native app. This file performs no I/O and
-/// starts no monitor; a future activation layer must satisfy this policy while
+/// starts no monitor; the production activation layer must satisfy this policy while
 /// holding its own cross-process native-owner lock.
 enum NativeOwnerHandoffProtocol {
     static let version = 1

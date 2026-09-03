@@ -161,12 +161,12 @@ def test_native_policy_is_pure_and_cannot_start_or_store_an_owner():
     ):
         assert forbidden not in POLICY
     assert "starts no monitor" in POLICY
-    assert "future activation layer" in POLICY
+    assert "production activation layer" in POLICY
     assert "owner-request.json" not in POLICY
 
 
-def test_store_is_exact_gated_durable_and_recovery_only():
-    assert "#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB" in STORE
+def test_store_is_production_durable_and_recovery_only():
+    assert "#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB" not in STORE
     for required in (
         "native-owner.lock",
         "owner-request.json",
@@ -190,7 +190,7 @@ def test_store_is_exact_gated_durable_and_recovery_only():
 
 
 def test_workflow_retains_lease_but_has_no_live_effects():
-    assert "#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB" in WORKFLOW
+    assert "#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB" not in WORKFLOW
     for required in (
         "acknowledgementDeadline: TimeInterval = 5",
         "waitingForLegacy",
@@ -199,6 +199,7 @@ def test_workflow_retains_lease_but_has_no_live_effects():
         "latestUnsafeReason",
         "ReturnReason",
         "returnActiveLeaseToLegacy",
+        "if activeLease != nil",
     ):
         assert required in WORKFLOW
     for forbidden in (
@@ -275,15 +276,13 @@ def test_disclosed_lab_is_explicit_monotonic_and_lifecycle_complete():
     ):
         assert token in APP
     assert "#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB" in APP
-    assert "!JUYI_NATIVE_OWNER_HANDOFF_LAB" in APP
     assert "testOpenIsZeroIOAndExplicitStartYields" in LAB_TESTS
     assert "testCloseCancelsAndLatePollCannotReopen" in LAB_TESTS
 
 
-def test_activation_foundation_orders_effect_stop_before_owner_return():
-    assert "JUYI_NATIVE_OWNER_ACTIVATION_LAB requires" in ACTIVATION
+def test_production_activation_orders_effect_stop_before_owner_return():
+    assert "JUYI_NATIVE_OWNER_ACTIVATION_LAB" not in ACTIVATION
     for required in (
-        "juyi-native-owner-activation-coordinator-v1",
         "readyToActivate",
         "nativeActive",
         "revocationRequired",
@@ -350,15 +349,15 @@ def test_protocol_tests_cover_every_negative_and_are_in_all_build_paths():
     assert "hammerspoon_runtime_test.lua" in CI
 
 
-def test_documentation_keeps_activation_and_production_no_go_explicit():
+def test_documentation_records_the_production_owner_boundary():
     normalized_doc = " ".join(DOC.split())
     for required in (
-        "native activation is still **NO-GO**",
-        "Hammerspoon continues to be the only production trigger",
-        "default Debug and every supported Release build still contain neither",
-        "cross-process native-owner lock",
-        "zero or one trigger owner, never two",
-        "Signed macOS 15.0/latest 15.x",
+        "used by the production Apple offline translation MVP",
+        "never intentionally monitor double Option at the same time",
+        "NativeProductionTranslationCoordinator",
+        "cross-process lock",
+        "zero-or-one trigger owner",
+        "signed macOS 15 builds",
     ):
         assert required in normalized_doc
     user_script = "start_service" + ".command"

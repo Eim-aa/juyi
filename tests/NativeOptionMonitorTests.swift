@@ -141,6 +141,7 @@ enum NativeOptionMonitorTests {
             eventSource: source,
             accessibilityStatus: { authorization.read() },
             frontmostApplication: { frontmost.target },
+            selectionPoint: { nil },
             currentProcessIdentifier: 100,
             deliveryScheduler: { delay, action in
                 scheduler.schedule(delay: delay, action: action)

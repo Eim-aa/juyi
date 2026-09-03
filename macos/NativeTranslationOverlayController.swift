@@ -3,9 +3,7 @@ import CoreGraphics
 import Foundation
 import QuartzCore
 
-#if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
-
-#if !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+#if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
 
 private enum NativeTranslationOverlayFixture: CaseIterable {
     case loading
@@ -841,9 +839,10 @@ final class NativeTranslationOverlayController: NSObject {
     private var navigationHandler: ((NativeTranslationOverlayCTA) -> Void)?
     private var pendingDismissReason: NativeTranslationOverlayDismissReason?
     private var preservesVisibleContentForNextSessionBegin = false
-    #if !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
     private var nextFixtureIndex = 0
     #endif
+    private var nativeDismissHandler: ((NativeTranslationOverlayDismissReason) -> Void)?
     #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
     private let externalPresentationRegistry =
         NativeTranslationOverlayExternalPresentationRegistry()
@@ -881,7 +880,7 @@ final class NativeTranslationOverlayController: NSObject {
         navigationHandler = handler
     }
 
-    #if !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+    #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
     var nextFixturePreviewTitle: String {
         let fixtures = NativeTranslationOverlayFixture.allCases
         let fixture = fixtures[nextFixtureIndex % fixtures.count]
@@ -931,6 +930,46 @@ final class NativeTranslationOverlayController: NSObject {
         #endif
     }
     #endif
+
+    /// Starts the real user translation presentation. The caller owns AX,
+    /// Apple Translation and cancellation; this controller owns only the one
+    /// passive panel session and reports every user/lifecycle dismissal.
+    @discardableResult
+    func beginNativeTranslation(
+        sourceApplication: NSRunningApplication?,
+        anchorPoint: CGPoint?,
+        onDismiss: @escaping (NativeTranslationOverlayDismissReason) -> Void
+    ) -> Int? {
+        guard !isPaused else { return nil }
+        if nativeDismissHandler != nil { dismiss(.stop) }
+        self.sourceApplication = sourceApplication
+        anchorMousePoint = anchorPoint ?? NSEvent.mouseLocation
+        guard prepareAnchor() else { return nil }
+        fixtureCopyPresentationLifecycle.queue(.idle)
+        pendingPresentationLifecycle.cancel()
+        preservesVisibleContentForNextSessionBegin =
+            NativeTranslationOverlayVisibleReplacementPolicy.preservesCurrentContent(
+                panelIsVisible: panel.isVisible,
+                presentationPhase: presentationLifecycle.phase
+            )
+        nativeDismissHandler = onDismiss
+        return session.begin()
+    }
+
+    func resolveNativeTranslation(
+        _ event: NativeTranslationOverlayEvent,
+        generation: Int
+    ) {
+        session.resolve(event, for: generation)
+    }
+
+    func cancelNativeTranslation(
+        generation: Int,
+        reason: NativeTranslationOverlayDismissReason
+    ) {
+        guard session.generation == generation else { return }
+        dismiss(reason)
+    }
 
     #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
     #if !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
@@ -1213,13 +1252,17 @@ final class NativeTranslationOverlayController: NSObject {
 
     private func configurePanel() {
         panel.contentView = overlayView
-        #if JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
+        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
         panel.identifier = NSUserInterfaceItemIdentifier(
             nativeTranslationAppleResultLabBindingBuildSentinel
         )
-        #else
+        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
         panel.identifier = NSUserInterfaceItemIdentifier(
             NativeTranslationOverlayFixture.buildSentinel
+        )
+        #else
+        panel.identifier = NSUserInterfaceItemIdentifier(
+            "io.github.Eim-aa.Juyi.native-translation-overlay"
         )
         #endif
         panel.title = "句译译文"
@@ -1549,6 +1592,9 @@ final class NativeTranslationOverlayController: NSObject {
     private func dismiss(_ reason: NativeTranslationOverlayDismissReason) {
         pendingDismissReason = reason
         defer { pendingDismissReason = nil }
+        let nativeHandler = nativeDismissHandler
+        nativeDismissHandler = nil
+        defer { nativeHandler?(reason) }
         #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
         let hadExternalPresentation = externalPresentationRegistry.hasActiveLease
         #endif
@@ -1683,8 +1729,7 @@ final class NativeTranslationOverlayController: NSObject {
         guard statefulActionsArePermitted,
               let cta = currentState.cta else { return }
         keyboardMode = false
-        sourceApplication = nil
-        session.invalidate()
+        dismiss(.stop)
         NSApp.activate(ignoringOtherApps: true)
         navigationHandler?(cta)
     }
@@ -1946,5 +1991,3 @@ final class NativeTranslationOverlayController: NSObject {
         application.activate(options: [])
     }
 }
-
-#endif

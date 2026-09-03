@@ -8,7 +8,7 @@ enum AccessibilityAuthorizationStatus: Equatable {
 
 /// Read-only status plus an explicitly named prompt operation.
 ///
-/// The production app does not call `requestAuthorization()` in this phase.
+/// Production calls `requestAuthorization()` only from the explicit enable action.
 enum AccessibilityController {
     static var status: AccessibilityAuthorizationStatus {
         AXIsProcessTrusted() ? .authorized : .notAuthorized

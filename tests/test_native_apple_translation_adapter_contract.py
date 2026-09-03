@@ -46,9 +46,22 @@ def _conditions_for_occurrences(source: str, token: str) -> list[tuple[str, ...]
     return conditions
 
 
-def test_new_implementation_and_every_app_entry_are_triple_gated() -> None:
+def test_debug_adapter_stays_gated_while_production_host_is_always_available() -> None:
     _assert_whole_file_gate(MODEL)
-    _assert_whole_file_gate(HOST)
+    debug_host, production_host = HOST.split(
+        "\n#endif\n\n// MARK: - Production Apple Translation host",
+        1,
+    )
+    _assert_whole_file_gate(debug_host + "\n#endif")
+    assert "final class NativeAppleProductionTranslationService" in production_host
+    assert "struct NativeAppleProductionTranslationHost" in production_host
+    for token in (
+        "NativeAppleProductionTranslationService",
+        "NativeAppleProductionTranslationHost",
+    ):
+        occurrences = _conditions_for_occurrences(HOST, token)
+        assert occurrences
+        assert all(not stack for stack in occurrences)
     for token in (
         "NativeAppleTranslationAdapterCoordinator",
         "NativeAppleTranslationAdapterSheet",

@@ -1,12 +1,3 @@
-#if DEBUG && JUYI_NATIVE_OWNER_ACTIVATION_LAB && !JUYI_NATIVE_OWNER_HANDOFF_LAB
-#error("JUYI_NATIVE_OWNER_ACTIVATION_LAB requires JUYI_NATIVE_OWNER_HANDOFF_LAB")
-#endif
-
-#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB && JUYI_NATIVE_OWNER_ACTIVATION_LAB && (JUYI_NATIVE_SELECTION_CAPTURE_LAB || JUYI_NATIVE_OPTION_MONITOR || JUYI_NATIVE_TRANSLATION_DOMAIN || JUYI_NATIVE_TRANSLATION_OVERLAY || JUYI_NATIVE_TRANSLATION_RESULT_LAB || JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER || JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER || JUYI_NATIVE_APPLE_RESULT_LAB_BINDING)
-#error("JUYI_NATIVE_OWNER_ACTIVATION_LAB is an isolated owner-effect foundation and cannot be mixed with capture, Option, or translation development flags")
-#endif
-
-#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB && JUYI_NATIVE_OWNER_ACTIVATION_LAB
 import Foundation
 
 @MainActor
@@ -15,8 +6,8 @@ protocol NativeOwnerActivatingEffect: AnyObject {
     func stop() -> NativeOwnerActivationCoordinator.StopResult
 }
 
-/// Linearizes the future native trigger effect with the durable Hammerspoon
-/// handoff lease. This foundation has no event monitor, AX, selection,
+/// Linearizes the native trigger effect with the durable Hammerspoon
+/// handoff lease. This coordinator has no event monitor, AX, selection,
 /// translation, clipboard, network, or UI implementation.
 ///
 /// The effect may start only after the exact legacy yield is accepted. Returning
@@ -25,8 +16,6 @@ protocol NativeOwnerActivatingEffect: AnyObject {
 /// the system has at most one trigger owner.
 @MainActor
 final class NativeOwnerActivationCoordinator {
-    static let artifactSentinel = "juyi-native-owner-activation-coordinator-v1"
-
     enum StartResult: Equatable {
         case started
         case notStarted
@@ -205,4 +194,3 @@ final class NativeOwnerActivationCoordinator {
         }
     }
 }
-#endif

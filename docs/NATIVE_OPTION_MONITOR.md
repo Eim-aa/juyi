@@ -1,55 +1,35 @@
-# 原生双 Option 监听：阶段 1 开发说明
+# 原生双 Option 翻译
 
-状态：**开发中，默认未启用，不是当前用户功能。**
+状态：**Apple 离线翻译 MVP 已接入普通 Debug 与 Release 构建。**
 
-当前 Release 构建在编译期硬关闭原生监听。普通 Debug 构建也保持关闭；只有开发者显式加入 `JUYI_NATIVE_OPTION_MONITOR` 编译条件时，内部 harness 才会启动全局事件监听。识别成功后，它在专用串行 worker 上执行 AX 取词，并且只把稳定结果和文本保存在私有内存；不请求翻译、不显示浮窗、不输出文本日志。
+用户在句译中明确点击“启用原生双 Option”后，生产链路依次执行：
 
-因此目前唯一生效的双 Option 触发、取词和译文浮窗仍由 `hammerspoon/argos-translator.lua` 提供。这个切片没有替换、暂停或修改 Hammerspoon 链，也不表示句译已经去除 Hammerspoon/Python 依赖。
+1. 检查 macOS 辅助功能授权与英语→简体中文 Apple Translation 语言包；
+2. 通过现有 owner 协议请求 Hammerspoon 停止旧监听、在途请求和浮窗；
+3. 安装 AppKit global `NSEvent` monitor，识别两次完整的 Option 按下/释放；
+4. 在专用串行 worker 上读取触发时前台进程的真实 AX 选区；
+5. 使用 macOS 15 Translation framework 在本机翻译；
+6. 在触发时的鼠标位置附近显示原生非激活浮窗。
 
-## 已建立的基础
+这条生产链不依赖 `JUYI_NATIVE_OPTION_MONITOR` 或其他编译 flag。用户停用、切换到火山云端、暂停、停止服务、睡眠、会话退出、辅助功能撤销或 App 终止时，会先撤销原生 monitor、取词、翻译和浮窗，再归还 Hammerspoon owner。异步语言检查不能越过这些生命周期边界重新启动监听。
 
-- `DoubleOptionStateMachine.swift`：无 AppKit/CoreGraphics 依赖的纯识别策略；每次按住与两次释放间隔都以 350 ms 为上限。
-- `NativeOptionEventAdapter.swift`：不携带字符内容的纯事件适配器；处理左右 Option、启动/恢复时 Option 已按住及 Caps Lock 等边界。
-- `NativeOptionMonitor.swift`：`@MainActor` 的 AppKit 全局 `NSEvent` 监听器，仅订阅 `flagsChanged` 与 `keyDown`；回调不读取 `characters`，识别结果离开回调后异步投递。常态不安装 local monitor，因此句译自身前台不会触发。
-- `AccessibilityController.swift`：提供只读状态和名称明确的显式请求方法。监听启动只查询状态，绝不调用请求方法。
-- `NativeSelectionReader.swift`：AX-only 取词基础。它把触发瞬间的前台 `PID + NSRunningApplication.launchDate` 作为进程身份，bundle ID 只作元数据；读取前后都核对完整进程身份并拒绝自身 PID。系统 client 在读取 `AXSelectedText` 前验证 focused element 的 PID、role 与 subrole，只允许显式审过的非安全组合；文本读取后还会重新获取 focused element，以 `CFEqual` 确认元素未变，再复验 PID/进程身份/role/subrole。没有剪贴板回退、文本日志或 UI 副作用。
-- `NativeSelectionCaptureCoordinator.swift`：专用串行 worker 与 generation gate。被第二次触发、停止或授权变化取代的排队任务不会发起 AX；同步 AX 已开始时无法中断，但返回后会在进入主队列前丢弃过期文本。
-- `NativeOptionFeature.swift`：Release 编译期恒为 `false`；Debug 还需额外编译条件，且内部结果只保存在内存，不接入后端或公开 UI。
+## 取词范围
 
-与 Lua 的正常手势一致，窗口按“释放到释放”计算。原生策略有意更保守：普通键或 Command/Control/Shift/Fn 无论出现在按住期间还是两次 tap 之间，都会取消整组，降低未来双触发或误触发风险；Caps Lock 被忽略。
+主路径使用 Apple Accessibility API，并在读取前后核对触发时的 `PID + NSRunningApplication.launchDate`、前台 App 和 AX 元素身份；bundle ID 只作元数据，focused element 还会用 `CFEqual` 复验。它支持常见原生文本框/文本区，以及 Safari、Chromium、Electron 和支持 AX text marker 的 PDF/网页静态文本。安全输入框、受保护内容、扫描图片和没有可访问文本层的 PDF 会拒绝读取；后两类需要 OCR，不属于本 MVP。
 
-监听器在授权前不会安装 monitor。start、stop、暂停/恢复及授权撤销会维护独立的 token/授权状态并使旧 generation 失效；重复 start/stop/pause 不会重复安装或移除 token。授权恢复不等于监听已恢复，必须显式 start 重建。第二次触发会使尚未投递的第一次触发过期。
+WPS PDF 没有提供可用 AX 选区时，只有在确认当前前台进程仍是同一 WPS 实例、焦点窗口仍是同一 PDF 后，才会临时发送系统 Copy。句译先保存剪贴板，以两个不同的唯一 marker 连续执行两次 Copy；只有两次稳定纯文本及完整 pasteboard 数据指纹完全一致才会进入翻译，并仅在最后的 change count 没有再变化时恢复原内容。marker 回写、旧文本恢复、两次结果不一致或捕获取消都会拒绝翻译。macOS pasteboard 不提供写入方身份，因此确定性改写剪贴板的管理器仍可能干扰该 best-effort 兼容路径；界面会明确披露。除 WPS PDF 外不使用剪贴板回退。
 
-## Apple API 依据与权限边界
+## 权限与隐私边界
 
-Apple 的 [`addGlobalMonitorForEvents`](https://developer.apple.com/documentation/appkit/nsevent/addglobalmonitorforevents%28matching%3Ahandler%3A%29) 文档明确：global monitor 异步观察发往其他 App 的事件，不能修改或阻止原事件；键盘相关事件只在 App 已启用/获信任使用 Accessibility 时可监听，而且不会收到本 App 的事件。Apple 的 [Cocoa Event Handling Guide](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/EventOverview/MonitoringEvents/MonitoringEvents.html) 进一步说明回调位于主线程，monitor 用完必须显式 `removeMonitor`；global 与 local 的观察范围互斥。常态 global-only 是本阶段的产品决定，未来新手教学若需要本 App 内练习，将使用单独、页面级 scoped local，而不是 app-wide local。
+- 只有用户点击启用按钮时，才会调用 `AXIsProcessTrustedWithOptions` 请求辅助功能授权；启动和恢复只做只读检查。
+- monitor 只观察 `flagsChanged` 与 `keyDown`，不读取字符内容，也不能修改目标 App 的事件。
+- 选区和译文不写日志、不落盘、不经网络；第一阶段只接 Apple 离线翻译。
+- 每个 AX 消息有 500 ms 上限；第二次触发、前台切换、暂停或关闭会让旧结果失效。
 
-因此原先 `CGEventTap` / Input Monitoring 路线已退役；当前开发实现不做 Input Monitoring 预检或引导。全局按键监听与 AX 主取词都以同一次 Accessibility 授权为前提，但 `AXIsProcessTrusted` 仅表示授权，不等于 monitor 已成功安装。正式启用前仍必须在干净 TCC 环境做真机验证。本切片不新增任何公开权限文案或自动权限弹窗。
+Apple API 依据：[`addGlobalMonitorForEvents`](https://developer.apple.com/documentation/appkit/nsevent/addglobalmonitorforevents%28matching%3Ahandler%3A%29)、[Cocoa Event Handling Guide](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/EventOverview/MonitoringEvents/MonitoringEvents.html) 与 [`kAXSelectedTextAttribute`](https://developer.apple.com/documentation/applicationservices/kaxselectedtextattribute)。
 
-Apple 将 [`kAXSelectedTextAttribute`](https://developer.apple.com/documentation/applicationservices/kaxselectedtextattribute) 定义为当前选中文本。系统 client 只通过 `AXUIElement` 获取目标 App 的 focused element 与该属性；每个相关 AX element 设置 100 ms messaging timeout，失败时按稳定结果分类并 fail closed。role/subrole 缺失、不支持、非字符串、`AXUnknown`、安全输入或未列入白名单时，都在首次访问 `AXSelectedText` 前结束；当前默认关闭的基础切片仅放行公开的 `AXTextField + AXSearchField` 非安全组合。文本按现有后端策略依次统一 CRLF/CR、裁去首尾 Unicode 空白，并按 Unicode scalar 限制 5,000；内部空白、大小写与 Unicode 组合保持原样。
+## 发布前仍需完成
 
-## 内部验证方式
-
-纯状态机不需要运行 App：
-
-```bash
-swiftc -parse-as-library \
-  macos/DoubleOptionStateMachine.swift \
-  tests/DoubleOptionStateMachineTests.swift \
-  -o /tmp/double-option-state-machine-tests
-/tmp/double-option-state-machine-tests
-```
-
-CI 另外以可执行 Swift 测试覆盖 NSEvent 纯适配器、monitor 生命周期/授权撤销/generation、串行 capture gate，以及可注入 AX client 和 AXError/secure-field 纯策略；这些测试不会访问 TCC 或其他进程。
-
-开发者若要验证监听与 AX 取词，只能在 Debug 中显式添加 `JUYI_NATIVE_OPTION_MONITOR` 编译条件。结果只留在进程私有内存，此模式仍不会调用翻译。此开关不读取 UserDefaults、环境变量或远程配置，也不会出现在用户界面。
-
-## 尚未实现
-
-- 用原生监听接管生产热键；
-- 将 Debug-only 原生浮窗组件接入真实选区、翻译请求与生产触发；
-- 与 Hammerspoon 的迁移/互斥策略；
-- 启用前 P0：在 TextEdit、Safari/Chromium、原生文本框等目标上采集无文本的 role/subrole 兼容性证据，经安全审阅后逐项扩充白名单；当前不会为兼容性放行缺失或任意自定义值；
-- 用户可见的开关、状态或完成态变化。
-
-这些内容必须在后续切片单独设计和验收。在此之前，不得把本文件描述为“已原生化”或“已去除外部依赖”。
+- 在 macOS 15 真机和干净 TCC 状态验证 TextEdit、Safari/Chromium/Electron、Preview PDF 与 WPS PDF；
+- 验证多显示器、快速重复触发、浮窗关闭/外点/CTA、暂停、睡眠、权限撤销和崩溃恢复；
+- 对 Universal 2 `.app` 完成 Developer ID 签名、公证、DMG 和 GitHub Release。

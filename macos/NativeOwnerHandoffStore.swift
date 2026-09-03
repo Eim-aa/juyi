@@ -1,14 +1,9 @@
-#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB && (JUYI_NATIVE_SELECTION_CAPTURE_LAB || JUYI_NATIVE_OPTION_MONITOR || JUYI_NATIVE_TRANSLATION_DOMAIN || JUYI_NATIVE_TRANSLATION_OVERLAY || JUYI_NATIVE_TRANSLATION_RESULT_LAB || JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER || JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER || JUYI_NATIVE_APPLE_RESULT_LAB_BINDING)
-#error("JUYI_NATIVE_OWNER_HANDOFF_LAB is an isolated store-only build and cannot be mixed with capture, Option, or translation development flags")
-#endif
-
-#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
 import Darwin
 import Foundation
 
 /// Durable, fail-closed storage for the cooperative trigger-owner protocol.
-/// This slice performs no status polling, AX read, event monitoring, or
-/// translation. A future explicit coordinator must validate the legacy ack
+/// This type performs no status polling, AX read, event monitoring, or
+/// translation. The production coordinator validates the legacy ack
 /// while retaining the returned cross-process lease.
 final class NativeOwnerHandoffStore {
     static let artifactSentinel = "juyi-native-owner-handoff-store-v1"
@@ -433,4 +428,3 @@ private enum NativeOwnerHandoffPOSIX {
         return result
     }
 }
-#endif

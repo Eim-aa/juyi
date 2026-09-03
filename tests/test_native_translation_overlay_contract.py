@@ -1,4 +1,4 @@
-"""Static P0 contracts for the compile-time-gated native overlay preview."""
+"""Contracts for the production overlay and its gated Debug preview."""
 
 from pathlib import Path
 
@@ -29,10 +29,13 @@ DOC = (ROOT / "docs" / "NATIVE_TRANSLATION_OVERLAY.md").read_text(
 GATE = "#if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY"
 
 
-def test_preview_and_panel_have_one_compile_time_gate_and_no_runtime_switch():
-    assert CONTROLLER.count(GATE) == 1
-    assert CONTROLLER.rstrip().endswith("#endif")
-    assert APP.count(GATE) >= 4
+def test_debug_preview_is_gated_but_the_production_panel_is_not():
+    assert CONTROLLER.count(GATE) >= 1
+    assert not CONTROLLER.rstrip().endswith("#endif")
+    assert "final class NativeTranslationOverlayController" in CONTROLLER
+    assert "func beginNativeTranslation(" in CONTROLLER
+    assert "io.github.Eim-aa.Juyi.native-translation-overlay" in CONTROLLER
+    assert APP.count(GATE) >= 2
     assert CONTROLLER.count("开发：预览下一状态：") == 1
     assert APP.count("showFixturePreview()") == 1
     assert "JUYI_NATIVE_TRANSLATION_OVERLAY" not in DEBUG_CONFIG

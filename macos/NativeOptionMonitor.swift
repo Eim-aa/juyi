@@ -1,4 +1,3 @@
-#if !JUYI_NATIVE_SELECTION_CAPTURE_LAB && !JUYI_NATIVE_OWNER_HANDOFF_LAB
 import AppKit
 import Foundation
 
@@ -12,7 +11,7 @@ protocol NativeOptionEventSource: AnyObject {
     func removeMonitor(_ monitor: Any)
 }
 
-/// AppKit adapter for the production experiment. A global NSEvent monitor only
+/// AppKit adapter for the production trigger. A global NSEvent monitor only
 /// observes events sent to other applications and cannot alter their delivery.
 /// There is intentionally no app-wide local monitor in this phase.
 @MainActor
@@ -65,10 +64,10 @@ final class NSEventNativeOptionEventSource: NativeOptionEventSource {
     }
 }
 
-/// Disabled-by-default native recognizer host.
+/// Explicitly enabled native recognizer host.
 ///
 /// The NSEvent callback only updates gesture state and captures the frontmost
-/// process identity. AX selection work belongs to a later serial worker and is
+/// process identity. AX selection work belongs to the separate serial worker and is
 /// never performed here.
 @MainActor
 final class NativeOptionMonitor {
@@ -87,6 +86,7 @@ final class NativeOptionMonitor {
     private let eventSource: NativeOptionEventSource
     private let accessibilityStatus: () -> AccessibilityAuthorizationStatus
     private let frontmostApplication: () -> NativeSelectionTarget?
+    private let selectionPoint: () -> NativeSelectionPoint?
     private let currentProcessIdentifier: pid_t
     private let recognitionInvalidationHandler: () -> Void
     private let recognitionHandler: (NativeSelectionTarget) -> Void
@@ -109,6 +109,14 @@ final class NativeOptionMonitor {
             }
             return NativeSelectionTarget(application: application)
         },
+        selectionPoint: @escaping () -> NativeSelectionPoint? = {
+            guard let primaryScreen = NSScreen.screens.first else { return nil }
+            let appKitPoint = NSEvent.mouseLocation
+            return NativeSelectionPoint(
+                x: appKitPoint.x,
+                y: primaryScreen.frame.maxY - appKitPoint.y
+            )
+        },
         currentProcessIdentifier: pid_t = ProcessInfo.processInfo.processIdentifier,
         stateMachine: DoubleOptionStateMachine = DoubleOptionStateMachine(),
         deliveryScheduler: @escaping DeliveryScheduler = { delay, action in
@@ -124,6 +132,7 @@ final class NativeOptionMonitor {
         self.eventSource = eventSource ?? NSEventNativeOptionEventSource()
         self.accessibilityStatus = accessibilityStatus
         self.frontmostApplication = frontmostApplication
+        self.selectionPoint = selectionPoint
         self.currentProcessIdentifier = currentProcessIdentifier
         self.stateMachine = stateMachine
         self.deliveryScheduler = deliveryScheduler
@@ -196,7 +205,7 @@ final class NativeOptionMonitor {
         // metadata only and is never accepted as process identity.
         // NSEvent global monitoring does not observe this app, and the explicit
         // PID check provides a second fail-closed boundary.
-        guard let target = frontmostApplication(),
+        guard let target = frontmostApplication()?.withSelectionPoint(selectionPoint()),
               target.processIdentifier > 0,
               target.processIdentifier != currentProcessIdentifier else {
             return
@@ -246,4 +255,3 @@ final class NativeOptionMonitor {
         eventSource.removeMonitor(monitor)
     }
 }
-#endif

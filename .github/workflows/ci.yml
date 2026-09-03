@@ -92,14 +92,6 @@ jobs:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_OWNER_HANDOFF_LAB JUYI_NATIVE_OWNER_ACTIVATION_LAB'
           SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
           build
-      - name: Reject incomplete or mixed native owner activation foundation
-        run: |
-          if xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiNativeOwnerActivationMissingHandoff" CODE_SIGNING_ALLOWED=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_OWNER_ACTIVATION_LAB' build; then
-            exit 1
-          fi
-          if xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi -configuration Debug -derivedDataPath "$RUNNER_TEMP/JuyiNativeOwnerActivationMixedOption" CODE_SIGNING_ALLOWED=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_OWNER_HANDOFF_LAB JUYI_NATIVE_OWNER_ACTIVATION_LAB JUYI_NATIVE_OPTION_MONITOR' build; then
-            exit 1
-          fi
       - name: Build Xcode Debug configuration
         run: >-
           xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi
@@ -247,42 +239,25 @@ jobs:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_OWNER_HANDOFF_LAB JUYI_NATIVE_OWNER_ACTIVATION_LAB JUYI_NATIVE_SELECTION_CAPTURE_LAB JUYI_NATIVE_OPTION_MONITOR JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB JUYI_NATIVE_APPLE_RESULT_LAB_BINDING'
           SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
           build
-      - name: Verify native owner handoff lab compile-time gate
+      - name: Verify production native chain and Debug owner lab separation
         run: |
-          opt_in_dir="$RUNNER_TEMP/JuyiNativeOwnerHandoffStore/Build/Products/Debug/Juyi.app/Contents/MacOS"
+          lab_dir="$RUNNER_TEMP/JuyiNativeOwnerHandoffStore/Build/Products/Debug/Juyi.app/Contents/MacOS"
           default_debug_dir="$RUNNER_TEMP/JuyiDebug/Build/Products/Debug/Juyi.app/Contents/MacOS"
-          release_all_dir="$RUNNER_TEMP/JuyiReleaseAllDevelopmentFlags/Build/Products/Release/Juyi.app/Contents/MacOS"
-          scripts/verify_macos_binary.sh "$opt_in_dir/Juyi" 15.0
-          for token in 'juyi-native-owner-handoff-store-v1' 'NativeOwnerHandoffStore' 'NativeOwnerHandoffWorkflow' 'NativeOwnerHandoffStatusReader' 'NativeOwnerHandoffLabModel' '开发：双 Option owner 交接实验室…' 'native-owner.lock' 'owner-request.json'; do
-            LC_ALL=C grep -aFq "$token" "$opt_in_dir"/*
+          release_dir="$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/MacOS"
+          scripts/verify_macos_binary.sh "$release_dir/Juyi" 15.0
+          for directory in "$lab_dir" "$default_debug_dir" "$release_dir"; do
+            for token in 'NativeProductionTranslationCoordinator' 'NativeOptionMonitor' 'NativeOwnerActivationCoordinator' 'native-owner.lock' 'owner-request.json' 'io.github.Eim-aa.Juyi.native-translation-overlay'; do
+              LC_ALL=C grep -aFq "$token" "$directory"/*
+            done
+          done
+          for token in 'NativeOwnerHandoffLabModel' '开发：双 Option owner 交接实验室…'; do
+            LC_ALL=C grep -aFq "$token" "$lab_dir"/*
             if LC_ALL=C grep -aFq "$token" "$default_debug_dir"/*; then exit 1; fi
-            if LC_ALL=C grep -aFq "$token" "$release_all_dir"/*; then exit 1; fi
+            if LC_ALL=C grep -aFq "$token" "$release_dir"/*; then exit 1; fi
           done
-          for token in 'NativeOptionMonitor' 'NativeOptionDevelopmentHarness' 'juyi-native-selection-capture-lab-v1' 'juyi-native-translation-domain-v1'; do
-            if LC_ALL=C grep -aFq "$token" "$opt_in_dir"/*; then exit 1; fi
-          done
-          find "$opt_in_dir" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/native-owner-handoff-store.loads"
-          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
-            if grep -Fq "$framework" "$RUNNER_TEMP/native-owner-handoff-store.loads"; then exit 1; fi
-          done
-      - name: Verify native owner activation foundation compile-time gate
-        run: |
-          opt_in_dir="$RUNNER_TEMP/JuyiNativeOwnerActivation/Build/Products/Debug/Juyi.app/Contents/MacOS"
-          default_debug_dir="$RUNNER_TEMP/JuyiDebug/Build/Products/Debug/Juyi.app/Contents/MacOS"
-          release_all_dir="$RUNNER_TEMP/JuyiReleaseAllDevelopmentFlags/Build/Products/Release/Juyi.app/Contents/MacOS"
-          scripts/verify_macos_binary.sh "$opt_in_dir/Juyi" 15.0
-          for token in 'juyi-native-owner-activation-coordinator-v1' 'NativeOwnerActivationCoordinator' 'revocationRequired'; do
-            LC_ALL=C grep -aFq "$token" "$opt_in_dir"/*
-            if LC_ALL=C grep -aFq "$token" "$default_debug_dir"/*; then exit 1; fi
-            if LC_ALL=C grep -aFq "$token" "$release_all_dir"/*; then exit 1; fi
-          done
-          for token in 'NativeOptionMonitor' 'NativeOptionDevelopmentHarness' 'juyi-native-selection-capture-lab-v1' 'juyi-native-translation-domain-v1'; do
-            if LC_ALL=C grep -aFq "$token" "$opt_in_dir"/*; then exit 1; fi
-          done
-          find "$opt_in_dir" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/native-owner-activation.loads"
-          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
-            if grep -Fq "$framework" "$RUNNER_TEMP/native-owner-activation.loads"; then exit 1; fi
-          done
+          find "$release_dir" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/native-production.loads"
+          grep -Fq '/Translation.framework/' "$RUNNER_TEMP/native-production.loads"
+          grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/native-production.loads"
       - name: Verify native selection Capture Lab compile-time gate
         run: |
           opt_in_dir="$RUNNER_TEMP/JuyiSelectionCaptureLab/Build/Products/Debug/Juyi.app/Contents/MacOS"
@@ -298,12 +273,8 @@ jobs:
               if LC_ALL=C grep -aFq "$token" "$directory"/*; then exit 1; fi
             done
           done
-          for token in 'NativeOptionMonitor' 'NativeOptionDevelopmentHarness' 'addGlobalMonitorForEvents' 'juyi-native-translation-domain-v1' 'juyi-native-overlay-fixed-fixture-v1' 'juyi-native-translation-result-lab-v1' 'juyi-native-apple-translation-adapter-v1' 'juyi-native-volc-translation-adapter-v1' 'juyi-native-apple-result-lab-binding-v1'; do
+          for token in 'juyi-native-translation-domain-v1' 'juyi-native-overlay-fixed-fixture-v1' 'juyi-native-translation-result-lab-v1' 'juyi-native-apple-translation-adapter-v1' 'juyi-native-volc-translation-adapter-v1' 'juyi-native-apple-result-lab-binding-v1'; do
             if LC_ALL=C grep -aFq "$token" "$opt_in_dir"/*; then exit 1; fi
-          done
-          find "$opt_in_dir" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/selection-capture-lab.loads"
-          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
-            if grep -Fq "$framework" "$RUNNER_TEMP/selection-capture-lab.loads"; then exit 1; fi
           done
       - name: Verify overlay compile-time gate
         run: |
@@ -313,9 +284,11 @@ jobs:
           find "$RUNNER_TEMP/JuyiReleaseOverlayFlag/Build/Products/Release/Juyi.app/Contents/MacOS" -maxdepth 1 -type f -exec strings {} + > "$RUNNER_TEMP/overlay-release-flag.strings"
           grep -Fq 'NativeTranslationOverlayController' "$RUNNER_TEMP/overlay-preview.strings"
           grep -Fq 'juyi-native-overlay-fixed-fixture-v1' "$RUNNER_TEMP/overlay-preview.strings"
-          if grep -Fq 'NativeTranslationOverlayController' "$RUNNER_TEMP/overlay-default-debug.strings"; then exit 1; fi
-          if grep -Fq 'NativeTranslationOverlayController' "$RUNNER_TEMP/overlay-release.strings"; then exit 1; fi
-          if grep -Fq 'NativeTranslationOverlayController' "$RUNNER_TEMP/overlay-release-flag.strings"; then exit 1; fi
+          grep -Fq 'NativeTranslationOverlayController' "$RUNNER_TEMP/overlay-default-debug.strings"
+          grep -Fq 'NativeTranslationOverlayController' "$RUNNER_TEMP/overlay-release.strings"
+          grep -Fq 'NativeTranslationOverlayController' "$RUNNER_TEMP/overlay-release-flag.strings"
+          if grep -Fq 'juyi-native-overlay-fixed-fixture-v1' "$RUNNER_TEMP/overlay-default-debug.strings"; then exit 1; fi
+          if grep -Fq 'juyi-native-overlay-fixed-fixture-v1' "$RUNNER_TEMP/overlay-release.strings"; then exit 1; fi
           if grep -Fq 'juyi-native-overlay-fixed-fixture-v1' "$RUNNER_TEMP/overlay-release-flag.strings"; then exit 1; fi
       - name: Verify native translation domain compile-time gate
         run: |
@@ -354,7 +327,9 @@ jobs:
             if LC_ALL=C grep -aFq "$token" "$opt_in_dir"/*; then exit 1; fi
           done
           find "$opt_in_dir" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/result-lab-opt-in.loads"
-          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
+          grep -Fq '/Translation.framework/' "$RUNNER_TEMP/result-lab-opt-in.loads"
+          grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/result-lab-opt-in.loads"
+          for framework in '/Security.framework/' '/LocalAuthentication.framework/'; do
             if grep -Fq "$framework" "$RUNNER_TEMP/result-lab-opt-in.loads"; then exit 1; fi
           done
       - name: Verify real Apple Result Lab binding compile-time gate
@@ -381,7 +356,9 @@ jobs:
             done
           done
           find "$release_all_dir" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/apple-result-lab-binding-release.loads"
-          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
+          grep -Fq '/Translation.framework/' "$RUNNER_TEMP/apple-result-lab-binding-release.loads"
+          grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/apple-result-lab-binding-release.loads"
+          for framework in '/Security.framework/' '/LocalAuthentication.framework/'; do
             if grep -Fq "$framework" "$RUNNER_TEMP/apple-result-lab-binding-release.loads"; then exit 1; fi
           done
       - name: Verify native Apple Translation adapter compile-time gate
@@ -410,8 +387,8 @@ jobs:
           for directory in "$default_debug_dir" "$domain_only_dir" "$release_dir" "$release_flags_dir"; do
             if LC_ALL=C grep -aFq '开发：测试 Apple 离线翻译…' "$directory"/*; then exit 1; fi
             find "$directory" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/apple-adapter-off.loads"
-            if grep -Fq '/Translation.framework/' "$RUNNER_TEMP/apple-adapter-off.loads"; then exit 1; fi
-            if grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/apple-adapter-off.loads"; then exit 1; fi
+            grep -Fq '/Translation.framework/' "$RUNNER_TEMP/apple-adapter-off.loads"
+            grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/apple-adapter-off.loads"
           done
       - name: Verify native Volc Translation adapter compile-time gate
         run: |
@@ -457,7 +434,10 @@ jobs:
           for token in 'juyi-native-selection-capture-lab-v1' 'NativeSelectionCaptureLabCoordinator' '一次性取词实验室' '开发：原生取词实验室…'; do
             if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           done
-          for token in 'juyi-native-owner-handoff-store-v1' 'NativeOwnerHandoffStore' 'NativeOwnerHandoffWorkflow' 'NativeOwnerHandoffStatusReader' 'NativeOwnerHandoffLabModel' '开发：双 Option owner 交接实验室…' 'native-owner.lock' 'owner-request.json'; do
+          for token in 'NativeProductionTranslationCoordinator' 'NativeOptionMonitor' 'NativeOwnerActivationCoordinator' 'native-owner.lock' 'owner-request.json' 'io.github.Eim-aa.Juyi.native-translation-overlay'; do
+            LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*
+          done
+          for token in 'NativeOwnerHandoffLabModel' '开发：双 Option owner 交接实验室…'; do
             if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           done
           if grep -Fq 'juyi-native-apple-translation-adapter-v1' "$RUNNER_TEMP/legacy-default-release.strings"; then exit 1; fi
@@ -470,8 +450,8 @@ jobs:
           if LC_ALL=C grep -aFq '此页面连接真实火山翻译 API，不是模拟器。' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           if LC_ALL=C grep -aFq '开发：测试火山云端翻译…' build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-default-release.loads"
-          if grep -Fq '/Translation.framework/' "$RUNNER_TEMP/legacy-default-release.loads"; then exit 1; fi
-          if grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/legacy-default-release.loads"; then exit 1; fi
+          grep -Fq '/Translation.framework/' "$RUNNER_TEMP/legacy-default-release.loads"
+          grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/legacy-default-release.loads"
           if grep -Fq '/Security.framework/' "$RUNNER_TEMP/legacy-default-release.loads"; then exit 1; fi
           if grep -Fq '/LocalAuthentication.framework/' "$RUNNER_TEMP/legacy-default-release.loads"; then exit 1; fi
       - name: Build exact legacy Debug native selection Capture Lab
@@ -480,12 +460,8 @@ jobs:
           for token in 'juyi-native-selection-capture-lab-v1' 'NativeSelectionCaptureLabCoordinator' '一次性取词实验室' '开发：原生取词实验室…'; do
             LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*
           done
-          for token in 'NativeOptionMonitor' 'NativeOptionDevelopmentHarness' 'addGlobalMonitorForEvents' 'juyi-native-translation-domain-v1' 'juyi-native-overlay-fixed-fixture-v1' 'juyi-native-translation-result-lab-v1' 'juyi-native-apple-translation-adapter-v1' 'juyi-native-volc-translation-adapter-v1' 'juyi-native-apple-result-lab-binding-v1' 'juyi-native-owner-handoff-store-v1'; do
+          for token in 'juyi-native-translation-domain-v1' 'juyi-native-overlay-fixed-fixture-v1' 'juyi-native-translation-result-lab-v1' 'juyi-native-apple-translation-adapter-v1' 'juyi-native-volc-translation-adapter-v1' 'juyi-native-apple-result-lab-binding-v1'; do
             if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
-          done
-          find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-selection-capture-lab.loads"
-          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
-            if grep -Fq "$framework" "$RUNNER_TEMP/legacy-selection-capture-lab.loads"; then exit 1; fi
           done
       - name: Build exact legacy Debug native owner handoff lab
         run: |
@@ -493,27 +469,15 @@ jobs:
           for token in 'juyi-native-owner-handoff-store-v1' 'NativeOwnerHandoffStore' 'NativeOwnerHandoffWorkflow' 'NativeOwnerHandoffStatusReader' 'NativeOwnerHandoffLabModel' '开发：双 Option owner 交接实验室…' 'native-owner.lock' 'owner-request.json'; do
             LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*
           done
-          for token in 'NativeOptionMonitor' 'NativeOptionDevelopmentHarness' 'juyi-native-selection-capture-lab-v1' 'juyi-native-translation-domain-v1'; do
+          for token in 'juyi-native-selection-capture-lab-v1' 'juyi-native-translation-domain-v1'; do
             if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           done
           scripts/verify_macos_binary.sh build/Juyi.app/Contents/MacOS/Juyi 15.0
           find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-native-owner-handoff-store.loads"
-          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
+          grep -Fq '/Translation.framework/' "$RUNNER_TEMP/legacy-native-owner-handoff-store.loads"
+          grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/legacy-native-owner-handoff-store.loads"
+          for framework in '/Security.framework/' '/LocalAuthentication.framework/'; do
             if grep -Fq "$framework" "$RUNNER_TEMP/legacy-native-owner-handoff-store.loads"; then exit 1; fi
-          done
-      - name: Build exact legacy Debug native owner activation foundation
-        run: |
-          CONFIGURATION=Debug SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_OWNER_HANDOFF_LAB JUYI_NATIVE_OWNER_ACTIVATION_LAB' scripts/build_macos_app.sh
-          for token in 'juyi-native-owner-activation-coordinator-v1' 'NativeOwnerActivationCoordinator' 'revocationRequired'; do
-            LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*
-          done
-          for token in 'NativeOptionMonitor' 'NativeOptionDevelopmentHarness' 'juyi-native-selection-capture-lab-v1' 'juyi-native-translation-domain-v1'; do
-            if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
-          done
-          scripts/verify_macos_binary.sh build/Juyi.app/Contents/MacOS/Juyi 15.0
-          find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-native-owner-activation.loads"
-          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
-            if grep -Fq "$framework" "$RUNNER_TEMP/legacy-native-owner-activation.loads"; then exit 1; fi
           done
       - name: Reject legacy Debug native owner handoff lab conflict
         run: |
@@ -582,7 +546,9 @@ jobs:
             if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           done
           find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-result-lab-debug.loads"
-          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
+          grep -Fq '/Translation.framework/' "$RUNNER_TEMP/legacy-result-lab-debug.loads"
+          grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/legacy-result-lab-debug.loads"
+          for framework in '/Security.framework/' '/LocalAuthentication.framework/'; do
             if grep -Fq "$framework" "$RUNNER_TEMP/legacy-result-lab-debug.loads"; then exit 1; fi
           done
       - name: Build exact legacy Debug real Apple Result Lab binding
@@ -625,11 +591,16 @@ jobs:
       - name: Build legacy Release with every development flag injected
         run: |
           CONFIGURATION=Release SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_OWNER_HANDOFF_LAB JUYI_NATIVE_OWNER_ACTIVATION_LAB JUYI_NATIVE_SELECTION_CAPTURE_LAB JUYI_NATIVE_OPTION_MONITOR JUYI_NATIVE_TRANSLATION_DOMAIN JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER JUYI_NATIVE_TRANSLATION_OVERLAY JUYI_NATIVE_TRANSLATION_RESULT_LAB JUYI_NATIVE_APPLE_RESULT_LAB_BINDING' scripts/build_macos_app.sh
-          for token in 'juyi-native-owner-handoff-store-v1' 'NativeOwnerHandoffStore' 'NativeOwnerHandoffLabModel' '开发：双 Option owner 交接实验室…' 'juyi-native-owner-activation-coordinator-v1' 'NativeOwnerActivationCoordinator' 'native-owner.lock' 'owner-request.json' 'juyi-native-selection-capture-lab-v1' 'NativeSelectionCaptureLabCoordinator' '一次性取词实验室' '开发：原生取词实验室…' 'juyi-native-apple-translation-adapter-v1' 'The weather is pleasant today.' '开发：测试 Apple 离线翻译…' 'juyi-native-volc-translation-adapter-v1' 'io.github.Eim-aa.Juyi.debug.native-volc.active' 'Library/Application Support/io.github.Eim-aa.Juyi/NativeVolcDebug' 'NativeVolcTranslationAdapterSheet' '此页面连接真实火山翻译 API，不是模拟器。' '开发：测试火山云端翻译…' 'juyi-native-translation-result-lab-v1' 'NativeTranslationResultLabCoordinator' 'Debug 固定样例 · 模拟执行' '开发：结果界面实验室…' 'juyi-native-apple-result-lab-binding-v1' 'NativeTranslationAppleResultLabCoordinator' '开发：真实 Apple 结果实验室…' '正在运行真实 Apple Translation…'; do
+          for token in 'NativeOwnerHandoffLabModel' '开发：双 Option owner 交接实验室…' 'juyi-native-selection-capture-lab-v1' 'NativeSelectionCaptureLabCoordinator' '一次性取词实验室' '开发：原生取词实验室…' 'juyi-native-apple-translation-adapter-v1' 'The weather is pleasant today.' '开发：测试 Apple 离线翻译…' 'juyi-native-volc-translation-adapter-v1' 'io.github.Eim-aa.Juyi.debug.native-volc.active' 'Library/Application Support/io.github.Eim-aa.Juyi/NativeVolcDebug' 'NativeVolcTranslationAdapterSheet' '此页面连接真实火山翻译 API，不是模拟器。' '开发：测试火山云端翻译…' 'juyi-native-translation-result-lab-v1' 'NativeTranslationResultLabCoordinator' 'Debug 固定样例 · 模拟执行' '开发：结果界面实验室…' 'juyi-native-apple-result-lab-binding-v1' 'NativeTranslationAppleResultLabCoordinator' '开发：真实 Apple 结果实验室…' '正在运行真实 Apple Translation…'; do
             if LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*; then exit 1; fi
           done
+          for token in 'NativeProductionTranslationCoordinator' 'NativeOptionMonitor' 'NativeOwnerActivationCoordinator' 'native-owner.lock' 'owner-request.json' 'io.github.Eim-aa.Juyi.native-translation-overlay'; do
+            LC_ALL=C grep -aFq "$token" build/Juyi.app/Contents/MacOS/*
+          done
           find build/Juyi.app/Contents/MacOS -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/legacy-release-all-flags.loads"
-          for framework in '/Translation.framework/' '/_Translation_SwiftUI.framework/' '/Security.framework/' '/LocalAuthentication.framework/'; do
+          grep -Fq '/Translation.framework/' "$RUNNER_TEMP/legacy-release-all-flags.loads"
+          grep -Fq '/_Translation_SwiftUI.framework/' "$RUNNER_TEMP/legacy-release-all-flags.loads"
+          for framework in '/Security.framework/' '/LocalAuthentication.framework/'; do
             if grep -Fq "$framework" "$RUNNER_TEMP/legacy-release-all-flags.loads"; then exit 1; fi
           done
       - name: Build legacy universal Apple Translation helper

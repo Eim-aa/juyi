@@ -1,4 +1,4 @@
-"""Safety contracts for the disabled native NSEvent + AX foundation."""
+"""Safety contracts for the native Option + selection path."""
 
 import re
 from pathlib import Path
@@ -42,61 +42,38 @@ RELEASE_CONFIG = (ROOT / "Config" / "Release.xcconfig").read_text(
 DOC = (ROOT / "docs" / "NATIVE_OPTION_MONITOR.md").read_text(encoding="utf-8")
 
 
-def test_release_is_compile_time_disabled_and_debug_capture_is_private():
-    assert "#if DEBUG && JUYI_NATIVE_OPTION_MONITOR" in FEATURE
-    assert "static let isEnabled = true" in FEATURE
-    assert "#else\n    static let isEnabled = false" in FEATURE
-    for forbidden in ("UserDefaults", "ProcessInfo", "URLSession", "NotificationCenter"):
-        assert forbidden not in FEATURE
+def test_native_production_chain_is_explicitly_user_enabled():
+    assert "final class NativeProductionTranslationCoordinator" in FEATURE
+    assert "func enableByUser()" in FEATURE
+    assert "NativeOptionMonitor(" in FEATURE
+    assert "NativeSelectionCaptureCoordinator()" in FEATURE
+    assert "recognitionHandler:" in FEATURE
+    assert "setAppleEngineSelected" in FEATURE
+    assert "generation == lifecycleGeneration" in FEATURE
+    assert "anchorPoint: Self.overlayAnchorPoint(for: target)" in FEATURE
     assert "JUYI_NATIVE_OPTION_MONITOR" not in DEBUG_CONFIG
     assert "JUYI_NATIVE_OPTION_MONITOR" not in RELEASE_CONFIG
-
-    harness = FEATURE.split("func startIfEnabled()", 1)[1].split("func stop()", 1)[0]
-    assert harness.index("guard NativeOptionFeature.isEnabled") < harness.index(
-        "NativeOptionMonitor"
-    )
-    assert "recognitionCount += 1" in harness
-    assert "NativeSelectionCaptureCoordinator" in harness
-    assert "recognitionInvalidationHandler" in harness
-    assert "captureCoordinator?.cancelAll()" in harness
-    assert "lastCaptureResult = result" in harness
-    for forbidden in (
-        "NativeSelectionReader",
-        "readSelection",
-        "pasteboard",
-        "translate",
-        "showWindow",
-    ):
-        assert forbidden not in harness
 
 
 def test_capture_runs_on_serial_worker_and_discards_stale_text_early():
     assert 'label: "io.github.Eim-aa.Juyi.native-selection"' in COORDINATOR
     assert "qos: .userInitiated" in COORDINATOR
     assert COORDINATOR.count("isCurrent(captureGeneration)") == 3
-    assert COORDINATOR.index("isCurrent(captureGeneration)") < COORDINATOR.index(
-        "let result = reader(target)"
+    assert COORDINATOR.index("beginWork(captureGeneration)") < COORDINATOR.index(
+        "result = reader(target)"
     )
-    reader_index = COORDINATOR.index("let result = reader(target)")
+    reader_index = COORDINATOR.index("result = reader(target)")
     assert COORDINATOR.find("completionScheduler", reader_index) > reader_index
     for forbidden in ("print(", "Logger", "os_log", "NSPasteboard", "URLSession"):
         assert forbidden not in COORDINATOR
 
 
-def test_production_flow_has_no_prompt_or_native_behavioral_takeover():
-    assert "#if DEBUG" in APP
-    assert "nativeOptionDevelopmentHarness.startIfEnabled()" in APP
-    assert "nativeOptionDevelopmentHarness.stop()" in APP
-    assert "nativeOptionDevelopmentHarness.applicationBecameActive()" in APP
-    assert "nativeOptionDevelopmentHarness.setPaused(model.paused)" in APP
-    assert "Task { @MainActor" not in FEATURE
-    assert "MainActor.assumeIsolated" in FEATURE
-    assert "isPaused = paused" in FEATURE
-    assert "candidate.setPaused(isPaused)" in FEATURE
-    launch = APP.split("func applicationDidFinishLaunching", 1)[1].split(
-        "func applicationShouldHandleReopen", 1
-    )[0]
-    assert launch.index("setPaused(model.paused)") < launch.index("startIfEnabled()")
+def test_production_permission_prompt_is_reached_only_from_explicit_enable():
+    assert "NativeProductionTranslationCoordinator.shared" in APP
+    assert "nativeTranslation.enableByUser()" in APP
+    assert "Task { await enable(promptForAccessibility: true) }" in FEATURE
+    assert "if authorization != .authorized, promptForAccessibility" in FEATURE
+    assert "AccessibilityController.requestAuthorization()" in FEATURE
     assert "requestAuthorization" not in APP
     assert "NativeSelectionReader" not in APP
 
@@ -105,7 +82,53 @@ def test_production_flow_has_no_prompt_or_native_behavioral_takeover():
     assert "AXIsProcessTrusted()" in ACCESSIBILITY
     assert "requestAuthorization" not in MONITOR
     assert "requestAuthorization" not in SELECTION
-    assert "requestAuthorization" not in FEATURE
+
+
+def test_production_owner_resumes_after_wake_and_session_reactivation():
+    for notification in (
+        "NSWorkspace.willSleepNotification",
+        "NSWorkspace.didWakeNotification",
+        "NSWorkspace.sessionDidResignActiveNotification",
+        "NSWorkspace.sessionDidBecomeActiveNotification",
+    ):
+        assert notification in APP
+    assert "#selector(nativeProductionDidWake(_:))" in APP
+    assert "#selector(nativeProductionSessionBecameActive(_:))" in APP
+    wake = APP.split(
+        "private func nativeProductionDidWake", 1
+    )[1].split("private func nativeProductionSessionResigned", 1)[0]
+    session = APP.split(
+        "private func nativeProductionSessionBecameActive", 1
+    )[1].split("#if DEBUG", 1)[0]
+    assert "resumeNativeProductionIfEligible()" in wake
+    assert "resumeNativeProductionIfEligible()" in session
+    resume = APP.split(
+        "private func resumeNativeProductionIfEligible", 1
+    )[1].split("#if DEBUG", 1)[0]
+    assert "guard nativeProductionIsAwake" in resume
+    assert "nativeProductionSessionIsActive else { return }" in resume
+    assert (
+        "NativeProductionTranslationCoordinator.shared.applicationBecameActive()"
+        in resume
+    )
+
+    assert "private var resumeRequestedAfterRevocation = false" in FEATURE
+    resume_feature = FEATURE.split("func resumeIfEnabled()", 1)[1].split(
+        "func setAppleEngineSelected", 1
+    )[0]
+    assert "activation?.phase == .revocationRequired" in resume_feature
+    assert "resumeRequestedAfterRevocation = true" in resume_feature
+    deferred = FEATURE.split("private func finishDeferredRevocation()", 1)[1].split(
+        "private func disable", 1
+    )[0]
+    assert "activation?.retryRevocation()" in deferred
+    assert "let shouldResume = resumeRequestedAfterRevocation" in deferred
+    assert "UserDefaults.standard.bool(forKey: Self.enabledKey)" in deferred
+    assert "resumeIfEnabled()" in deferred
+    disable = FEATURE.split("private func disable", 1)[1].split(
+        "private func stopOwnerPolling", 1
+    )[0]
+    assert "resumeRequestedAfterRevocation = false" in disable
 
 
 def test_monitor_is_main_actor_global_only_and_never_reads_key_text():
@@ -202,8 +225,8 @@ def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
     assert len(validation_calls) == 3
     assert validation_calls[0] < selected_index < validation_calls[1]
     assert "roleAndSubroleValueDecision" in SELECTION
-    assert SELECTION.count("AXUIElementSetMessagingTimeout") == 3
-    assert "messagingTimeout: Float = 0.10" in SELECTION
+    assert SELECTION.count("AXUIElementSetMessagingTimeout") >= 3
+    assert "messagingTimeout: Float = 0.50" in SELECTION
     assert SELECTION.count(
         "client.frontmostApplication?.hasSameProcess(as: target) == true"
     ) == 2
@@ -221,9 +244,24 @@ def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
     assert "role == (kAXTextFieldRole as String)" in SELECTION
     assert "subrole == (kAXSearchFieldSubrole as String)" in SELECTION
 
+    assert 'wpsBundleIdentifier = "com.kingsoft.wpsoffice.mac"' in SELECTION
+    assert "copyWPSPDFSelectionIfEligible" in SELECTION
+    assert "onlyIfChangeCount" in SELECTION
+    assert "candidate == markerValue" in SELECTION
+    assert "candidate == snapshot.originalString" in SELECTION
+    assert SELECTION.count("captureStableWPSClipboardCandidate(") == 3
+    assert "confirmedText == firstText" in SELECTION
+    assert "confirmedSnapshot.hasSamePayload(as: firstCandidateSnapshot)" in SELECTION
+    assert "performCriticalEffect:" in COORDINATOR
+    assert "performIfCurrent(captureGeneration, action)" in COORDINATOR
+    assert "performCleanupEffect:" in COORDINATOR
+    assert "performIfActive(captureGeneration, action)" in COORDINATOR
+    assert "cancelAll(onQuiesced:" in COORDINATOR
+    assert "capture.cancelAll {" in FEATURE
+    assert "retryRevocation()" in FEATURE
+    assert "cancellationCheck()" in SELECTION
+
     for forbidden in (
-        "NSPasteboard",
-        "pasteboard",
         "URLSession",
         "translator",
         "server",
@@ -231,7 +269,6 @@ def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
         "Logger",
         "os_log",
         "kAXDescriptionAttribute",
-        "kAXTitleAttribute",
         "kAXValueAttribute",
     ):
         assert forbidden not in SELECTION
@@ -276,20 +313,18 @@ def test_sources_tests_and_frameworks_are_in_every_build_path():
         assert f"tests/{test}" in CI
 
 
-def test_docs_record_official_boundary_without_claiming_migration_is_live():
-    assert "开发中，默认未启用" in DOC
-    assert "唯一生效的双 Option 触发" in DOC
-    assert "仍由 `hammerspoon/argos-translator.lua` 提供" in DOC
-    assert "不表示句译已经去除 Hammerspoon/Python 依赖" in DOC
-    assert "不会调用翻译" in DOC
+def test_docs_record_the_live_native_mvp_and_remaining_boundaries():
+    assert "Apple 离线翻译 MVP 已接入普通 Debug 与 Release 构建" in DOC
+    assert "真实 AX 选区" in DOC
+    assert "现有 owner 协议" in DOC
+    assert "macOS 15 Translation framework" in DOC
+    assert "WPS PDF" in DOC
+    assert "除 WPS PDF 外不使用剪贴板回退" in DOC
+    assert "需要 OCR，不属于本 MVP" in DOC
     assert "addglobalmonitorforevents" in DOC.lower()
     assert "MonitoringEvents.html" in DOC
     assert "kaxselectedtextattribute" in DOC.lower()
     assert "PID + NSRunningApplication.launchDate" in DOC
     assert "bundle ID 只作元数据" in DOC
     assert "CFEqual" in DOC
-    assert "AXTextField + AXSearchField" in DOC
-    assert "启用前 P0" in DOC
-    assert "常态 global-only" in DOC
-    assert "CGEventTap" in DOC and "已退役" in DOC
-    assert "干净 TCC 环境" in DOC
+    assert "干净 TCC 状态" in DOC

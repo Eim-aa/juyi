@@ -128,12 +128,32 @@ enum NativeOwnerHandoffWorkflowTests {
         expect(workflow.phase == .returnedToLegacy, "late status reopened workflow")
     }
 
+    private static func testFailedReturnCanRetryHeldLease() {
+        let path = root(); defer { cleanup(path) }
+        let workflow = make(path)
+        workflow.begin()
+        let requestURL = URL(fileURLWithPath: path + "/owner-request.json")
+        let original = try! Data(contentsOf: requestURL)
+        try! Data("temporarily changed\n".utf8).write(to: requestURL)
+
+        workflow.cancel()
+        expect(workflow.phase == .recoveryRequired, "failed return was trusted")
+        expect(workflow.holdsCandidateLease, "failed return released its lock")
+
+        try! original.write(to: requestURL)
+        workflow.recoverAndReturnToLegacy()
+        expect(workflow.phase == .returnedToLegacy, "held lease could not retry return")
+        expect(!workflow.holdsCandidateLease, "retry retained the owner lease")
+        expect(!FileManager.default.fileExists(atPath: requestURL.path), "retry left request")
+    }
+
     static func main() {
         testValidYieldAndExplicitReturn()
         testUnsafeSnapshotsNeverClaim()
         testCrashResidueRequiresRecoveryOnly()
         testSecondProcessCapabilityIsBusy()
         testTerminalSnapshotsAreIgnored()
+        testFailedReturnCanRetryHeldLease()
         print("NativeOwnerHandoffWorkflowTests: \(passed) passed")
     }
 }
