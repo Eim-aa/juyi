@@ -1,4 +1,4 @@
 // The single source of truth for every Juyi build.
 // Release tags validate against MARKETING_VERSION; they do not replace it.
-MARKETING_VERSION = 0.3.3
-CURRENT_PROJECT_VERSION = 7
+MARKETING_VERSION = 0.4.0
+CURRENT_PROJECT_VERSION = 8
