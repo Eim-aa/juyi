@@ -283,9 +283,17 @@ install_hook() {
         echo "[kept managed symlink $MODULE]"
     elif [[ -L "$MODULE" ]] && legacy_module_is_managed; then
         local staging
+        local -a move_flags
+        # Both variants replace the symlink itself, even if its exact legacy
+        # target now names a directory. Never move the module into that target.
+        case "$(uname -s)" in
+            Darwin) move_flags=(-f -h) ;;
+            Linux) move_flags=(-f -T) ;;
+            *) fail "no safe Hammerspoon module migration for this platform" ;;
+        esac
         staging="$(mktemp -d "$HS_DIR/.juyi-module-link.XXXXXX")"
         if ! ln -s "$MODULE_TARGET" "$staging/argos-translator.lua" \
-            || ! /bin/mv -fh "$staging/argos-translator.lua" "$MODULE"; then
+            || ! /bin/mv "${move_flags[@]}" "$staging/argos-translator.lua" "$MODULE"; then
             rm -f "$staging/argos-translator.lua"
             rmdir "$staging" 2>/dev/null || true
             fail "could not migrate the managed Hammerspoon module"

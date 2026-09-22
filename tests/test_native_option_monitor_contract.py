@@ -160,6 +160,118 @@ def test_production_owner_resumes_after_wake_and_session_reactivation():
     assert "resumeRequestedAfterRevocation = false" in disable
 
 
+def test_native_language_preparation_stops_before_system_request_and_restores_intent():
+    prepare = FEATURE.split("func prepareLanguages()", 1)[1].split(
+        "func setPaused", 1
+    )[0]
+    assert prepare.index("disable(reason: .stop, preservePreference: true)") < prepare.index(
+        "await apple.prepareLanguages()"
+    )
+    assert "pendingUserEnable || isEnabled" in prepare
+    assert "UserDefaults.standard.set(true, forKey: Self.enabledKey)" in prepare
+    assert "activation?.phase != .revocationRequired" in prepare
+    assert "activation?.holdsOwnerLease != true" in prepare
+    assert "monitor == nil" in prepare
+    assert "generation == lifecycleGeneration, isPreparingLanguages" in prepare
+    assert "case .prepared:" in prepare
+    assert "appleReadinessIssue = nil" in prepare
+    assert "resumeIfEnabled()" in prepare
+    assert "lifecycleActivationAllowed" in prepare
+    assert "!isPaused, appleEngineSelected" in prepare
+    assert prepare.index("holdLegacyPauseForRecovery()") < prepare.index(
+        "disable(reason: .stop, preservePreference: true)"
+    )
+
+
+def test_language_failures_cannot_keep_active_or_resume_without_explicit_recovery():
+    failure = FEATURE.split("private func suspendForAppleFailure", 1)[1].split(
+        "private func receiveCapture", 1
+    )[0]
+    assert failure.index("disable(reason: .stop, preservePreference: true)") < failure.index(
+        "overlay.beginNativeTranslation("
+    )
+    assert "phase = .languagePackRequired" in failure
+    assert "phase = .unsupported" in failure
+    assert "let generation = pipelineGeneration" in failure
+    assert "activation?.phase != .revocationRequired" in failure
+    assert "error: failure.error" in failure
+    assert "appleReadinessIssue == nil" in FEATURE.split("func resumeIfEnabled()", 1)[1].split(
+        "func setShortcutDeploymentReady", 1
+    )[0]
+    deferred = FEATURE.split("private func finishDeferredRevocation()", 1)[1].split(
+        "private func disable", 1
+    )[0]
+    assert "if pendingLanguagePreparation" in deferred
+    assert "beginLanguagePreparationIfQuiescent()" in deferred
+    assert "if appleReadinessIssue != nil" in deferred
+    assert "presentPendingAppleFailure()" in deferred
+    assert "error: .serviceUnavailable" not in FEATURE
+    assert "error: .appleFailed" in FEATURE
+    assert "error: .appleTimedOut" in FEATURE
+
+
+def test_native_diagnostic_retry_retains_owner_stop_barrier():
+    retry = FEATURE.split("func retryByUser()", 1)[1].split("func resumeIfEnabled()", 1)[0]
+    assert "guard shortcutDeploymentReady else" in retry
+    assert "!isPaused, appleEngineSelected" in retry
+    assert "UserDefaults.standard.set(true, forKey: Self.enabledKey)" in retry
+    assert retry.index("disable(reason: .stop, preservePreference: true)") < retry.index(
+        "resumeIfEnabled()"
+    )
+    translation = FEATURE.split("let started = ProcessInfo.processInfo.systemUptime", 1)[1].split(
+        "let result = await apple.translate(text)", 1
+    )[0]
+    assert "guard !Task.isCancelled" in translation
+    assert "generation == pipelineGeneration" in translation
+    assert "overlayGeneration == panelGeneration" in translation
+
+
+def test_recovery_uses_existing_pause_and_releases_only_after_native_owner_activation():
+    failure = FEATURE.split("private func suspendForAppleFailure", 1)[1].split(
+        "private func presentPendingAppleFailure", 1
+    )[0]
+    assert failure.index("holdLegacyPauseForRecovery()") < failure.index(
+        "disable(reason: .stop, preservePreference: true)"
+    )
+    owner_ready = FEATURE.split("if activation.phase == .nativeActive", 1)[1].split(
+        "guard activation.phase == .waitingForLegacy", 1
+    )[0]
+    assert "legacyRecoveryPauseHandler?(false)" in owner_ready
+    assert owner_ready.index("legacyRecoveryPauseHandler?(false)") < owner_ready.index(
+        "phase = .active"
+    )
+    pause = FEATURE.split("func setPaused(_ paused: Bool", 1)[1].split(
+        "private func holdLegacyPauseForRecovery", 1
+    )[0]
+    assert "if byUser" in pause
+    assert "recoveryPauseHeld = false" in pause
+    assert "else if recoveryPauseHeld && paused" in pause
+    assert "disable(reason: .pause, preservePreference: true)" in pause
+    assert "native.setPaused(paused, byUser: true)" in APP
+    assert "setPaused(true, byUser: true)" in APP
+    assert "var userPaused: Bool" in APP
+    assert "paused && !NativeProductionTranslationCoordinator.shared.recoveryPauseHeld" in APP
+    assert "NativeTranslationOverlayController.shared.setPaused(model.userPaused)" in APP
+    assert "try (pause ? \"1\\n\" : \"0\\n\").write(to: pauseFile" in APP
+    assert "legacyRecoveryPauseHandler =" in APP
+
+
+def test_resuming_known_apple_fault_never_briefly_unpauses_legacy():
+    resume = FEATURE.split("func resumeAppleRecoveryByUser()", 1)[1].split(
+        "func resumeIfEnabled()", 1
+    )[0]
+    assert "guard isPaused, appleEngineSelected" in resume
+    assert "appleReadinessIssue != nil" in resume
+    assert resume.index("recoveryPauseHeld = true") < resume.index("retryByUser()")
+    assert "legacyRecoveryPauseHandler?(false)" not in resume
+    toggle = APP.split("func togglePause()", 1)[1].split(
+        "func setLegacyPauseForNativeRecovery", 1
+    )[0]
+    assert toggle.index("native.resumeAppleRecoveryByUser()") < toggle.index(
+        "write(to: pauseFile"
+    )
+
+
 def test_monitor_is_main_actor_global_only_and_never_reads_key_text():
     assert "@MainActor" in MONITOR
     assert "NSEvent.addGlobalMonitorForEvents" in MONITOR

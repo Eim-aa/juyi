@@ -55,10 +55,24 @@ def test_keychain_item_is_single_json_payload_written_via_stdin():
         "nonisolated private static func runSecurity",
         "nonisolated private static func readKeychainCloudCredentials",
     )
-    assert 'URL(fileURLWithPath: "/usr/bin/security")' in runner
-    assert "process.standardInput = inputPipe" in runner
-    assert "inputPipe.fileHandleForWriting.write(input)" in runner
-    assert "process.standardError = FileHandle.nullDevice" in runner
+    assert "runBoundedProcess(" in runner
+    assert 'executablePath: "/usr/bin/security"' in runner
+    assert "arguments: arguments" in runner
+    assert "input: input" in runner
+    assert "mergeStandardError:" not in runner
+
+    process = _body(
+        "nonisolated private static func runBoundedProcess",
+        "nonisolated private static func launchctl",
+    )
+    assert "URL(fileURLWithPath: executablePath)" in process
+    assert "process.standardInput = pipe" in process
+    assert "pipe.fileHandleForWriting.write(contentsOf: input)" in process
+    assert "mergeStandardError: Bool = false" in process
+    assert (
+        "process.standardError = mergeStandardError ? outputPipe : FileHandle.nullDevice"
+        in " ".join(process.split())
+    )
 
 
 def test_keychain_is_preferred_and_legacy_credentials_are_migrated_safely():

@@ -175,7 +175,8 @@ enum NativeTranslationOverlayModelTests {
         let rawSecret = "UPSTREAM SECRET localizedDescription AK/SK"
         let errors: [NativeTranslationOverlayBackendError] = [
             .serviceUnavailable, .requestTimeout, .httpFailure, .authenticationFailure,
-            .appleNotReady, .volcCredential, .volcNetwork, .volcTimeout,
+            .appleNotReady, .appleUnsupported, .appleFailed, .appleTimedOut,
+            .volcCredential, .volcNetwork, .volcTimeout,
             .sourceLanguageMismatch, .noEngine, .malformedResponse, .emptyResult,
         ]
         for error in errors {
@@ -199,6 +200,15 @@ enum NativeTranslationOverlayModelTests {
             .response(response(error: .appleNotReady))
         )
         expect(apple.cta == .prepareAppleLanguages, "Apple error offers preparation")
+        for error in [NativeTranslationOverlayBackendError.appleFailed, .appleTimedOut, .appleUnsupported] {
+            let native = NativeTranslationOverlayReducer.reduce(.response(response(error: error)))
+            expect(native.cta == .openDiagnostics, "native Apple failure offers its own diagnostics")
+            expect(!native.body.contains("自动修复"), "native Apple failure never requests Python service repair")
+            expect(native.title.contains("Apple"), "native Apple error identifies the system engine")
+        }
+        let timeout = NativeTranslationOverlayReducer.reduce(.timeout)
+        expect(timeout.title == "翻译超时", "shared panel timeout does not misdiagnose a missing service")
+        expect(!timeout.body.contains("自动修复"), "panel timer does not request Python repair")
         let volcCredential = NativeTranslationOverlayReducer.reduce(
             .response(response(error: .volcCredential))
         )
@@ -257,11 +267,11 @@ enum NativeTranslationOverlayModelTests {
         clock.advance(to: 11.999)
         expect(session.state.kind == .loading, "11999ms remains loading")
         clock.advance(to: 12.0)
-        expect(session.state.title == "翻译组件没有响应", "12000ms becomes error")
+        expect(session.state.title == "翻译超时", "12000ms becomes error")
         expect(clock.activeTaskCount == 0, "terminal cancels every old deadline")
 
         session.resolve(.response(response(result: "迟到结果")), for: first)
-        expect(session.state.title == "翻译组件没有响应", "late result cannot overwrite timeout")
+        expect(session.state.title == "翻译超时", "late result cannot overwrite timeout")
 
         let fastClock = ManualClock()
         var fastVisibleKinds: [NativeTranslationOverlayState.Kind] = []

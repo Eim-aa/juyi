@@ -997,6 +997,11 @@ end
 -- ---------- hotkey entry ---------- --
 
 local function onHotkey()
+    -- The gesture's doAfter callback may outlive a pause or native takeover,
+    -- even before the periodic owner poll has observed that boundary.
+    if legacyOwnerState == "stopped" then return end
+    reconcileLegacyOwner()
+    if legacyOwnerState ~= "legacy_active" then return end
     local request = beginRequest()
     local text, src, diag = getSelectedText()
     if not text or #text == 0 then

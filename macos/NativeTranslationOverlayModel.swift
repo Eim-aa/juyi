@@ -46,6 +46,9 @@ enum NativeTranslationOverlayBackendError: Equatable {
     case httpFailure
     case authenticationFailure
     case appleNotReady
+    case appleUnsupported
+    case appleFailed
+    case appleTimedOut
     case volcCredential
     case volcNetwork
     case volcTimeout
@@ -196,7 +199,12 @@ enum NativeTranslationOverlayReducer {
             )
 
         case .timeout:
-            return serviceUnavailableState()
+            return terminal(
+                kind: .error,
+                title: "翻译超时",
+                body: "请重新选中英文后再试；若仍未完成，可在句译中重新检查翻译。",
+                cta: .openDiagnostics
+            )
 
         case let .capture(status):
             return captureState(status)
@@ -309,6 +317,20 @@ enum NativeTranslationOverlayReducer {
                 title: "Apple 离线翻译未准备好",
                 body: "打开句译准备中英语言包。",
                 cta: .prepareAppleLanguages
+            )
+        case .appleUnsupported:
+            return terminal(
+                kind: .error,
+                title: "Apple 离线翻译暂不支持这台 Mac",
+                body: "请在句译中重新检查系统翻译支持情况；不会自动切换到云端。",
+                cta: .openDiagnostics
+            )
+        case .appleFailed, .appleTimedOut:
+            return terminal(
+                kind: .error,
+                title: error == .appleTimedOut ? "Apple 离线翻译超时" : "Apple 离线翻译未完成",
+                body: "请重新选中英文后再试；若仍未完成，可在句译中重新检查 Apple 翻译。",
+                cta: .openDiagnostics
             )
         case .volcCredential:
             return terminal(

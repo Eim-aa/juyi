@@ -24,6 +24,8 @@ local state = {
     paused = false,
     persistedEngine = nil,
     canvasCount = 0,
+    selectionReads = 0,
+    copyKeystrokes = 0,
     statusWrites = {},
 }
 
@@ -219,6 +221,7 @@ hs = {
     },
     uielement = {
         focusedElement = function()
+            state.selectionReads = state.selectionReads + 1
             return {
                 selectedText = function()
                     return table.remove(state.selections, 1)
@@ -294,7 +297,9 @@ hs.eventtap.new = function(types, callback)
     return watcher
 end
 
-hs.eventtap.keyStroke = function() end
+hs.eventtap.keyStroke = function()
+    state.copyKeystrokes = state.copyKeystrokes + 1
+end
 
 hs.http.asyncGet = function(url, headers, callback)
     table.insert(state.gets, { url = url, headers = headers, callback = callback })
@@ -370,8 +375,7 @@ local function requestTimers()
     error("translation request did not create every progressive timer")
 end
 
-local function triggerSelection(text)
-    local postCount = #state.posts
+local function queueSelection(text)
     table.insert(state.selections, text)
     local start = state.now + 1
     state.now = start
@@ -382,6 +386,11 @@ local function triggerSelection(text)
     state.tapWatcher.callback(flagsEvent({ alt = true }))
     state.now = start + 0.18
     state.tapWatcher.callback(flagsEvent({}))
+end
+
+local function triggerSelection(text)
+    local postCount = #state.posts
+    queueSelection(text)
     fireLatestTriggerTimer()
     expectEqual(#state.posts, postCount + 1, "hotkey should issue one translation POST")
     return state.posts[#state.posts]
@@ -497,6 +506,36 @@ expectEqual(state.canvasCount, pausedCanvasCount, "pause allowed late popup")
 state.paused = false
 fireLatestOwnerPoll()
 expectEqual(state.tapWatcher:isEnabled(), true, "unpause did not resume legacy watcher")
+
+-- A hotkey already queued by the event tap must observe a newly written pause
+-- or owner request itself, without waiting for the one-second owner poll.
+for _, boundary in ipairs({ "pause", "native owner", "invalid owner", "unavailable owner" }) do
+    local selectionReads = state.selectionReads
+    local copyKeystrokes = state.copyKeystrokes
+    local postCount = #state.posts
+    local getCount = #state.gets
+    queueSelection("must remain unread after " .. boundary)
+    if boundary == "pause" then
+        state.paused = true
+    elseif boundary == "native owner" then
+        state.ownerRequest = "valid-native-owner-request"
+    elseif boundary == "invalid owner" then
+        state.ownerRequest = "native-owner-request-with-extra-key"
+    else
+        state.ownerRequest = "unavailable"
+    end
+    fireLatestTriggerTimer()
+    expectEqual(state.selectionReads, selectionReads, boundary .. " allowed queued AX read")
+    expectEqual(state.copyKeystrokes, copyKeystrokes, boundary .. " allowed queued copy")
+    expectEqual(#state.posts, postCount, boundary .. " allowed queued translation POST")
+    expectEqual(#state.gets, getCount, boundary .. " allowed queued HTTP GET")
+    expectEqual(state.tapWatcher:isEnabled(), false, boundary .. " left watcher active")
+    expectEqual(table.remove(state.selections, 1), "must remain unread after " .. boundary,
+        boundary .. " consumed the queued selection")
+    state.paused = false
+    state.ownerRequest = "absent"
+    fireLatestOwnerPoll()
+end
 
 -- A long successful response is clipped to the usable screen, visibly marked,
 -- and still copies the complete unmodified translation.
@@ -621,7 +660,20 @@ expect(
     "empty_input click did not copy actionable details"
 )
 
+local stoppedSelectionReads = state.selectionReads
+local stoppedCopyKeystrokes = state.copyKeystrokes
+local stoppedPostCount = #state.posts
+local stoppedGetCount = #state.gets
+queueSelection("must remain unread after stop")
 module.stop()
+fireLatestTriggerTimer()
+expectEqual(state.selectionReads, stoppedSelectionReads, "stop allowed queued AX read")
+expectEqual(state.copyKeystrokes, stoppedCopyKeystrokes, "stop allowed queued copy")
+expectEqual(#state.posts, stoppedPostCount, "stop allowed queued translation POST")
+expectEqual(#state.gets, stoppedGetCount, "stop allowed queued HTTP GET")
+expectEqual(state.tapWatcher:isEnabled(), false, "queued callback restarted a stopped watcher")
+expectEqual(table.remove(state.selections, 1), "must remain unread after stop",
+    "stopped callback consumed the queued selection")
 
 -- Reload must reconcile before ever starting the new watcher. A durable
 -- request therefore survives both Juyi and Hammerspoon crashes without a

@@ -2,46 +2,34 @@
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![Engine](https://img.shields.io/badge/engine-offline%20%2B%20Volcengine-blue.svg)
 
-> Translate selected English in commonly used macOS apps. **Apple on-device translation is the default**, so text stays on the Mac. Juyi does not bundle a model; macOS may download the en-zh language pack on first use. You can explicitly opt into Volcengine cloud translation. **Double-tap Option (⌥⌥)** to translate.
+> Select English in a supported macOS app and **double-tap Option (⌥⌥)** to see Simplified Chinese. Apple on-device translation is the default; translation text is processed on the Mac. macOS may need to download the language pack on first use.
 
 中文版: [README.md](README.md)
 
-> **Native macOS app:** run `scripts/install_macos_app.sh` to install `/Applications/句译.app`. Its focused first-run setup checks the background components, guides Accessibility permission, and includes a real ⌥⌥ exercise. The main window offers Apple offline or Volcengine cloud, credential validation, translation testing, and actionable recovery while hiding technical details by default. See [docs/MENU_BAR_APP.md](docs/MENU_BAR_APP.md).
+> **Developer preview, not a public release package.** There is no completed Developer ID-signed, notarized public download yet. The instructions below install from source. A prebuilt native app does not need the Python service for Apple translation, but this preview still needs Hammerspoon, macOS 15+, Accessibility permission for **句译 (Juyi)**, and the system language pack. See [installation and usage](docs/MENU_BAR_APP.md).
 
-The public-release project baseline targets macOS 15.0 and builds a Universal 2 app and helper through a shared Xcode scheme. Versioning, signing boundaries, and the remaining notarization/packaging work are documented in [docs/RELEASE_BASELINE.md](docs/RELEASE_BASELINE.md).
+The Xcode project builds a Universal 2 app and a compatibility helper. A successful build does not establish public-release readiness. See the [release boundaries](docs/RELEASE_BASELINE.md) and [product review and pending acceptance checks](docs/PRODUCT_REVIEW_2026-09-22.md).
 
 ![demo](docs/demo.gif)
 
+This demo illustrates the interaction; it is not current-candidate UI or compatibility acceptance evidence.
+
 ## Why this?
 
-Most macOS selection translators either need an API key (OpenAI, DeepL) or round-trip to a vendor's cloud. This one:
+Juyi focuses on one action: select English and quickly view Chinese.
 
 - **Local processing by default** — macOS Translation framework handles the text; Juyi does not send it to the project author or a third-party cloud service.
 - **No manual model installation** — the app carries no model files. macOS may request the en-zh language pack on first use, after which translation can work offline.
 - **Optional cloud engine** — explicitly configure Volcengine in the app when you want to compare it on long or domain-specific text; the upload is disclosed before enabling it.
 - **Double-tap Option to trigger** — select English, tap ⌥ twice, the translation pops up next to the cursor.
 
-|                          | juyi 句译 (this)               | [pot-desktop](https://github.com/pot-app/pot-desktop) | [openai-translator](https://github.com/openai-translator/openai-translator) | macOS Translate |
-| ------------------------ | ------------------------------ | ----------------------------------------------------- | --------------------------------------------------------------------------- | --------------- |
-| 100% offline             | ✓ default (optional cloud)     | partial                                               | ✗ (needs API key)                                                           | ✓               |
-| System-wide hotkey       | ✓ (double-tap Option)          | ✓                                                     | ✓                                                                           | ✗               |
-| Selection in common apps | ✓ (AX + clipboard fallback; compatibility varies) | ✓                                    | ✓                                                                           | limited         |
-| Engines                  | Apple on-device (offline) + Volcengine (cloud) | several                                            | OpenAI etc.                                                                 | system          |
-| Language pairs           | en→zh                          | 55                                                    | 55                                                                          | system          |
-| Latency                  | usually around 100 ms after warm-up; cold starts can be higher | network RTT                       | network RTT                                                                 | system          |
-| GUI                      | nearby popup + native control center | full window                                      | full window                                                                 | system          |
-| License                  | MIT                            | GPL-3.0                                               | AGPL-3.0                                                                    | proprietary     |
+It is deliberately narrow: **English → Simplified Chinese, selection only, macOS only**. There is no OCR. Selection support in other apps and text PDFs depends on their Accessibility interfaces; scanned images, secure fields, and protected content are unsupported. Only WPS PDF has a restricted clipboard fallback in the native path. This is not a promise that every app with visually selectable text will work.
 
-It's deliberately narrow: **English → Chinese, selection only, macOS only**. If you need 55 languages or OCR, use pot-desktop.
+## Source installation with an AI agent
 
-## Deploy with an AI Agent
-
-Using an AI agent like **Claude Code** (OpenHands, Codex, etc.)? Hand it the repo
-and it can run **almost the entire** install for you — you barely have to do
-anything. Just send your agent:
+An AI agent can check the environment and follow the repository's source-installation instructions:
 
 ```
 Please install juyi following the AGENTS.md at https://github.com/Eim-aa/juyi
@@ -52,12 +40,13 @@ helper, register the background service, wire up Hammerspoon, and run the
 automatable verification steps.
 The machine-readable steps live in [AGENTS.md](AGENTS.md).
 
-Only **two things can't be automated** and need you:
+You still need to complete these steps yourself:
 
 1. **Grant permission (required):** in System Settings → Privacy & Security →
-   Accessibility, enable **Hammerspoon**. This is a macOS security gate (TCC) that
+   Accessibility, enable **句译 (Juyi)**. This is a macOS security gate (TCC) that
    no script or agent can bypass.
-2. **Cloud API key (only if you want the cloud engine):** sign up at the
+2. **First-use verification:** confirm the system language-pack download if needed, then select English in TextEdit and try double Option. A backend self-test cannot replace this exercise.
+3. **Cloud API key (only if you want the cloud engine):** sign up at the
    [Volcengine console](https://console.volcengine.com/), enable "Machine
    Translation", create an AK/SK pair, and enter it yourself in the Juyi app.
    The credential is stored in macOS Keychain and does not need to be shared
@@ -68,6 +57,8 @@ Only **two things can't be automated** and need you:
 > file then keeps only non-secret engine preferences.
 
 ## Install (manual)
+
+This developer source-installation path requires macOS 15+, Homebrew, Python >= 3.10, and a working Xcode/Command Line Tools build environment. **Build dependencies are not native Apple runtime dependencies:** a prebuilt app calls the system Translation framework directly and needs no Python service for Apple translation. This preview still requires Hammerspoon to be installed and opened. The optional cloud and legacy compatibility service continues to use Python.
 
 One-line install (clones to `~/.local/share/argos-translator` and runs the installer):
 
@@ -84,20 +75,16 @@ git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
 
 The installer checks Homebrew, Python >= 3.10, and disk space. It creates a venv, installs `requirements.txt`, compiles the Apple on-device helper on macOS 15+, loads a LaunchAgent bound only to `127.0.0.1:54321`, and adds a managed block to the Hammerspoon config. It also generates a local API token readable only by the current user.
 
-After installation, Juyi is in the system Applications folder and can be opened from Applications, Launchpad, the Dock, or the menu bar. Juyi remains available in both the Dock and menu bar; closing the control window does not stop translation. On first launch it attempts to enable “Open Juyi at login.” You can turn this off under Diagnostics & Help, and the app links directly to Login Items when macOS needs approval.
+`scripts/install_macos_app.sh` only rebuilds and installs the app; it does not install all dependencies. After the full source installation, Juyi is at `/Applications/句译.app` in Applications and is available from Launchpad, the Dock, and the menu bar. Closing its window keeps translation running. Pausing or quitting stops both native and legacy shortcut paths; reopening after a quit requires clicking **Resume Juyi** (恢复句译). On first launch Juyi attempts to enable login startup, which can be changed in Diagnostics & Help.
 
 **The default engine is Apple on-device translation (macOS 15+).** The app requires no manual model installation; the first use may show one system dialog to fetch the en-zh language pack, after which it can work offline. The cloud engine is optional.
 
 After install:
 
-1. Open Hammerspoon, which the installer prepared.
-2. Grant Hammerspoon Accessibility permission in System Settings.
-3. Reload Hammerspoon config.
-4. Select English text in a commonly used app and **double-tap Option (⌥⌥)**. Apps that block Accessibility selection and simulated Copy may not expose the selection.
+1. Open Juyi and enable double Option. Juyi updates its bundled Hammerspoon compatibility module when necessary, then asks you to grant **Juyi** Accessibility permission. Return to Juyi after enabling it in System Settings; prepare the Apple language pack if prompted.
+2. Use **Open TextEdit** to create a document, enter and select `Good tools should feel effortless.`, then **double-tap Option (⌥⌥)**. Return to Juyi and confirm only after seeing a translated popup. Juyi does not read selections from its own window.
 
-> Before publishing your fork, replace `Eim-aa` everywhere with your GitHub username:
-> `grep -rl Eim-aa . | xargs sed -i '' "s/Eim-aa/<your-username>/g"`
-> Then rename `launchd/io.github.Eim-aa.argos-translator.plist.template` accordingly.
+> Before deploying a fork, follow [AGENTS.md](AGENTS.md) to check repository links and LaunchAgent identifiers. Do not describe a local build as a notarized public release.
 
 ## Local vs Cloud — which to use?
 
@@ -120,50 +107,44 @@ The default engine is `apple` (on-device, offline), and the runtime choice is st
 **Switch to the Volcengine cloud engine:**
 
 1. In the [Volcengine console](https://console.volcengine.com/), enable "Machine Translation", grant your (sub-)user `TranslateFullAccess`, and create an AK/SK pair.
-2. Open Juyi, select **Volcengine Cloud**, and enter the AK/SK yourself.
+2. Install the optional cloud backend first. In Juyi, expand **Other translation methods and saved settings** (其他翻译方式与已有设置), choose **Use Volcengine Cloud**, and enter the AK/SK yourself. Existing credentials remain available here; the simplified home screen does not remove them.
 3. Juyi stores the candidate in a separate pending Keychain item and runs a real translation. Only a successful candidate is promoted, and the transaction marker remains until the restarted service passes another real translation. An interrupted setup is recovered on the next launch; validation failure never overwrites the previous working credential.
 4. Cloud removal first creates a local transaction marker. Until removal completes, both the hotkey client and local service block cloud requests, including after an app crash.
 
 Volcengine uses AK/SK V4 request signing (implemented in [`volc_engine.py`](volc_engine.py), stdlib only). In this mode the selected text is sent over HTTPS to the Volcengine API; whether it fits your content better should be checked on your own corpus (see "Privacy").
 
-### Apple on-device engine (macOS 15+, enabled automatically at install)
+### Apple on-device engine (macOS 15+, default and recommended)
 
-macOS 15 ships an on-device Translation framework. When the installer detects macOS 15+ with `swiftc`, it compiles [`apple/TranslationHelper.swift`](apple/TranslationHelper.swift) into a ~140 KB helper and wires it in as the **default offline engine**, `apple`:
+The native app uses the system Translation framework directly. The source installer also compiles [`apple/TranslationHelper.swift`](apple/TranslationHelper.swift) for legacy service compatibility; that helper is not the translation process for the current native selection workflow.
 
 - **No bundled model** — models and language packs are managed by macOS, which may download the language pack on first use.
-- **On-device** — text never leaves the machine. Warm requests are usually around 100 ms; cold start, system load, and language-pack state affect tail latency.
-- The first use may show one system dialog to download the en-zh language pack (fully offline afterwards). Manual trigger: `bin/apple-translation-helper --prepare`.
+- **On-device** — translation text is processed locally. Cold start, system load, and language-pack state affect speed; there is no fixed latency guarantee.
+- Prepare the language pack from first-run setup or **Prepare Apple Languages** in Diagnostics & Help, then confirm the macOS download dialog. Apple self-tests and language preparation use the native path, not Python service health as their readiness signal.
 
 ### Switch engines at runtime (menu bar, no restart)
 
-After installation, a Juyi icon appears in the menu bar. Use its **Translation Mode** submenu to switch live between **Apple on-device ⇄ Volcengine cloud**; the active mode is checkmarked and remembered. The legacy `ENGINE` value in `volc.env` is used only when there is no explicit saved choice.
+The menu-bar **Translation Mode** submenu switches between prepared engines; the active mode is checkmarked and remembered. The home screen prioritizes Apple offline and shortcut status, while optional cloud settings are under **Other translation methods and saved settings**. The legacy `ENGINE` value in `volc.env` is used only when there is no explicit saved choice.
 
-Every translation's subtitle shows its **source**, e.g. `来自 苹果端上翻译 · 96 ms` or `来自 火山云端 · 589 ms`, so you always know which engine produced the result.
+Successful translations show their **source and measured duration**, for example `Apple 离线 · … 毫秒`.
 
-**Adding another engine:** translation adapters are separated from the hotkey, cache, and popup pipeline, but a new engine must still be wired into capability reporting, configuration, server dispatch, and the native UI; it is not a one-function change.
+This Apple-first MVP does not expand into new engines, more languages, or translation history.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph HS["Hammerspoon · Lua client"]
-        H1["double-tap ⌥"] --> H2["AX selectedText"]
-        H2 -.fallback.-> H3["Cmd+C + pasteboard snapshot/restore"]
-        H2 & H3 --> H4["Bearer-authenticated HTTP POST 127.0.0.1:54321"]
+    U["Enable native double Option in Juyi"] --> O["Owner handoff"]
+    O --> H["Hammerspoon stops its legacy listener, requests and popup"]
+    subgraph APP["Native Apple workflow"]
+        N1["Global double Option monitor"] --> N2["AX selection from the foreground app"]
+        N2 -.WPS PDF compatibility only.-> N3["Two targeted Copy attempts + clipboard restoration"]
+        N2 & N3 --> N4["On-device Apple Translation"]
+        N4 --> N5["Native AppKit translation popup"]
     end
-
-    H4 ==> S1
-
-    subgraph BE["FastAPI service · Python backend"]
-        S1{"LRU cache hit?"} -->|hit| S5
-        S1 -->|miss| S2{"engine?"}
-        S2 -->|apple · on-device| S3["apple-translation-helper (system translation)"]
-        S2 -->|volc · cloud| S4["Volcengine TranslateText (AK/SK signed)"]
-        S3 & S4 --> S5["JSON response"]
-    end
-
-    S5 ==> H5["hs.canvas floating popup"]
+    H --> N1
 ```
+
+Explicitly switching to cloud stops the native Apple workflow and returns ownership to Hammerspoon. Optional cloud translation continues through the local FastAPI service to the Volcengine API.
 
 ## Commands
 
@@ -178,12 +159,12 @@ flowchart LR
 
 | Symptom               | Diagnose                                                                                       | Fix                                                                                          |
 | --------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Double-tap does nothing | Open Hammerspoon Console                                                                      | Grant Accessibility permission, then Reload Config; or widen `DOUBLE_TAP_WINDOW_S`           |
-| Service unreachable   | `launchctl print gui/$(id -u)/io.github.Eim-aa.argos-translator`                         | Run `scripts/launchd_install.sh`                                                             |
-| Health fails          | `curl -s http://127.0.0.1:54321/health`                                                        | Check `~/Library/Logs/argos-translator.err.log`                                              |
+| Double-tap does nothing | Check for pause, try TextEdit, and open Juyi Diagnostics & Help | Resume Juyi; grant **Juyi** Accessibility permission; update the compatibility component and enable the shortcut as prompted |
+| Cloud service unreachable | Check the cloud component status in Diagnostics | Use **Repair cloud component**; native Apple translation does not need this service |
 | Volcengine error      | The popup shows "⚠️ 云端翻译出错" with a redacted reason                                        | Revalidate the Keychain credential in Juyi and confirm `TranslateFullAccess` and Machine Translation are enabled |
-| Apple engine error    | The popup shows "⚠️ 苹果端上翻译出错" (apple engine error) with the reason; run `bin/apple-translation-helper --status` | Needs macOS 15+; if the language pack is missing, run `bin/apple-translation-helper --prepare` and confirm the system download dialog |
-| Clipboard changed     | Run manual `pbpaste \| shasum` before and after the double-tap                                 | Report the source app and pasteboard type                                                    |
+| Apple not ready or timed out | Follow the native error popup to check languages and permission | Prepare Apple languages or reselect English and retry; restarting Python is not the remedy |
+| Selection unavailable in an app/PDF | Check for a real text layer and try TextEdit first | Scans and protected content are unsupported; report app/version and non-sensitive reproduction steps |
+| WPS clipboard interference | Check for a clipboard manager | Avoid this fallback for sensitive text; do not include original text or clipboard contents in reports |
 
 ## Privacy (offline vs cloud)
 
@@ -191,12 +172,13 @@ The engine is switched live from the menu bar and is **offline by default**.
 
 - **Apple on-device mode (default, `apple`)**: translation runs on the macOS system's on-device models; selected text never leaves the machine and passes through no third-party server. The en-zh language pack is downloaded once and managed by the OS.
 - **Cloud mode (`ENGINE=volc`)**: your selected text is sent over HTTPS to the **Volcengine** translation API — this mode is **not offline**. It is entirely opt-in. The AK/SK is stored in macOS Keychain and is never written to the repository, source, or runtime logs.
+- **WPS PDF compatibility:** Juyi may temporarily invoke system Copy and makes a best effort to restore the previous clipboard. Clipboard managers may retain the source text or interfere with capture. Local translation does not make this fallback invisible to other clipboard software; avoid it for sensitive content.
 
 ## Credits
 
 - macOS [Translation framework](https://developer.apple.com/documentation/translation) — default on-device translation engine
 - [Volcengine Translate](https://www.volcengine.com/product/machine-translation) — optional cloud translation engine
-- [Hammerspoon](https://www.hammerspoon.org/) — macOS automation
+- [Hammerspoon](https://www.hammerspoon.org/) — compatibility and owner handoff between legacy and native workflows
 - [Argos Translate](https://github.com/argosopentech/argos-translate) / [CTranslate2](https://github.com/OpenNMT/CTranslate2) / [Stanza](https://github.com/stanfordnlp/stanza) — the offline engine of earlier versions, with thanks
 
 ## License

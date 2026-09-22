@@ -2,6 +2,11 @@ import AppKit
 import ApplicationServices
 import Foundation
 
+// These AX protocol names exist at runtime on the supported macOS baseline,
+// but their named constants are not exported by the macOS 15 SDK.
+private let selectedTextMarkerRangeAttribute = "AXSelectedTextMarkerRange" as CFString
+private let stringForTextMarkerRangeAttribute = "AXStringForTextMarkerRange" as CFString
+
 struct NativeSelectionProcessIdentity: Equatable, Sendable {
     let processIdentifier: pid_t
     let launchDate: Date
@@ -670,7 +675,7 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
             var currentRange: CFTypeRef?
             let rangeError = AXUIElementCopyAttributeValue(
                 current,
-                kAXSelectedTextMarkerRangeAttribute as CFString,
+                selectedTextMarkerRangeAttribute,
                 &currentRange
             )
             guard rangeError == .success,
@@ -687,7 +692,7 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
         var markerRange: CFTypeRef?
         let markerError = AXUIElementCopyAttributeValue(
             element,
-            kAXSelectedTextMarkerRangeAttribute as CFString,
+            selectedTextMarkerRangeAttribute,
             &markerRange
         )
         if markerError == .success {
@@ -698,7 +703,7 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
             var markerText: CFTypeRef?
             let markerTextError = AXUIElementCopyParameterizedAttributeValue(
                 element,
-                kAXStringForTextMarkerRangeParameterizedAttribute as CFString,
+                stringForTextMarkerRangeAttribute,
                 markerRange,
                 &markerText
             )

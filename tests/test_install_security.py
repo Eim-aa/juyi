@@ -122,6 +122,29 @@ def test_arbitrary_broken_hammerspoon_symlink_is_never_repointed(tmp_path):
     assert "refusing to replace" in result.stderr
 
 
+def test_legacy_module_migration_never_follows_a_directory_symlink(tmp_path):
+    hs_dir = tmp_path / ".hammerspoon"
+    hs_dir.mkdir()
+    init = hs_dir / "init.lua"
+    init.write_text(f"{REQUIRE}\n", encoding="utf-8")
+    legacy = tmp_path / ".local/share/argos-translator/hammerspoon/argos-translator.lua"
+    legacy.mkdir(parents=True)
+    sentinel = legacy / "keep.txt"
+    sentinel.write_text("user-owned contents\n", encoding="utf-8")
+    module = hs_dir / "argos-translator.lua"
+    module.symlink_to(legacy, target_is_directory=True)
+
+    result = run(HOOK, tmp_path, "install")
+
+    assert result.returncode == 0, result.stderr
+    assert module.is_symlink()
+    assert module.resolve() == ROOT / "hammerspoon" / "argos-translator.lua"
+    assert list(legacy.iterdir()) == [sentinel]
+    assert sentinel.read_text(encoding="utf-8") == "user-owned contents\n"
+    assert init.read_text(encoding="utf-8").count(REQUIRE) == 1
+    assert not list(hs_dir.glob(".juyi-module-link.*"))
+
+
 def test_install_migrates_legacy_require_and_is_idempotent(tmp_path):
     hs_dir = tmp_path / ".hammerspoon"
     hs_dir.mkdir()

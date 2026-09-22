@@ -22,6 +22,11 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     @Published private(set) var phase: Phase = .disabled
     @Published private(set) var detail = "原生双 Option 尚未启用。"
     @Published private(set) var isPreparingLanguages = false
+    @Published private(set) var recoveryPauseHeld = false
+
+    /// Writes the existing hs-paused switch through AppModel, which owns its
+    /// user-visible state. No new owner file or protocol is introduced.
+    var legacyRecoveryPauseHandler: ((Bool) -> Bool)?
 
     private static let enabledKey = "nativeAppleDoubleOptionEnabled"
     private static let ownerPollInterval: TimeInterval = 0.2
@@ -40,6 +45,12 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     private var enableInProgress = false
     private var pendingUserEnable = false
     private var resumeRequestedAfterRevocation = false
+    private var appleReadinessIssue: NativeAppleProductionReadiness?
+    private var pendingLanguagePreparation = false
+    private var pendingAppleFailure: (
+        target: NativeSelectionTarget,
+        error: NativeTranslationOverlayBackendError
+    )?
     private var lifecycleGeneration: UInt64 = 0
     private var isPaused = false
     private var appleEngineSelected = true
@@ -79,6 +90,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
 
     var actionIsEnabled: Bool {
         !enableInProgress
+            && !isPreparingLanguages
             && phase != .requestingAccessibility
             && phase != .waitingForHammerspoon
     }
@@ -90,6 +102,10 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             return
         }
         guard actionIsEnabled, !isPaused, appleEngineSelected else { return }
+        if phase != .active, activation?.phase == .nativeActive {
+            retryByUser()
+            return
+        }
         if phase == .active {
             pendingUserEnable = false
             disable(reason: .user)
@@ -100,11 +116,44 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             detail = "系统会话恢复后会继续启用原生双 Option。"
         } else {
             pendingUserEnable = true
+            appleReadinessIssue = nil
             Task { await enable(promptForAccessibility: true) }
         }
     }
 
+    /// A diagnostic retry is an explicit request to restart, never the
+    /// enable/disable toggle. An uncertain capture stop retains the owner
+    /// lease until `finishDeferredRevocation` can safely resume this request.
+    func retryByUser() {
+        guard actionIsEnabled, !isPaused, appleEngineSelected else { return }
+        guard shortcutDeploymentReady else {
+            phase = .unavailable
+            detail = "请先部署并重新载入当前快捷键模块。"
+            return
+        }
+        guard holdLegacyPauseForRecovery() else { return }
+        pendingUserEnable = true
+        UserDefaults.standard.set(true, forKey: Self.enabledKey)
+        disable(reason: .stop, preservePreference: true)
+        appleReadinessIssue = nil
+        resumeIfEnabled()
+    }
+
+    /// Transfer an existing user pause to Apple recovery without opening a
+    /// 1→0→1 legacy-watcher window. AppModel keeps hs-paused at 1 until the
+    /// normal fresh owner acknowledgement has activated native translation.
+    func resumeAppleRecoveryByUser() -> Bool {
+        guard isPaused, appleEngineSelected,
+              appleReadinessIssue != nil, actionIsEnabled else { return false }
+        recoveryPauseHeld = true
+        isPaused = false
+        overlay.setPaused(false)
+        retryByUser()
+        return true
+    }
+
     func resumeIfEnabled() {
+        guard !isPreparingLanguages, appleReadinessIssue == nil else { return }
         if activation?.phase == .idle || activation?.phase == .recoveryRequired {
             activation?.recoverAndReturnToLegacy()
         }
@@ -161,30 +210,77 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         if selected {
             resumeIfEnabled()
         } else {
+            if recoveryPauseHeld {
+                recoveryPauseHeld = false
+                isPaused = true
+                overlay.setPaused(true)
+            }
             pendingUserEnable = false
             disable(reason: .user)
         }
     }
 
     func prepareLanguages() {
-        guard !isPreparingLanguages, !isPaused, appleEngineSelected else { return }
-        let generation = lifecycleGeneration
+        guard !isPreparingLanguages, !enableInProgress,
+              !isPaused, appleEngineSelected,
+              lifecycleActivationAllowed else { return }
+        let shouldResume = pendingUserEnable || isEnabled
+            || UserDefaults.standard.bool(forKey: Self.enabledKey)
+        guard holdLegacyPauseForRecovery() else { return }
+        disable(reason: .stop, preservePreference: true)
+        if shouldResume {
+            pendingUserEnable = true
+            UserDefaults.standard.set(true, forKey: Self.enabledKey)
+        }
+        appleReadinessIssue = .needsPreparation
+        phase = .languagePackRequired
         isPreparingLanguages = true
+        pendingLanguagePreparation = true
+        beginLanguagePreparationIfQuiescent()
+    }
+
+    private func beginLanguagePreparationIfQuiescent() {
+        guard pendingLanguagePreparation, isPreparingLanguages,
+              !isPaused, appleEngineSelected,
+              lifecycleActivationAllowed else { return }
+        guard activation?.phase != .revocationRequired else {
+            detail = "正在安全停止取词，随后准备中英语言包…"
+            return
+        }
+        guard activation?.phase != .recoveryRequired,
+              activation?.holdsOwnerLease != true,
+              monitor == nil else {
+            pendingLanguagePreparation = false
+            isPreparingLanguages = false
+            phase = .unavailable
+            detail = "尚未完成快捷键安全停止，请重新检查后再准备语言包。"
+            return
+        }
+        pendingLanguagePreparation = false
+        let generation = lifecycleGeneration
         detail = "请在 macOS 系统窗口中确认中英语言包。"
         Task {
+            guard generation == lifecycleGeneration, isPreparingLanguages,
+                  !isPaused, appleEngineSelected,
+                  lifecycleActivationAllowed else { return }
             let result = await apple.prepareLanguages()
-            isPreparingLanguages = false
             guard generation == lifecycleGeneration,
                   !isPaused,
-                  appleEngineSelected else { return }
+                  appleEngineSelected,
+                  lifecycleActivationAllowed else { return }
+            isPreparingLanguages = false
             switch result {
             case .prepared:
+                appleReadinessIssue = nil
                 detail = "语言包已准备好；现在可以启用原生双 Option。"
                 phase = .disabled
+                resumeIfEnabled()
             case .unsupported:
+                appleReadinessIssue = .unsupported
                 phase = .unsupported
                 detail = "这台 Mac 不支持英语到简体中文的 Apple Translation。"
             case .cancelled:
+                phase = .languagePackRequired
                 detail = "已停止等待语言包准备。"
             default:
                 phase = .languagePackRequired
@@ -193,18 +289,53 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
     }
 
-    func setPaused(_ paused: Bool) {
+    func setPaused(_ paused: Bool, byUser: Bool = false) {
+        if byUser {
+            // A user's pause (including Quit) takes ownership of the existing
+            // pause file. This operation must never later clear it.
+            recoveryPauseHeld = false
+        } else if recoveryPauseHeld && paused {
+            return
+        } else if recoveryPauseHeld {
+            // An external change to the pause switch cancels this operation.
+            recoveryPauseHeld = false
+            disable(reason: .user)
+        }
         isPaused = paused
         if paused {
             disable(reason: .pause, preservePreference: true)
         } else {
+            if let issue = appleReadinessIssue {
+                guard holdLegacyPauseForRecovery() else { return }
+                phase = issue == .unsupported ? .unsupported
+                    : (issue == .needsPreparation ? .languagePackRequired : .unavailable)
+                detail = "Apple 离线翻译尚未准备好，请重新检查或准备语言包。"
+            }
             resumeIfEnabled()
         }
         overlay.setPaused(paused)
     }
 
+    private func holdLegacyPauseForRecovery() -> Bool {
+        if recoveryPauseHeld { return true }
+        guard !isPaused else { return false }
+        recoveryPauseHeld = true
+        guard legacyRecoveryPauseHandler?(true) == true else {
+            recoveryPauseHeld = false
+            // Without a durable pause, do not return the owner request: the
+            // old watcher could otherwise restart. Keep the conservative
+            // activation lease while stopping this process's effect.
+            _ = stopNativeEffect()
+            phase = .unavailable
+            detail = "无法安全暂停旧快捷键。原生取词已停止，请检查配置目录后重试。"
+            return false
+        }
+        return true
+    }
+
     func applicationBecameActive() {
         guard lifecycleActivationAllowed else { return }
+        guard !isPreparingLanguages, appleReadinessIssue == nil else { return }
         guard phase == .active else {
             if pendingUserEnable,
                !enableInProgress,
@@ -229,7 +360,8 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     }
 
     private func enable(promptForAccessibility: Bool) async {
-        guard !enableInProgress, !isPaused, appleEngineSelected,
+        guard !enableInProgress, !isPreparingLanguages,
+              appleReadinessIssue == nil, !isPaused, appleEngineSelected,
               shortcutDeploymentReady,
               lifecycleActivationAllowed else { return }
         enableInProgress = true
@@ -238,6 +370,12 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         guard let activation, statusReader != nil else {
             phase = .unavailable
             detail = "无法建立与 Hammerspoon 的安全 owner 交接。"
+            return
+        }
+        guard activation.phase != .revocationRequired else {
+            resumeRequestedAfterRevocation = true
+            UserDefaults.standard.set(true, forKey: Self.enabledKey)
+            detail = "正在安全停止上一次取词，随后重新启用…"
             return
         }
 
@@ -257,20 +395,28 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
               appleEngineSelected,
               shortcutDeploymentReady,
               lifecycleActivationAllowed else { return }
-        pendingUserEnable = false
-
-        switch await apple.readiness() {
+        let readiness = await apple.readiness()
+        guard generation == lifecycleGeneration,
+              !isPaused, appleEngineSelected,
+              shortcutDeploymentReady, lifecycleActivationAllowed else { return }
+        switch readiness {
         case .installed:
             break
         case .needsPreparation:
+            guard holdLegacyPauseForRecovery() else { return }
+            appleReadinessIssue = .needsPreparation
             phase = .languagePackRequired
             detail = "需要先准备 Apple 英语到简体中文语言包。"
             return
         case .unsupported:
+            guard holdLegacyPauseForRecovery() else { return }
+            appleReadinessIssue = .unsupported
             phase = .unsupported
             detail = "这台 Mac 不支持英语到简体中文的 Apple Translation。"
             return
         case .unavailable:
+            guard holdLegacyPauseForRecovery() else { return }
+            appleReadinessIssue = .unavailable
             phase = .unavailable
             detail = "暂时无法检查 Apple Translation。"
             return
@@ -325,6 +471,16 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             activation.activate()
             stopOwnerPolling()
             if activation.phase == .nativeActive {
+                if recoveryPauseHeld {
+                    guard legacyRecoveryPauseHandler?(false) == true else {
+                        _ = stopNativeEffect()
+                        phase = .unavailable
+                        detail = "翻译已准备好，但无法恢复快捷键状态，请重新检查。"
+                        return
+                    }
+                    recoveryPauseHeld = false
+                }
+                pendingUserEnable = false
                 UserDefaults.standard.set(true, forKey: Self.enabledKey)
                 phase = .active
                 detail = "已启用：选中英文后连按两次 Option。"
@@ -393,6 +549,14 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     private func finishDeferredRevocation() {
         activation?.retryRevocation()
         guard activation?.phase == .returnedToLegacy else { return }
+        if pendingLanguagePreparation {
+            beginLanguagePreparationIfQuiescent()
+            return
+        }
+        if appleReadinessIssue != nil {
+            presentPendingAppleFailure()
+            return
+        }
         let shouldResume = resumeRequestedAfterRevocation
             && UserDefaults.standard.bool(forKey: Self.enabledKey)
             && !isPaused
@@ -422,14 +586,25 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     ) {
         lifecycleGeneration &+= 1
         resumeRequestedAfterRevocation = false
+        pendingAppleFailure = nil
+        pendingLanguagePreparation = false
+        if isPreparingLanguages {
+            isPreparingLanguages = false
+            apple.cancelCurrent()
+        }
         stopOwnerPolling()
         activation?.deactivate(reason)
+        // A terminal error panel may outlive an already-stopped owner. Close
+        // it before a new preparation/retry so its dismissal cannot cancel
+        // the replacement Apple request.
+        cancelPipeline(dismissOverlay: true)
         if activation?.phase == .recoveryRequired {
             activation?.recoverAndReturnToLegacy()
         }
         if !preservePreference {
             UserDefaults.standard.set(false, forKey: Self.enabledKey)
             pendingUserEnable = false
+            appleReadinessIssue = nil
         }
         if activation?.phase == .recoveryRequired ||
             activation?.phase == .revocationRequired {
@@ -450,14 +625,17 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     }
 
     private func beginPipeline(target: NativeSelectionTarget) {
+        guard phase == .active, !isPreparingLanguages,
+              appleReadinessIssue == nil else { return }
         cancelPipeline(dismissOverlay: true)
         pipelineGeneration &+= 1
         let generation = pipelineGeneration
         translationTask = Task { [weak self] in
             guard let self else { return }
-            guard await apple.readiness() == .installed,
-                  generation == pipelineGeneration else {
-                self.presentPreflightFailure(target: target, generation: generation)
+            let readiness = await apple.readiness()
+            guard generation == pipelineGeneration else { return }
+            guard readiness == .installed else {
+                self.suspendForAppleFailure(target: target, readiness: readiness)
                 return
             }
             capture.capture(target: target) { [weak self] result in
@@ -470,12 +648,44 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
     }
 
-    private func presentPreflightFailure(
+    private func suspendForAppleFailure(
         target: NativeSelectionTarget,
-        generation: UInt64
+        readiness: NativeAppleProductionReadiness
     ) {
-        guard generation == pipelineGeneration,
-              let app = NSRunningApplication(processIdentifier: target.processIdentifier),
+        guard holdLegacyPauseForRecovery() else { return }
+        disable(reason: .stop, preservePreference: true)
+        appleReadinessIssue = readiness
+        let error: NativeTranslationOverlayBackendError
+        switch readiness {
+        case .needsPreparation:
+            phase = .languagePackRequired
+            detail = "需要准备 Apple 中英语言包；原生双 Option 已安全停止。"
+            error = .appleNotReady
+        case .unsupported:
+            phase = .unsupported
+            detail = "这台 Mac 不支持英语到简体中文的 Apple Translation。"
+            error = .appleUnsupported
+        case .installed, .unavailable:
+            phase = .unavailable
+            detail = "暂时无法使用 Apple 离线翻译，请在诊断中重新检查。"
+            error = .appleFailed
+        }
+        pendingAppleFailure = (target, error)
+        presentPendingAppleFailure()
+    }
+
+    private func presentPendingAppleFailure() {
+        guard activation?.phase != .revocationRequired,
+              activation?.phase != .recoveryRequired,
+              let failure = pendingAppleFailure,
+              !isPaused, appleEngineSelected, lifecycleActivationAllowed else { return }
+        pendingAppleFailure = nil
+        // Stopping invalidates the old pipeline and closes its panel. Create
+        // the actionable error only after that barrier, with a fresh callback.
+        let generation = pipelineGeneration
+        let target = failure.target
+        guard let app = NSRunningApplication(processIdentifier: target.processIdentifier),
+              NativeSelectionTarget(application: app)?.hasSameProcess(as: target) == true,
               let panelGeneration = overlay.beginNativeTranslation(
                 sourceApplication: app,
                 anchorPoint: Self.overlayAnchorPoint(for: target),
@@ -488,7 +698,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
                 actualEngine: nil,
                 result: nil,
                 elapsedMilliseconds: nil,
-                error: .appleNotReady
+                error: failure.error
             )),
             generation: panelGeneration
         )
@@ -514,7 +724,9 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             startTimeout(generation: generation, panelGeneration: panelGeneration)
             let started = ProcessInfo.processInfo.systemUptime
             translationTask = Task { [weak self] in
-                guard let self else { return }
+                guard !Task.isCancelled, let self,
+                      generation == pipelineGeneration,
+                      overlayGeneration == panelGeneration else { return }
                 let result = await apple.translate(text)
                 guard generation == pipelineGeneration,
                       overlayGeneration == panelGeneration else { return }
@@ -534,15 +746,11 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
                         inputTruncated: didTruncate
                     )
                 case .needsPreparation, .unsupported:
-                    response = .init(
-                        requestedEngine: .apple,
-                        actualEngine: nil,
-                        result: nil,
-                        elapsedMilliseconds: elapsed,
-                        error: .appleNotReady,
-                        captureDidTruncate: didTruncate,
-                        inputTruncated: didTruncate
+                    suspendForAppleFailure(
+                        target: target,
+                        readiness: result == .needsPreparation ? .needsPreparation : .unsupported
                     )
+                    return
                 case .cancelled:
                     return
                 default:
@@ -551,7 +759,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
                         actualEngine: nil,
                         result: nil,
                         elapsedMilliseconds: elapsed,
-                        error: .serviceUnavailable,
+                        error: .appleFailed,
                         captureDidTruncate: didTruncate,
                         inputTruncated: didTruncate
                     )
@@ -583,7 +791,16 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             capture.cancelAll()
             apple.cancelCurrent()
             translationTask?.cancel()
-            overlay.resolveNativeTranslation(.timeout, generation: panelGeneration)
+            overlay.resolveNativeTranslation(
+                .response(.init(
+                    requestedEngine: .apple,
+                    actualEngine: nil,
+                    result: nil,
+                    elapsedMilliseconds: nil,
+                    error: .appleTimedOut
+                )),
+                generation: panelGeneration
+            )
         }
     }
 
