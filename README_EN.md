@@ -4,9 +4,9 @@
 
 Select English in a supported Mac app, double-tap **Option (⌥⌥)**, and read Simplified Chinese beside the selection.
 
-[Download the Mac DMG · build 13](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.13/Juyi-0.4.0-build13-universal.dmg) · [Release notes and checksums](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.13) · [中文](README.md)
+[Download the Mac DMG · build 15](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.15/Juyi-0.4.0-build15-universal.dmg) · [Release notes and checksums](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15) · [中文](README.md)
 
-This is a signed, notarized **public preview, not a stable release**. No GitHub account is needed to download. Use the DMG, not the repository ZIP or unsigned CI artifacts.
+Build 15 is a signed, notarized **public preview, not a stable release**. CI and anonymous-download verification passed. No GitHub account is needed to download. Use the DMG, not the repository ZIP or unsigned CI artifacts.
 
 ![Actual PDF selection and translated popup](https://raw.githubusercontent.com/Eim-aa/juyi/v0.4.0-preview.12/docs/media/selection-demo.gif)
 
@@ -33,15 +33,15 @@ Closing the main window keeps Juyi running; pausing stops translation; reopening
 
 ## Verification status
 
-Build 13 fixes a permission-restoration edge case that could display Ready without a running shortcut monitor. The package passed Universal 2, signature, notarization, and Gatekeeper checks; the existing Mac's upgrade, Resume, normal Quit, and paused state after reopening were tested. See the release notes for real-gesture acceptance; build 12's human results are not reused for build 13. Including both architectures is not proof of Intel hardware testing.
+Build 15 improves initial feedback after double Option: it shows a selection-reading state before continuing translation in the same popup. The user confirmed working WPS PDF translation and responsive feedback on the local candidate. Both Copy confirmations and their safety waits remain unchanged; this does not establish that the intermittent unsupported-selection cause is fixed. See the [build 15 verification record](docs/RELEASE_0.4.0_BUILD15.md). Including both architectures is not proof of Intel hardware testing.
 
-Clean-account first permission/language setup, this build's PDF regression, macOS 15, and Intel hardware still need acceptance. See the [version-specific release notes](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.13). Distribution is through GitHub, not the App Store.
+Clean-account first permission/language setup, permission revocation and reauthorization, macOS 15, and Intel hardware still need acceptance. Preview, no triggering while paused, and closing during capture also need separate final-package results. Testing the local candidate is not byte-for-byte acceptance of the final DMG. See the [version-specific release notes](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15). Distribution is through GitHub, not the App Store.
 
 ## Source and feedback
 
-The early scripts in the default branch are not the installer for this native preview. Use the [release-tag source](https://github.com/Eim-aa/juyi/tree/v0.4.0-preview.13); later development is in the [existing PR](https://github.com/Eim-aa/juyi/pull/1). Read the [version-specific instructions](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.13/AGENTS.md) before source builds or optional cloud setup. Do not mix old-branch instructions with the preview.
+The early scripts in the default branch are not the installer for this native preview. Use the [release-tag source](https://github.com/Eim-aa/juyi/tree/v0.4.0-preview.15); later development is in the [existing PR](https://github.com/Eim-aa/juyi/pull/1). Read the [version-specific instructions](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.15/AGENTS.md) before source builds or optional cloud setup. Do not mix old-branch instructions with the preview.
 
-For optional source installation, use the pinned `v0.4.0-preview.13` checkout (commit `62a4ab1`) and that tag's instructions. Installation, verification, and diagnostics must all use that checkout (the guide uses `~/.local/share/juyi-build13`), not an older installation. Do not substitute the early default-branch bootstrap or overwrite an existing working directory.
+For optional source installation, use the pinned `v0.4.0-preview.15` checkout (tag commit `892e4d8`; App build source `4bf42ad`, differing only in documentation and test synchronization) and that tag's instructions. Installation, verification, and diagnostics must all use that checkout (the guide uses `~/.local/share/juyi-build15`), not an older installation. Do not substitute the early default-branch bootstrap or overwrite an existing working directory.
 
 [Report issues](https://github.com/Eim-aa/juyi/issues) with the app/system/reader versions and non-sensitive reproduction steps. Never include keys or complete private documents.
 

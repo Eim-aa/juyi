@@ -4,9 +4,9 @@
 
 在支持的 Mac App 中选中英文，连按两次 **Option（⌥⌥）**，在选区旁查看中文译文。
 
-[直接下载 Mac 安装包 · build 13](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.13/Juyi-0.4.0-build13-universal.dmg) · [发布说明与校验文件](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.13) · [English](README_EN.md)
+[直接下载 Mac 安装包 · build 15](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.15/Juyi-0.4.0-build15-universal.dmg) · [发布说明与校验文件](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15) · [English](README_EN.md)
 
-当前是已签名、公证的**公开测试版，不是稳定版**。下载不需要 GitHub 账户。请下载 DMG，不是仓库 ZIP 或 CI 构建产物。
+build 15 已完成签名、公证、CI 和匿名下载验证，是**公开测试版，不是稳定版**。下载不需要 GitHub 账户。请下载 DMG，不是仓库 ZIP 或 CI 构建产物。
 
 ![句译真实 PDF 操作演示](https://raw.githubusercontent.com/Eim-aa/juyi/v0.4.0-preview.12/docs/media/selection-demo.gif)
 
@@ -33,15 +33,15 @@
 
 ## 验证状态
 
-build 13 修复辅助功能权限恢复后可能显示就绪但监听未运行的问题。发布包已通过双架构构建、签名、公证及 Gatekeeper 检查；本机升级、恢复、正常退出和重开保持暂停已实测。真实双 Option 的验收状态见发布说明，不沿用 build 12 的真人结果。Universal 2 包含 Apple Silicon 与 Intel，但不代表两类硬件均已实测。
+build 15 改善双 Option 后的首次反馈：先显示“正在读取选中文字…”，取词成功后在同一浮窗继续翻译。本机候选的 WPS PDF 翻译和弹窗反馈已由用户确认；本次未缩短两次复制确认或安全等待，也不能据此声称间歇性“不支持”的根因已彻底修复。详情见 [build 15 验证记录](docs/RELEASE_0.4.0_BUILD15.md)。Universal 2 包含 Apple Silicon 与 Intel，但不代表两类硬件均已实测。
 
-干净账户首次授权与语言包、此版本 PDF、macOS 15 与 Intel 真机仍有待验证。具体状态以[该版本发布说明](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.13)为准。目前通过 GitHub 分发，未上架 App Store。
+干净账户首次授权与语言包、系统权限撤回再授权、macOS 15 与 Intel 真机仍有待验证；最终发布包上的 Preview、暂停时不触发和读取中关闭也需分别记录。本机候选的实测不等于最终 DMG 的逐字节验收。具体状态以[该版本发布说明](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15)为准。目前通过 GitHub 分发，未上架 App Store。
 
 ## 源码与反馈
 
-默认分支中的早期脚本不是上述原生测试版的安装入口。新版源码在[发布标签](https://github.com/Eim-aa/juyi/tree/v0.4.0-preview.13)，后续改动见[现有开发 PR](https://github.com/Eim-aa/juyi/pull/1)。源码开发或可选云端安装请先阅读[对应版本的说明](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.13/AGENTS.md)，不要混用旧分支安装步骤。
+默认分支中的早期脚本不是上述原生测试版的安装入口。新版源码在[发布标签](https://github.com/Eim-aa/juyi/tree/v0.4.0-preview.15)，后续改动见[现有开发 PR](https://github.com/Eim-aa/juyi/pull/1)。源码开发或可选云端安装请先阅读[对应版本的说明](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.15/AGENTS.md)，不要混用旧分支安装步骤。
 
-可选源码安装使用 `v0.4.0-preview.13`（提交 `62a4ab1`）的固定 checkout，安装、验证和诊断都使用同一目录（说明默认为 `~/.local/share/juyi-build13`），不要误验旧安装。不要改用默认分支的早期 bootstrap，也不要覆盖已有工作目录。
+可选源码安装使用 `v0.4.0-preview.15`（标签提交 `892e4d8`；App 构建源码 `4bf42ad`，仅文档和测试同步修正不同）的固定 checkout，安装、验证和诊断都使用同一目录（说明默认为 `~/.local/share/juyi-build15`），不要误验旧安装。不要改用默认分支的早期 bootstrap，也不要覆盖已有工作目录。
 
 [提交问题](https://github.com/Eim-aa/juyi/issues)时请附版本、macOS、阅读器和不含隐私的复现步骤；不要附密钥或完整私人文档。
 
