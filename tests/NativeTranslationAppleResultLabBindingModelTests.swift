@@ -594,8 +594,21 @@ enum NativeTranslationAppleResultLabBindingModelTests {
         harness.scheduler.advance(by: 7.09)
         await drain()
         expect(harness.coordinator.phase != .timeout, "deadline has not fired early")
+        let clearsBeforeDeadline = harness.host.clearGenerations.count
         harness.scheduler.advance(by: 0.01)
-        await drain(32)
+        expect(harness.scheduler.now == 12, "test reaches the exact lease deadline")
+        expect(
+            harness.host.clearGenerations.count > clearsBeforeDeadline,
+            "deadline revokes the host synchronously at 12 seconds"
+        )
+        // Cleanup awaits the cancelled domain task before publishing timeout.
+        // Fixed yield counts do not establish that this cross-actor work finished.
+        // Keep virtual time at exactly 12 seconds; the wall-clock cap only avoids
+        // hanging the test if cleanup never completes.
+        let cleanupLimit = ContinuousClock.now.advanced(by: .seconds(5))
+        while harness.coordinator.phase != .timeout && ContinuousClock.now < cleanupLimit {
+            await Task.yield()
+        }
         expect(harness.coordinator.phase == .timeout, "12 seconds starts at lease reserve")
         expect(harness.overlay.terminals.last?.category == .timeout, "timeout resolves once")
         harness.coordinator.completeHost(.translated("迟到结果"), claim: claim)
