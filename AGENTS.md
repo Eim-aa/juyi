@@ -15,6 +15,8 @@ Apple local translation needs no Hammerspoon, Python, Homebrew, background servi
 
 Before source installation, use the [instructions at the release tag](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.12/AGENTS.md), not the old default-branch bootstrap. The native release source is at that tag; the existing development PR is https://github.com/Eim-aa/juyi/pull/1.
 
+The tag's instruction to download `main/scripts/bootstrap.sh` is outdated and must be skipped. First check out `v0.4.0-preview.12` (commit `5e0a92f`) in a new directory, then run that checkout's `scripts/install.sh` after verifying its prerequisites. Merely changing a bootstrap URL to the tag does not pin the branch cloned inside the script. Preserve any existing checkout and user configuration.
+
 Cloud is optional, currently Volcengine only, and requires separate background components. Do not enable it or upload text unless the user explicitly chooses it.
 
 The user creates and enters cloud credentials directly in the newer app's secure configuration form. The app stores them in macOS Keychain. **Never ask the user to send AK/SK, passwords, or other secrets in chat. Never create plaintext credential files or put secrets in source, command arguments, shell history, or Git.** Do not run the old plaintext-key setup from earlier instructions. Existing credentials may only be handled by the newer app's existing migration flow.

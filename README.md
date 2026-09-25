@@ -41,6 +41,8 @@
 
 默认分支中的早期脚本不是上述原生测试版的安装入口。新版源码在[发布标签](https://github.com/Eim-aa/juyi/tree/v0.4.0-preview.12)，后续改动见[现有开发 PR](https://github.com/Eim-aa/juyi/pull/1)。源码开发或可选云端安装请先阅读[对应版本的说明](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.12/AGENTS.md)，不要混用旧分支安装步骤。
 
+注意：该固定标签的说明中，指向 `main/scripts/bootstrap.sh` 的一行安装命令已过时，必须跳过。源码安装须先在新的目录中检出 `v0.4.0-preview.12`（提交 `5e0a92f`），再从这个 checkout 运行 `scripts/install.sh`；仅把 bootstrap 下载 URL 改为 tag，不能保证其内部克隆也锁定该版本。已有工作目录请勿覆盖。
+
 [提交问题](https://github.com/Eim-aa/juyi/issues)时请附版本、macOS、阅读器和不含隐私的复现步骤；不要附密钥或完整私人文档。
 
 MIT，见 [LICENSE](LICENSE)。

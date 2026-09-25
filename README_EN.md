@@ -41,6 +41,8 @@ Clean-account first permission/language setup, this build's PDF regression, macO
 
 The early scripts in the default branch are not the installer for this native preview. Use the [release-tag source](https://github.com/Eim-aa/juyi/tree/v0.4.0-preview.12); later development is in the [existing PR](https://github.com/Eim-aa/juyi/pull/1). Read the [version-specific instructions](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.12/AGENTS.md) before source builds or optional cloud setup. Do not mix old-branch instructions with the preview.
 
+The linked tag's one-line command pointing to `main/scripts/bootstrap.sh` is outdated: skip it. For source installation, check out `v0.4.0-preview.12` (commit `5e0a92f`) in a new directory, then run `scripts/install.sh` from that checkout. Changing only the bootstrap download URL to a tag does not pin its internal clone. Do not overwrite an existing working directory.
+
 [Report issues](https://github.com/Eim-aa/juyi/issues) with the app/system/reader versions and non-sensitive reproduction steps. Never include keys or complete private documents.
 
 MIT; see [LICENSE](LICENSE).
