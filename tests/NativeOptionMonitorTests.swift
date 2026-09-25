@@ -272,11 +272,46 @@ enum NativeOptionMonitorTests {
         expect(received == 0, "revocation invalidates queued delivery")
 
         authorization.status = .authorized
-        expect(monitor.refreshAuthorizationStatus(), "restored trust is observable")
+        expect(!monitor.refreshAuthorizationStatus(), "restored trust without a monitor is not ready")
         expect(!monitor.isRunning, "trust alone never claims the monitor is active")
         expect(monitor.start() == .started, "explicit start rebuilds after restored trust")
         expect(source.installCount == 2, "recovery performs a fresh installation")
+        expect(monitor.refreshAuthorizationStatus(), "readiness requires a restored monitor")
         monitor.stop()
+    }
+
+    private static func testRevocationDuringDeliveryRequiresRecovery() {
+        let source = FakeEventSource()
+        let authorization = AuthorizationBox()
+        let scheduler = Scheduler()
+        var received = 0
+        let monitor = makeMonitor(
+            source: source,
+            authorization: authorization,
+            frontmost: FrontmostBox(editor),
+            scheduler: scheduler,
+            received: { _ in received += 1 }
+        )
+        _ = monitor.start()
+        emitTap(source, keyCode: 58, down: 0, up: 0.05)
+        emitTap(source, keyCode: 61, down: 0.10, up: 0.15)
+        authorization.status = .notAuthorized
+        scheduler.run(0)
+        expect(received == 0, "revocation during delayed delivery performs no capture")
+        expect(!monitor.isRunning, "delayed revocation removes the monitor")
+
+        // Trust returns before the app's next lifecycle refresh. The owner
+        // must see a stopped monitor, not a false ready state.
+        authorization.status = .authorized
+        expect(!monitor.refreshAuthorizationStatus(), "delivery revocation remains unready after restored trust")
+        expect(source.installCount == 1, "refresh never installs outside the owner's restart")
+        expect(monitor.start() == .started, "owner can explicitly rebuild the stopped monitor")
+        emitTap(source, keyCode: 58, down: 1, up: 1.05)
+        emitTap(source, keyCode: 61, down: 1.10, up: 1.15)
+        scheduler.run(1)
+        expect(received == 1, "new gestures work after explicit recovery")
+        monitor.stop()
+        expect(!monitor.refreshAuthorizationStatus(), "explicit stop cannot report ready")
     }
 
     private static func testOwnPIDAndFocusRaceFailClosed() {
@@ -432,6 +467,7 @@ enum NativeOptionMonitorTests {
         testStartStopAndPauseAreIdempotent()
         testStartupHeldOptionAndLatestGeneration()
         testRevocationAndExplicitRecovery()
+        testRevocationDuringDeliveryRequiresRecovery()
         testOwnPIDAndFocusRaceFailClosed()
         testNewRecognitionInvalidatesAXEvenWhenDeliveryFails()
         print("NativeOptionMonitorTests: \(passed) passed")

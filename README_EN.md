@@ -101,17 +101,11 @@ You still need to complete these steps yourself:
 
 This full source-installation path for optional cloud/legacy components requires macOS 15+, Homebrew, Python >= 3.10, and Xcode/Command Line Tools. **For local translation, prefer the DMG and skip these commands.** A clean native Apple installation starting with build 12 needs neither Python nor Hammerspoon.
 
-One-line install (clones to `~/.local/share/argos-translator` and runs the installer):
+Use the version-pinned release checkout, not the early default-branch bootstrap. Clone into a new directory; do not overwrite an existing checkout:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Eim-aa/juyi/main/scripts/bootstrap.sh | bash
-```
-
-Or clone and run manually:
-
-```bash
-git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
-~/.local/share/argos-translator/scripts/install.sh
+git clone --branch v0.4.0-preview.13 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build13
+~/.local/share/juyi-build13/scripts/install.sh
 ```
 
 The installer checks Homebrew, Python >= 3.10, and disk space. It creates a venv, installs `requirements.txt`, compiles the Apple on-device helper on macOS 15+, loads a LaunchAgent bound only to `127.0.0.1:54321`, and adds a managed block to the Hammerspoon config. It also generates a local API token readable only by the current user.

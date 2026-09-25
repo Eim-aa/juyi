@@ -99,17 +99,11 @@ Agent 可以：克隆仓库、检查依赖、编译苹果端上翻译助手、�
 
 以下是可选云端及早期兼容服务的完整源码安装路径，需要 macOS 15+、Homebrew、Python ≥ 3.10 和 Xcode/Command Line Tools。**仅使用本地翻译请优先下载 DMG，不必执行以下命令。** build 12 起全新原生 Apple 安装不需要 Python 服务或 Hammerspoon。
 
-一行装（克隆到 `~/.local/share/argos-translator` 并执行安装脚本）：
+从明确的发布标签安装，避免运行默认分支中的早期 bootstrap。以下使用新目录；已有目录请勿覆盖：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Eim-aa/juyi/main/scripts/bootstrap.sh | bash
-```
-
-或者手动 clone：
-
-```bash
-git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
-~/.local/share/argos-translator/scripts/install.sh
+git clone --branch v0.4.0-preview.13 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build13
+~/.local/share/juyi-build13/scripts/install.sh
 ```
 
 安装脚本会检查 Homebrew、Python ≥ 3.10、磁盘空间，创建 venv 并装 `requirements.txt`，在 macOS 15+ 上编译苹果端上翻译助手，加载仅监听 `127.0.0.1:54321` 的 LaunchAgent，并以受管代码块接入 Hammerspoon。安装时还会生成仅当前用户可读的本地 API 令牌。

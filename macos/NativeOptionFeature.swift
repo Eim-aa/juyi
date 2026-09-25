@@ -366,11 +366,17 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             resumeIfEnabled()
             return
         }
-        guard AccessibilityController.status == .authorized,
-              monitor?.refreshAuthorizationStatus() == true else {
+        guard AccessibilityController.status == .authorized else {
             disable(reason: .authorizationRevoked, preservePreference: true)
             phase = .unavailable
             detail = "辅助功能权限已关闭；原生双 Option 已停止。"
+            return
+        }
+        guard monitor?.refreshAuthorizationStatus() == true else {
+            // A delayed delivery may have removed the monitor while trust was
+            // absent. Use the existing pause/owner restart even if trust was
+            // restored before this activation; never keep a false ready state.
+            retryByUser()
             return
         }
     }

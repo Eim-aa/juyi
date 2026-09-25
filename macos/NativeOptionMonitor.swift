@@ -177,6 +177,8 @@ final class NativeOptionMonitor {
 
     /// Called from an ordinary app lifecycle boundary, never from the NSEvent
     /// handler. Revocation invalidates pending delivery and removes the token.
+    /// Restored trust alone is not readiness: the owner must explicitly restart
+    /// a monitor removed during delayed delivery before reporting it active.
     @discardableResult
     func refreshAuthorizationStatus() -> Bool {
         guard accessibilityStatus() == .authorized else {
@@ -184,7 +186,7 @@ final class NativeOptionMonitor {
             removeGlobalMonitorIfNeeded()
             return false
         }
-        return true
+        return isRunning
     }
 
     private func receive(_ event: NativeOptionEventSnapshot) {

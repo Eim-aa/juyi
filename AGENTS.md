@@ -41,11 +41,12 @@ for an Apple-only DMG installation.
 
 ## Step 1 — Install the service (you can do this)
 
-Run the one-line bootstrap (clones to `~/.local/share/argos-translator` and runs
-the installer):
+Use the version-pinned release checkout, not the early default-branch bootstrap.
+Clone into a new directory; do not replace an existing installation or worktree:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Eim-aa/juyi/main/scripts/bootstrap.sh | bash
+git clone --branch v0.4.0-preview.13 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build13
+~/.local/share/juyi-build13/scripts/install.sh
 ```
 
 The installer creates a venv, installs `requirements.txt` (FastAPI/uvicorn only),
