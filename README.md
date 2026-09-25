@@ -20,7 +20,7 @@
 
 ## 获取与安装
 
-[直接下载公开测试版（build 13，Universal 2 DMG）](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.13/Juyi-0.4.0-build13-universal.dmg) · [发布说明与校验文件](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.13)
+[直接下载公开测试版（build 15，Universal 2 DMG）](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.15/Juyi-0.4.0-build15-universal.dmg) · [发布说明与校验文件](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15)
 
 **当前是公开测试阶段，不是稳定版。** 下载已签名、公证的 DMG，无需登录 GitHub；不要把仓库 ZIP 或 CI 构建产物当成安装器。具体构建状态与已验证范围以发布说明为准。
 
@@ -104,8 +104,8 @@ Agent 可以：克隆仓库、检查依赖、编译苹果端上翻译助手、�
 从明确的发布标签安装，避免运行默认分支中的早期 bootstrap。以下使用新目录；已有目录请勿覆盖：
 
 ```bash
-git clone --branch v0.4.0-preview.13 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build13
-~/.local/share/juyi-build13/scripts/install.sh
+git clone --branch v0.4.0-preview.15 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build15
+~/.local/share/juyi-build15/scripts/install.sh
 ```
 
 安装脚本会检查 Homebrew、Python ≥ 3.10、磁盘空间，创建 venv 并装 `requirements.txt`，在 macOS 15+ 上编译苹果端上翻译助手，加载仅监听 `127.0.0.1:54321` 的 LaunchAgent，并以受管代码块接入 Hammerspoon。安装时还会生成仅当前用户可读的本地 API 令牌。
@@ -186,10 +186,10 @@ flowchart LR
 ## 常用命令
 
 ```bash
-~/.local/share/juyi-build13/scripts/test.sh           # 全套诊断
-~/.local/share/juyi-build13/scripts/bench.sh          # IPC + 翻译性能基准
-~/.local/share/juyi-build13/eval/run_eval.py          # 翻译质量评估
-~/.local/share/juyi-build13/scripts/demo.sh           # 简短交互演示
+~/.local/share/juyi-build15/scripts/test.sh           # 全套诊断
+~/.local/share/juyi-build15/scripts/bench.sh          # IPC + 翻译性能基准
+~/.local/share/juyi-build15/eval/run_eval.py          # 翻译质量评估
+~/.local/share/juyi-build15/scripts/demo.sh           # 简短交互演示
 ```
 
 这些命令用于上文的可选源码安装。若克隆到其他新目录，验证与诊断也须使用同一目录，不能指向旧安装。

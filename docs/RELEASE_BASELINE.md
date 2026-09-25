@@ -1,6 +1,6 @@
 # macOS 构建基线与正式发行边界
 
-当前版本定位为**公开测试版，不是稳定版**。build 13 已完成签名、公证、对应 App 代码 CI、公开下载核验与本机升级状态检查，证据见 [build 13 发布记录](RELEASE_0.4.0_BUILD13.md)。本版真实双 Option 与干净账户首次安装仍待实测，不沿用 [build 12 的真人结果](RELEASE_0.4.0_BUILD12.md)。build 12 起已移除全新本地安装的 Hammerspoon 前提。Apple 主链由原生 App 负责双 Option、AX 取词、端上翻译和浮窗；已有早期开发组件继续通过既有 owner 协议交接。Python 后端只服务可选云端和兼容路径。
+当前版本定位为**公开测试版，不是稳定版**。build 15 改善取词期间的首次浮窗反馈；本机候选的 WPS PDF 翻译和反馈已由用户确认。最终包的签名、公证、CI、公开下载与真人验收范围以 [build 15 发布记录](RELEASE_0.4.0_BUILD15.md)及对应 GitHub Release 为准。间歇性“不支持”的根因未确证，干净账户首次安装、macOS 15 / Intel 真机未完成。build 12 起已移除全新本地安装的 Hammerspoon 前提。Apple 主链由原生 App 负责双 Option、AX 取词、端上翻译和浮窗；已有早期开发组件继续通过既有 owner 协议交接。Python 后端只服务可选云端和兼容路径。
 
 ## 工程与兼容性
 
@@ -27,7 +27,7 @@ CURRENT_PROJECT_VERSION = <单调递增的整数 build>
 
 `macos/Info.plist` 使用 Xcode 变量展开。发布时同时递增 build number；Release tag 应与 `v$(MARKETING_VERSION)` 一致，但 tag 不是反向生成版本的来源。
 
-当前源码候选为 `0.4.0`、build `13`，权限恢复修复与验证边界见 [build 13 记录](RELEASE_0.4.0_BUILD13.md)。2026-09-26，已将已公证的 build 13 从正式 DMG 安装到 `/Applications/句译.app`，保留完整旧版备份，实测启动保持暂停、恢复显示就绪、正常退出和重开保持暂停。真实全局快捷键尚未计入本版验收。2026-09-25 用户确认的文本编辑双 Option 中文译文属于 build 12，不能直接算作 build 13 结果。系统为 macOS 26.5.1、Apple Silicon。此前 build 11 的 PDF 断词、长段落验收不等于 build 12/13 的 PDF 或首次安装已验收，也不代表 macOS 15 或 Intel 真机验收。实际证据必须记录运行包版本、构建号和路径，不能用旧版截图证明新版通过。
+当前源码为 `0.4.0`、build `15`。2026-09-26，已将已公证的 build 15 从最终 DMG 安装到 `/Applications/句译.app`，保留完整旧版备份，核验启动保持暂停、手动恢复显示就绪。系统为 macOS 26.5.1、Apple Silicon。用户已确认清理日志前候选的 WPS 翻译与反馈；最终包用户报告预览比 WPS 更快，不能仅凭这一对比推定取消、暂停或其它交互全部通过。历史各版本验收不自动沿用；实际证据必须记录运行包版本、构建号和路径，不能用旧版截图证明新版通过。
 
 ## 本地构建
 

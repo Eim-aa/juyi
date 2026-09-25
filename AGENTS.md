@@ -45,8 +45,8 @@ Use the version-pinned release checkout, not the early default-branch bootstrap.
 Clone into a new directory; do not replace an existing installation or worktree:
 
 ```bash
-git clone --branch v0.4.0-preview.13 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build13
-~/.local/share/juyi-build13/scripts/install.sh
+git clone --branch v0.4.0-preview.15 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build15
+~/.local/share/juyi-build15/scripts/install.sh
 ```
 
 The installer creates a venv, installs `requirements.txt` (FastAPI/uvicorn only),
@@ -128,7 +128,7 @@ it is not a secret. Do not create a new plaintext credential file.
 curl -s http://127.0.0.1:54321/health
 # Authenticated translation and edge-case checks (reads the token without
 # placing it in shell history or a command-line argument):
-JUYI_INSTALL_ROOT="$HOME/.local/share/juyi-build13"
+JUYI_INSTALL_ROOT="$HOME/.local/share/juyi-build15"
 "$JUYI_INSTALL_ROOT/venv/bin/python" "$JUYI_INSTALL_ROOT/scripts/smoke.py"
 ```
 
@@ -137,7 +137,7 @@ native end-to-end check. That check (in another app: select text → double-tap
 Option → native popup) can only be confirmed by the human because it depends on
 the Accessibility grant from Step 3. Tell them to complete setup step 2.
 
-Full diagnostics: `~/.local/share/juyi-build13/scripts/test.sh`. If Step 1 used
+Full diagnostics: `~/.local/share/juyi-build15/scripts/test.sh`. If Step 1 used
 a different new checkout directory, use that exact directory for verification
 and diagnostics too; do not silently test an older installation.
 

@@ -20,7 +20,7 @@ Select English in a supported Mac app → double-tap **Option (⌥⌥)** → rea
 
 ## Get Juyi
 
-[Download the public preview (build 13, Universal 2 DMG)](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.13/Juyi-0.4.0-build13-universal.dmg) · [Release notes and checksums](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.13)
+[Download the public preview (build 15, Universal 2 DMG)](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.15/Juyi-0.4.0-build15-universal.dmg) · [Release notes and checksums](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15)
 
 **Public testing, not a stable release.** Signed, notarized DMGs are available without a GitHub login. The repository ZIP and CI artifacts are not installers. Check each release's verification status and remaining acceptance checks.
 
@@ -106,8 +106,8 @@ This full source-installation path for optional cloud/legacy components requires
 Use the version-pinned release checkout, not the early default-branch bootstrap. Clone into a new directory; do not overwrite an existing checkout:
 
 ```bash
-git clone --branch v0.4.0-preview.13 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build13
-~/.local/share/juyi-build13/scripts/install.sh
+git clone --branch v0.4.0-preview.15 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build15
+~/.local/share/juyi-build15/scripts/install.sh
 ```
 
 The installer checks Homebrew, Python >= 3.10, and disk space. It creates a venv, installs `requirements.txt`, compiles the Apple on-device helper on macOS 15+, loads a LaunchAgent bound only to `127.0.0.1:54321`, and adds a managed block to the Hammerspoon config. It also generates a local API token readable only by the current user.
@@ -187,10 +187,10 @@ Explicitly switching to cloud stops the native Apple workflow and returns owners
 ## Commands
 
 ```bash
-~/.local/share/juyi-build13/scripts/test.sh           # full diagnostic matrix
-~/.local/share/juyi-build13/scripts/bench.sh          # IPC + translate benchmark
-~/.local/share/juyi-build13/eval/run_eval.py          # translation quality eval
-~/.local/share/juyi-build13/scripts/demo.sh           # short interactive demo
+~/.local/share/juyi-build15/scripts/test.sh           # full diagnostic matrix
+~/.local/share/juyi-build15/scripts/bench.sh          # IPC + translate benchmark
+~/.local/share/juyi-build15/eval/run_eval.py           # translation quality eval
+~/.local/share/juyi-build15/scripts/demo.sh           # short interactive demo
 ```
 
 These commands are for the optional source installation above. If you cloned
