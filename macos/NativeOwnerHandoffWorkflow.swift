@@ -19,6 +19,7 @@ final class NativeOwnerHandoffWorkflow {
         case idle
         case waitingForLegacy
         case legacyYielded
+        case nativeOnlyReady
         case returnedToLegacy
         case recoveryRequired
         case busy
@@ -54,7 +55,7 @@ final class NativeOwnerHandoffWorkflow {
 
     /// Publishing is allowed only when no request is retained by this workflow.
     /// Existing durable requests are never adopted as activation capabilities.
-    func begin() {
+    func begin(requiresLegacyAcknowledgement: Bool = true) {
         guard activeLease == nil, phase != .recoveryRequired else { return }
         latestUnsafeReason = nil
         returnReason = nil
@@ -69,7 +70,7 @@ final class NativeOwnerHandoffWorkflow {
                 return
             }
             activeLease = lease
-            phase = .waitingForLegacy
+            phase = requiresLegacyAcknowledgement ? .waitingForLegacy : .nativeOnlyReady
         case .busy:
             phase = .busy
         case .recoveryRequired:

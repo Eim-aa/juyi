@@ -10,7 +10,9 @@ protocol NativeOwnerActivatingEffect: AnyObject {
 /// handoff lease. This coordinator has no event monitor, AX, selection,
 /// translation, clipboard, network, or UI implementation.
 ///
-/// The effect may start only after the exact legacy yield is accepted. Returning
+/// An existing legacy installation must provide its exact yield. A clean
+/// native-only installation retains the same durable request and process lock.
+/// The production effect rechecks absence of the legacy environment. Returning
 /// the request is ordered strictly after a confirmed stop. An uncertain stop
 /// preserves the request and process lock, so Hammerspoon remains yielded and
 /// the system has at most one trigger owner.
@@ -72,12 +74,12 @@ final class NativeOwnerActivationCoordinator {
 
     var holdsOwnerLease: Bool { workflow.holdsCandidateLease }
 
-    func beginHandoff() {
+    func beginHandoff(requiresLegacyAcknowledgement: Bool = true) {
         guard effectState == .stopped,
               phase != .nativeActive,
               phase != .revocationRequired else { return }
         lastDeactivationReason = nil
-        workflow.begin()
+        workflow.begin(requiresLegacyAcknowledgement: requiresLegacyAcknowledgement)
         syncFromWorkflow()
     }
 
@@ -101,7 +103,7 @@ final class NativeOwnerActivationCoordinator {
 
     func activate() {
         guard phase == .readyToActivate,
-              workflow.phase == .legacyYielded,
+              (workflow.phase == .legacyYielded || workflow.phase == .nativeOnlyReady),
               workflow.holdsCandidateLease,
               effectState == .stopped else { return }
 
@@ -181,7 +183,7 @@ final class NativeOwnerActivationCoordinator {
             phase = .idle
         case .waitingForLegacy:
             phase = .waitingForLegacy
-        case .legacyYielded:
+        case .legacyYielded, .nativeOnlyReady:
             phase = .readyToActivate
         case .returnedToLegacy:
             phase = .returnedToLegacy

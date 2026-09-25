@@ -210,7 +210,34 @@ enum NativeOwnerActivationCoordinatorTests {
         expect(!requestExists(secondPath), "unavailable status kept request")
     }
 
+    private static func testNativeOnlyUsesTheSameExclusiveLease() {
+        let path = root(); defer { cleanup(path) }
+        let effect = Effect(); effect.starts = [.started]; effect.stops = [.uncertain, .stopped]
+        let coordinator = make(path, effect: effect)
+        coordinator.beginHandoff(requiresLegacyAcknowledgement: false)
+        expect(coordinator.phase == .readyToActivate, "clean install still waited for a legacy process")
+        expect(requestExists(path), "native-only owner omitted the existing durable request")
+        let other = make(path, effect: Effect())
+        other.beginHandoff(requiresLegacyAcknowledgement: false)
+        expect(other.phase == .busy, "native-only mode bypassed the process lock")
+        coordinator.activate()
+        expect(coordinator.phase == .nativeActive, "native-only activation failed")
+        coordinator.deactivate(.pause)
+        expect(coordinator.phase == .revocationRequired, "native-only uncertain stop was trusted")
+        expect(requestExists(path), "native-only stop returned its request too early")
+        coordinator.retryRevocation()
+        expect(!requestExists(path), "native-only request survived confirmed stop")
+
+        let deniedEffect = Effect(); deniedEffect.starts = [.notStarted]
+        let denied = make(path, effect: deniedEffect)
+        denied.beginHandoff(requiresLegacyAcknowledgement: false)
+        denied.activate()
+        expect(denied.phase == .returnedToLegacy, "failed environment recheck retained an active owner")
+        expect(!requestExists(path), "failed native-only start leaked its request")
+    }
+
     static func main() {
+        testNativeOnlyUsesTheSameExclusiveLease()
         testEffectCannotStartBeforeExactYield()
         testStartAndStopOrderingProtectsRequest()
         testNotStartedReturnsWithoutStop()

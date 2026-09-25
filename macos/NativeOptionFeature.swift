@@ -3,8 +3,8 @@ import Combine
 import Foundation
 
 /// The single production owner for native Apple selection translation.
-/// It installs the Option monitor only after the existing durable owner
-/// protocol proves that Hammerspoon has stopped its watcher, request and popup.
+/// Clean installations use the native chain without a companion app. Existing
+/// legacy installations must still complete the unchanged owner handshake.
 @MainActor
 final class NativeProductionTranslationCoordinator: ObservableObject {
     enum Phase: Equatable {
@@ -55,6 +55,20 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     private var isPaused = false
     private var appleEngineSelected = true
     private var shortcutDeploymentReady = false
+    private var nativeOnlySession = false
+    private var legacyLaunchObservation: NSObjectProtocol?
+
+    static var requiresLegacyHandoff: Bool {
+        !NSRunningApplication.runningApplications(
+            withBundleIdentifier: "org.hammerspoon.Hammerspoon"
+        ).isEmpty || NativeOwnerHandoffStatusReader.legacyArtifactsMayExist(
+            homePath: FileManager.default.homeDirectoryForCurrentUser.path
+        )
+    }
+
+    private var nativeActivationReady: Bool {
+        shortcutDeploymentReady || !Self.requiresLegacyHandoff
+    }
     private var lifecycleActivationAllowed = false
     private var pipelineGeneration: UInt64 = 0
     private var overlayGeneration: Int?
@@ -76,6 +90,12 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
 
         effect.startHandler = { [weak self] in self?.startNativeEffect() ?? .notStarted }
         effect.stopHandler = { [weak self] in self?.stopNativeEffect() ?? .stopped }
+        legacyLaunchObservation = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in _ = self?.nativeOnlyEnvironmentIsCurrent() }
+        }
     }
 
     var isEnabled: Bool { phase == .active }
@@ -96,7 +116,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     }
 
     func enableByUser() {
-        guard shortcutDeploymentReady else {
+        guard nativeActivationReady else {
             phase = .unavailable
             detail = "请先部署并重新载入当前快捷键模块。"
             return
@@ -126,7 +146,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     /// lease until `finishDeferredRevocation` can safely resume this request.
     func retryByUser() {
         guard actionIsEnabled, !isPaused, appleEngineSelected else { return }
-        guard shortcutDeploymentReady else {
+        guard nativeActivationReady else {
             phase = .unavailable
             detail = "请先部署并重新载入当前快捷键模块。"
             return
@@ -157,7 +177,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         if activation?.phase == .idle || activation?.phase == .recoveryRequired {
             activation?.recoverAndReturnToLegacy()
         }
-        guard shortcutDeploymentReady else {
+        guard nativeActivationReady else {
             if phase != .disabled {
                 phase = .disabled
                 detail = "快捷键模块需要更新后才能恢复原生双 Option。"
@@ -168,7 +188,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         guard UserDefaults.standard.bool(forKey: Self.enabledKey) else {
             if activation?.phase == .returnedToLegacy {
                 phase = .disabled
-                detail = "原生双 Option 已停用；Hammerspoon 可恢复响应。"
+                detail = "原生双 Option 已停用。"
             }
             return
         }
@@ -188,7 +208,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     func setShortcutDeploymentReady(_ ready: Bool) {
         guard shortcutDeploymentReady != ready else { return }
         shortcutDeploymentReady = ready
-        if !ready {
+        if !ready && Self.requiresLegacyHandoff {
             pendingUserEnable = false
             disable(reason: .stop, preservePreference: true)
         }
@@ -362,14 +382,14 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     private func enable(promptForAccessibility: Bool) async {
         guard !enableInProgress, !isPreparingLanguages,
               appleReadinessIssue == nil, !isPaused, appleEngineSelected,
-              shortcutDeploymentReady,
+              nativeActivationReady,
               lifecycleActivationAllowed else { return }
         enableInProgress = true
         let generation = lifecycleGeneration
         defer { enableInProgress = false }
         guard let activation, statusReader != nil else {
             phase = .unavailable
-            detail = "无法建立与 Hammerspoon 的安全 owner 交接。"
+            detail = "无法建立原生快捷键的独占状态，请检查配置目录后重试。"
             return
         }
         guard activation.phase != .revocationRequired else {
@@ -393,12 +413,12 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         guard generation == lifecycleGeneration,
               !isPaused,
               appleEngineSelected,
-              shortcutDeploymentReady,
+              nativeActivationReady,
               lifecycleActivationAllowed else { return }
         let readiness = await apple.readiness()
         guard generation == lifecycleGeneration,
               !isPaused, appleEngineSelected,
-              shortcutDeploymentReady, lifecycleActivationAllowed else { return }
+              nativeActivationReady, lifecycleActivationAllowed else { return }
         switch readiness {
         case .installed:
             break
@@ -425,18 +445,23 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         guard generation == lifecycleGeneration,
               !isPaused,
               appleEngineSelected,
-              shortcutDeploymentReady,
+              nativeActivationReady,
               lifecycleActivationAllowed else { return }
 
         if activation.phase == .recoveryRequired {
             activation.recoverAndReturnToLegacy()
         }
-        activation.beginHandoff()
+        nativeOnlySession = !Self.requiresLegacyHandoff
+        activation.beginHandoff(requiresLegacyAcknowledgement: !nativeOnlySession)
         if activation.phase == .recoveryRequired {
             activation.recoverAndReturnToLegacy()
             if activation.phase == .returnedToLegacy {
-                activation.beginHandoff()
+                activation.beginHandoff(requiresLegacyAcknowledgement: !nativeOnlySession)
             }
+        }
+        if activation.phase == .readyToActivate {
+            completeOwnerActivation()
+            return
         }
         guard activation.phase == .waitingForLegacy else {
             syncOwnerFailure()
@@ -468,25 +493,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             activation.statusBecameUnavailable()
         }
         if activation.phase == .readyToActivate {
-            activation.activate()
-            stopOwnerPolling()
-            if activation.phase == .nativeActive {
-                if recoveryPauseHeld {
-                    guard legacyRecoveryPauseHandler?(false) == true else {
-                        _ = stopNativeEffect()
-                        phase = .unavailable
-                        detail = "翻译已准备好，但无法恢复快捷键状态，请重新检查。"
-                        return
-                    }
-                    recoveryPauseHeld = false
-                }
-                pendingUserEnable = false
-                UserDefaults.standard.set(true, forKey: Self.enabledKey)
-                phase = .active
-                detail = "已启用：选中英文后连按两次 Option。"
-            } else {
-                syncOwnerFailure()
-            }
+            completeOwnerActivation()
             return
         }
         guard activation.phase == .waitingForLegacy else {
@@ -503,6 +510,34 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
     }
 
+    private func completeOwnerActivation() {
+        guard let activation else { return }
+        activation.activate()
+        stopOwnerPolling()
+        guard activation.phase == .nativeActive else { syncOwnerFailure(); return }
+        if recoveryPauseHeld {
+            guard legacyRecoveryPauseHandler?(false) == true else {
+                _ = stopNativeEffect()
+                phase = .unavailable
+                detail = "翻译已准备好，但无法恢复快捷键状态，请重新检查。"
+                return
+            }
+            recoveryPauseHeld = false
+        }
+        pendingUserEnable = false
+        UserDefaults.standard.set(true, forKey: Self.enabledKey)
+        phase = .active
+        detail = "已启用：选中英文后连按两次 Option。"
+    }
+
+    @discardableResult private func nativeOnlyEnvironmentIsCurrent() -> Bool {
+        guard nativeOnlySession, Self.requiresLegacyHandoff else { return true }
+        disable(reason: .stop, preservePreference: true)
+        phase = .unavailable
+        detail = "检测到早期快捷键组件。请点击重新启用，句译会先处理快捷键交接。"
+        return false
+    }
+
     private func syncOwnerFailure() {
         phase = .unavailable
         switch activation?.phase {
@@ -516,6 +551,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     }
 
     private func startNativeEffect() -> NativeOwnerActivationCoordinator.StartResult {
+        guard !nativeOnlySession || !Self.requiresLegacyHandoff else { return .notStarted }
         guard monitor == nil else { return .started }
         let candidate = NativeOptionMonitor(
             recognitionInvalidationHandler: { [weak self] in
@@ -561,7 +597,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             && UserDefaults.standard.bool(forKey: Self.enabledKey)
             && !isPaused
             && appleEngineSelected
-            && shortcutDeploymentReady
+            && nativeActivationReady
             && lifecycleActivationAllowed
         resumeRequestedAfterRevocation = false
         phase = .disabled
@@ -576,7 +612,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
                   appleEngineSelected {
             detail = "原生双 Option 已安全停止；系统恢复后会重新启用。"
         } else {
-            detail = "原生双 Option 已停用；Hammerspoon 可恢复响应。"
+            detail = "原生双 Option 已停用。"
         }
     }
 
@@ -594,6 +630,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
         stopOwnerPolling()
         activation?.deactivate(reason)
+        nativeOnlySession = false
         // A terminal error panel may outlive an already-stopped owner. Close
         // it before a new preparation/retry so its dismissal cannot cancel
         // the replacement Apple request.
@@ -614,7 +651,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             phase = .disabled
             detail = preservePreference
                 ? "原生双 Option 已暂停；恢复后会重新安全交接。"
-                : "原生双 Option 已停用；Hammerspoon 可恢复响应。"
+                : "原生双 Option 已停用。"
         }
     }
 
@@ -625,6 +662,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     }
 
     private func beginPipeline(target: NativeSelectionTarget) {
+        guard nativeOnlyEnvironmentIsCurrent() else { return }
         guard phase == .active, !isPreparingLanguages,
               appleReadinessIssue == nil else { return }
         cancelPipeline(dismissOverlay: true)

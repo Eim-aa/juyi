@@ -20,15 +20,15 @@
 
 ## 获取与安装
 
-**当前是开发者预览，尚无正式公众安装包。** 请按下面的入口选择，不要把仓库 ZIP 或 CI 构建产物当成正式安装器。
+**当前是公开测试阶段，不是稳定版。** 下载已签名、公证的 DMG，无需登录 GitHub；不要把仓库 ZIP 或 CI 构建产物当成安装器。具体构建状态与已验证范围以发布说明为准。
 
 | 你想做什么 | 从这里开始 |
 | --- | --- |
-| 我希望下载后直接安装 | [查看 GitHub Releases](https://github.com/Eim-aa/juyi/releases)；目前尚无 Release，签名、公证和完整安装体验完成后再提供公众安装包 |
+| 我希望下载后直接安装 | [查看 GitHub Releases](https://github.com/Eim-aa/juyi/releases)，选择最新公开测试版的 DMG；build 12 起的全新本地安装不需要 Hammerspoon |
 | 我愿意从源码试用 | [手动源码安装](#安装手动)，或 [让 AI Agent 协助](#用-ai-agent-协助源码安装) |
 | 我想了解安装前提 | [安装与使用说明](docs/MENU_BAR_APP.md) |
 
-**安装前确认：** macOS 15+；当前预览仍需 Hammerspoon、句译辅助功能权限和系统中英语言资源。源码安装还需 Homebrew、Python ≥ 3.10 及可用的 Xcode/Command Line Tools。Universal 2 构建包含 Apple Silicon 与 Intel 架构，但不代表所有硬件和 App 均已实测。
+**安装前确认：** macOS 15+、句译辅助功能权限和系统中英语言资源。build 12 起本地翻译由句译独立完成；build 11 仍需 Hammerspoon。已有早期开发组件的机器仍会进行安全交接。可选云端的完整源码安装还需 Homebrew、Python ≥ 3.10 及可用的 Xcode/Command Line Tools。Universal 2 包含 Apple Silicon 与 Intel 架构，不代表所有硬件和 App 均已实测。
 
 App Store 上架是后续评估项，本页暂不提供商店下载入口，也不承诺上架时间。
 
@@ -38,7 +38,7 @@ App Store 上架是后续评估项，本页暂不提供商店下载入口，也�
 
 ## 第一次翻译
 
-1. 安装后打开句译，按设置提示准备兼容组件、为**句译**授予辅助功能权限，并按需下载 Apple 中英语言资源。
+1. 把句译拖到“应用程序”后打开，为**句译**授予辅助功能权限，并按需下载 Apple 中英语言资源。全新本地安装无需其他工具。
 2. 在句译的首次练习中点击“在文本编辑中打开”，在打开的示例文稿中选中英文。
 3. **连按两次 Option，不是同时按住两个 Option 键。** 看到选区旁出现中文译文后，就可以继续阅读。
 
@@ -97,7 +97,7 @@ Agent 可以：克隆仓库、检查依赖、编译苹果端上翻译助手、�
 
 ## 安装（手动）
 
-这是开发者源码安装路径，需要 macOS 15+、Homebrew、Python ≥ 3.10，以及可用的 Xcode/Command Line Tools 编译环境。**这些源码构建依赖不等于原生 Apple 路径的运行依赖**：已构建的 App 直接调用系统 Translation framework，不需 Python 服务；本预览版仍要求安装并打开 Hammerspoon。可选云端及旧兼容服务仍使用 Python 后台。
+以下是可选云端及早期兼容服务的完整源码安装路径，需要 macOS 15+、Homebrew、Python ≥ 3.10 和 Xcode/Command Line Tools。**仅使用本地翻译请优先下载 DMG，不必执行以下命令。** build 12 起全新原生 Apple 安装不需要 Python 服务或 Hammerspoon。
 
 一行装（克隆到 `~/.local/share/argos-translator` 并执行安装脚本）：
 
@@ -120,7 +120,7 @@ git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
 
 装完后打开“句译”，按两步首次设置完成启用：
 
-1. 点击启用原生双 Option。必要时，句译会部署安装包内的当前 Hammerspoon owner 交接模块并重新启动 Hammerspoon；随后会提示你在“系统设置 → 隐私与安全性 → 辅助功能”中授权 **句译**，授权后回到句译即可继续。
+1. 点击启用原生双 Option，按提示在“系统设置 → 隐私与安全性 → 辅助功能”中授权 **句译**，然后回到 App。仅检测到早期开发组件时，句译才会部署当前交接模块并重新启动 Hammerspoon；全新本地安装不会安装或启动它。
 2. 在首次练习中点击“在文本编辑中打开”，在示例文稿中选中 `Good tools should feel effortless.`，再**连按两次 Option（⌥⌥）**。看到原生译文浮窗后回到句译确认。句译自身窗口不作为取词目标。
 
 原生 Apple 链路由句译负责双 Option 监听、AX 取词、端上翻译和浮窗；Hammerspoon 不再处理这条链的取词或显示，只按现有 owner 协议安全停止并让出旧监听、请求和浮窗。
@@ -171,8 +171,9 @@ git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
 
 ```mermaid
 flowchart LR
-    U["用户在句译中启用原生双 Option"] --> O["owner 协议交接"]
-    O --> H["Hammerspoon 停止旧监听、请求和浮窗"]
+    U["用户在句译中启用原生双 Option"] --> O{"这台 Mac 有早期开发组件？"}
+    O -->|无| N1
+    O -->|有| H["既有 owner 协议：Hammerspoon 安全让出"]
 
     subgraph APP["句译原生 Apple 链路"]
         N1["全局双击 ⌥ 监听"] --> N2["AX 读取当前外部 App 选区"]

@@ -83,7 +83,7 @@ def test_production_permission_prompt_is_reached_only_from_explicit_enable():
     assert "nativeOwnerBridgeReady && deploymentIsCurrent" in explicit_enable
     assert "setShortcutDeploymentReady(deploymentIsCurrent)" in explicit_enable
     assert "private var shortcutDeploymentReady = false" in FEATURE
-    assert "guard shortcutDeploymentReady else" in FEATURE
+    assert "guard nativeActivationReady else" in FEATURE
     assert "private var lifecycleActivationAllowed = false" in FEATURE
     assert "guard lifecycleActivationAllowed else" in FEATURE
     assert "ownerBridgeIsFreshAfterRestart" in APP
@@ -212,7 +212,7 @@ def test_language_failures_cannot_keep_active_or_resume_without_explicit_recover
 
 def test_native_diagnostic_retry_retains_owner_stop_barrier():
     retry = FEATURE.split("func retryByUser()", 1)[1].split("func resumeIfEnabled()", 1)[0]
-    assert "guard shortcutDeploymentReady else" in retry
+    assert "guard nativeActivationReady else" in retry
     assert "!isPaused, appleEngineSelected" in retry
     assert "UserDefaults.standard.set(true, forKey: Self.enabledKey)" in retry
     assert retry.index("disable(reason: .stop, preservePreference: true)") < retry.index(
@@ -233,9 +233,12 @@ def test_recovery_uses_existing_pause_and_releases_only_after_native_owner_activ
     assert failure.index("holdLegacyPauseForRecovery()") < failure.index(
         "disable(reason: .stop, preservePreference: true)"
     )
-    owner_ready = FEATURE.split("if activation.phase == .nativeActive", 1)[1].split(
-        "guard activation.phase == .waitingForLegacy", 1
+    owner_ready = FEATURE.split("private func completeOwnerActivation()", 1)[1].split(
+        "@discardableResult private func nativeOnlyEnvironmentIsCurrent", 1
     )[0]
+    assert owner_ready.index("guard activation.phase == .nativeActive else") < owner_ready.index(
+        "legacyRecoveryPauseHandler?(false)"
+    )
     assert "legacyRecoveryPauseHandler?(false)" in owner_ready
     assert owner_ready.index("legacyRecoveryPauseHandler?(false)") < owner_ready.index(
         "phase = .active"

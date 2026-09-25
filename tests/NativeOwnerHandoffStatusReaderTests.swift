@@ -102,7 +102,20 @@ enum NativeOwnerHandoffStatusReaderTests {
         ) { passed += 1 } else { preconditionFailure("unchanged status rejected") }
     }
 
+    private static func testCleanInstallRequiresProvenAbsence() {
+        let path = root(); defer { cleanup(path) }
+        expect(!NativeOwnerHandoffStatusReader.legacyArtifactsMayExist(homePath: path), "clean home required a companion")
+        expect(symlink("missing-target", path + "/.hammerspoon") == 0, "link creation failed")
+        expect(NativeOwnerHandoffStatusReader.legacyArtifactsMayExist(homePath: path), "dangling legacy config was treated as clean")
+        expect(unlink(path + "/.hammerspoon") == 0, "link cleanup failed")
+        try! FileManager.default.createDirectory(atPath: path + "/.config/argos-translator", withIntermediateDirectories: true)
+        expect(write(Data("old status".utf8), to: path + "/.config/argos-translator/hs-status.json"), "status creation failed")
+        expect(NativeOwnerHandoffStatusReader.legacyArtifactsMayExist(homePath: path), "malformed old status bypassed handoff")
+        expect(NativeOwnerHandoffStatusReader.legacyArtifactsMayExist(homePath: "relative"), "invalid home was treated as clean")
+    }
+
     static func main() {
+        testCleanInstallRequiresProvenAbsence()
         testAbsentAndExactSnapshot()
         testUnsafeEnvelopeFailsClosed()
         testSymlinkHardlinkAndDirectoryFailClosed()

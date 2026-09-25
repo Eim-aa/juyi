@@ -177,7 +177,7 @@ final class NativeOwnerHandoffLabModel: ObservableObject {
         case .busy:
             phase = .busy
             statusHint = "另一个句译进程正持有 owner 锁；本进程没有创建 monitor。"
-        case .unavailable:
+        case .unavailable, .nativeOnlyReady:
             phase = .unavailable
             statusHint = "无法安全验证 owner 文件；请求已尽力归还，原生功能保持关闭。"
         }

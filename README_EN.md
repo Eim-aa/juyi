@@ -20,21 +20,21 @@ Select English in a supported Mac app → double-tap **Option (⌥⌥)** → rea
 
 ## Get Juyi
 
-**Developer preview: no public installer is available yet.** The repository ZIP and CI artifacts are not a signed, notarized installer.
+**Public testing, not a stable release.** Signed, notarized DMGs are available without a GitHub login. The repository ZIP and CI artifacts are not installers. Check each release's verification status and remaining acceptance checks.
 
-- **Looking for a ready-to-install app?** Check [GitHub Releases](https://github.com/Eim-aa/juyi/releases). There are currently no releases; public downloads are pending signing, notarization, and installation validation.
+- **Looking for a ready-to-install app?** Check [GitHub Releases](https://github.com/Eim-aa/juyi/releases) for the latest preview DMG. Clean local installations starting with build 12 do not require Hammerspoon.
 - **Comfortable with source builds?** Follow [manual installation](#install-manual) or [AI-assisted source installation](#source-installation-with-an-ai-agent).
-- **Requirements:** macOS 15+, Hammerspoon, Accessibility permission for Juyi, and the system English–Simplified Chinese language resources. Source installation additionally requires Homebrew, Python ≥ 3.10, and working Xcode/Command Line Tools. Universal 2 includes Apple Silicon and Intel slices; it is not proof of testing on every device or app.
+- **Requirements:** macOS 15+, Accessibility permission for Juyi, and the system English–Simplified Chinese language resources. Build 12 uses a standalone native local path; build 11 still needs Hammerspoon. Machines with earlier development components retain the safe handoff. Full cloud/source installation additionally requires Homebrew, Python ≥ 3.10, and Xcode/Command Line Tools. Universal 2 includes both architectures, not proof of testing on every device or app.
 
 App Store distribution is a future evaluation item, not an available download channel or a promised release date.
 
-> **Developer preview, not a public release package.** There is no completed Developer ID-signed, notarized public download yet. The instructions below install from source. A prebuilt native app does not need the Python service for Apple translation, but this preview still needs Hammerspoon, macOS 15+, Accessibility permission for **句译 (Juyi)**, and the system language pack. See [installation and usage](docs/MENU_BAR_APP.md).
+> **Use the DMG for local translation.** No Python service or additional shortcut tool is needed for a clean native installation starting with build 12. The full source-installation instructions below are for optional cloud/legacy components. See [installation and usage](docs/MENU_BAR_APP.md).
 
 The Xcode project builds a Universal 2 app and a compatibility helper. A successful build does not establish public-release readiness. See the [release boundaries](docs/RELEASE_BASELINE.md) and [product review and pending acceptance checks](docs/PRODUCT_REVIEW_2026-09-22.md).
 
 ## First translation
 
-1. Open Juyi after installation. Follow setup to prepare its compatibility component, grant Accessibility permission to **Juyi**, and download Apple's language resources if prompted.
+1. Drag Juyi to Applications and open it. Grant Accessibility permission to **Juyi**, and download Apple's language resources if prompted. A clean local installation needs no other tools.
 2. Open the sample document from the practice screen and select English in TextEdit.
 3. Tap Option twice in succession, rather than holding both Option keys. Read the translated popup beside your selection.
 
@@ -99,7 +99,7 @@ You still need to complete these steps yourself:
 
 ## Install (manual)
 
-This developer source-installation path requires macOS 15+, Homebrew, Python >= 3.10, and a working Xcode/Command Line Tools build environment. **Build dependencies are not native Apple runtime dependencies:** a prebuilt app calls the system Translation framework directly and needs no Python service for Apple translation. This preview still requires Hammerspoon to be installed and opened. The optional cloud and legacy compatibility service continues to use Python.
+This full source-installation path for optional cloud/legacy components requires macOS 15+, Homebrew, Python >= 3.10, and Xcode/Command Line Tools. **For local translation, prefer the DMG and skip these commands.** A clean native Apple installation starting with build 12 needs neither Python nor Hammerspoon.
 
 One-line install (clones to `~/.local/share/argos-translator` and runs the installer):
 
@@ -174,8 +174,9 @@ This Apple-first MVP does not expand into new engines, more languages, or transl
 
 ```mermaid
 flowchart LR
-    U["Enable native double Option in Juyi"] --> O["Owner handoff"]
-    O --> H["Hammerspoon stops its legacy listener, requests and popup"]
+    U["Enable native double Option in Juyi"] --> O{"Earlier development components present?"}
+    O -->|No| N1
+    O -->|Yes| H["Existing owner protocol: Hammerspoon safely yields"]
     subgraph APP["Native Apple workflow"]
         N1["Global double Option monitor"] --> N2["AX selection from the foreground app"]
         N2 -.WPS PDF compatibility only.-> N3["Two targeted Copy attempts + clipboard restoration"]

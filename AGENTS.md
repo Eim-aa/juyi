@@ -13,7 +13,24 @@ also uses a local FastAPI service on `127.0.0.1:54321`.
 Read this whole file before acting. Most steps you can run yourself; **two steps
 require the human** and are marked `HUMAN STEP`. Do not try to automate those.
 
-## Prerequisites (verify, don't assume)
+## Native local installation (preferred, build 12 onward)
+
+For Apple local translation on a clean Mac, download the signed, notarized DMG
+from GitHub Releases, drag Juyi into Applications, and open it. No Hammerspoon,
+Python, Homebrew, background service, or source build is required. Verify the
+actual release build: build 11 still has the Hammerspoon requirement.
+
+The human must grant Juyi Accessibility permission, approve any Apple language
+resource download, and test the real global double-Option gesture in another
+app. Never bypass TCC or simulate this acceptance. A Mac containing earlier
+development components still uses the existing owner handoff; missing or stale
+legacy status must not be treated as proof of absence.
+
+The remaining full source-installation steps are for optional cloud/legacy
+components, not prerequisites for the standalone native app. Do not run them
+for an Apple-only DMG installation.
+
+## Full source-installation prerequisites (verify, don't assume)
 
 - macOS 15.0 or newer (the current native app and installer baseline). On an
   older macOS release, stop before changing the service, Hammerspoon, or App;

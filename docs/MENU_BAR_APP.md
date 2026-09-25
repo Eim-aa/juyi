@@ -1,10 +1,12 @@
 # 句译原生 macOS App
 
-句译是 **macOS 15+ 开发者预览**，尚未提供签名、公证的正式公众下载包。App 原生负责 Apple 路径的双 Option 监听、辅助功能取词、端上翻译和译文浮窗；当前仍需 Hammerspoon 作为兼容组件，通过既有 owner 协议让出旧链。用户目标是在支持的 App 选中英文，连按两次 Option（⌥⌥）查看简体中文。
+句译是 **macOS 15+ 公开测试版**，不是稳定版。App 原生负责 Apple 路径的双 Option 监听、辅助功能取词、端上翻译和译文浮窗。build 12 起，全新本地安装不需要 Hammerspoon；仅已有早期开发组件时通过既有 owner 协议交接。用户目标是在支持的 App 选中英文，连按两次 Option（⌥⌥）查看简体中文。
 
 ## 安装
 
-当前可用的是源码安装流程，不是面向普通用户的双击安装包。它要求 Homebrew、Python ≥ 3.10 和 Xcode/Command Line Tools 编译环境。把源码放到运行目录后执行 `scripts/install.sh`；它会准备可选云端/兼容服务，通过 Homebrew 安装并打开 Hammerspoon，并安装 `/Applications/句译.app`：
+**本地翻译：** 从 [GitHub Releases](https://github.com/Eim-aa/juyi/releases) 下载标明已签名、公证的最新 DMG，无需登录 GitHub。将句译拖到“应用程序”后打开，按照 [安装与第一次翻译](INSTALL.html) 完成授权和语言资源准备。build 11 仍需 Hammerspoon，独立原生安装从 build 12 开始；请核对发布说明。
+
+以下是**可选云端／早期兼容组件的完整源码安装**，不属于普通本地用户的安装步骤。它要求 Homebrew、Python ≥ 3.10 和 Xcode/Command Line Tools。`scripts/install.sh` 会准备后台、Hammerspoon 并安装 App：
 
 ```bash
 git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
@@ -17,15 +19,15 @@ git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
 ~/.local/share/argos-translator/scripts/install_macos_app.sh
 ```
 
-**源码安装依赖与运行依赖不同。** 已编译的原生 App 在 Apple 模式直接调用系统 Translation framework，不需要 Python、FastAPI 或独立 translation helper 来翻译。它当前仍需已安装的 Hammerspoon、句译辅助功能权限和系统中英语言包。缺少 Hammerspoon 时，界面提供官方下载安装入口；这不等于已完成单一安装体验。
+**源码安装依赖与运行依赖不同。** build 12 起的全新 Apple 本地安装只需要句译、辅助功能权限和系统中英语言包，不需要 Python、FastAPI、独立 translation helper 或 Hammerspoon。检测到早期开发配置或运行中的 Hammerspoon 时，仍需完成安全交接；不会把过期状态当成安全证明。
 
 安装脚本会先构建并校验版本与 ad-hoc 签名，再更新系统“应用程序”中的 App；此签名检查不能替代 Developer ID 与公证。需要时 macOS 会显示管理员授权窗口。新 App 验证成功后才把旧的个人“应用程序”副本移到废纸篓。用户的引擎选择和钥匙串中的火山密钥不会被删除。脚本不覆盖自定义的同名 Hammerspoon 模块；冲突时停止并给出提示。
 
 ## 第一次使用
 
-`scripts/install.sh` 成功完成后，日常使用不需要终端；直接从“应用程序”打开“句译”。首次启动会出现一个可跳过、可继续的两步教学：
+安装后直接从“应用程序”打开“句译”（`/Applications/句译.app`），不需要终端。首次启动会出现一个可跳过、可继续的两步教学：
 
-1. **启用原生双 Option**：明确切换到 Apple 离线后，句译会在必要时部署安装包内的当前 Hammerspoon owner 模块，并观察重新启动后的新状态；随后按界面提示在“系统设置 → 隐私与安全性 → 辅助功能”为 **句译** 开启权限。此权限必须由用户本人授予；回到句译后会立即复检并完成安全交接。已有火山云端密钥不会被删除。
+1. **启用原生双 Option**：按界面提示在“系统设置 → 隐私与安全性 → 辅助功能”为 **句译** 开启权限，回到 App 后会复检。此权限必须由用户本人授予。仅已有早期开发组件时，才会更新 Hammerspoon 交接模块并观察其安全让出；全新本地安装跳过这一步。已有火山云端密钥不会被删除。
 2. **实际试用**：点击“打开文本编辑”，新建文稿，输入并选中 `Good tools should feel effortless.`，再快速连按两次 Option。看到原生译文浮窗后回到句译点“我看到了译文”。句译自身窗口不会被当作取词目标。需要语言包时在句译点击“准备 Apple 语言包”，按 macOS 提示确认。
 
 每一步都可以点“稍后再说”。这不会被误记为完成；主界面和菜单栏会保留“继续设置”入口。完成后可以从主界面的“重新学习”直接再练一次快捷键，也可以在“诊断与帮助”中完整重新运行设置。重新运行不会清除引擎选择或云端密钥。
@@ -79,6 +81,6 @@ open /tmp/JuyiDebug/Build/Products/Debug/Juyi.app
 
 正式工程构建 App 与 Apple Translation helper，二者都是 Universal 2（Apple Silicon + Intel），最低支持 macOS 15.0。现有 `scripts/build_macos_app.sh` 仍可用于安装脚本兼容路径，并读取与 Xcode 相同的版本和 deployment target。本地源码构建使用 ad-hoc 签名；公开下载版本在发布前仍必须配置 Developer ID 签名与 Apple 公证。完整构建契约见 [RELEASE_BASELINE.md](RELEASE_BASELINE.md)。
 
-当前原生 App 已承载 Apple 主链并通过现有 owner 协议与 Hammerspoon 互斥，提供图形化状态、权限、语言包与错误恢复入口。正式发行仍需签名、公证、可信下载包、Hammerspoon 依赖的完整安装体验，以及干净账户上的端到端验收。若继续公开提供可选云端，也需单独明确其后台安装边界；不能把这项额外运行时要求泛化成 Apple 模式必须安装 Python。
+当前原生 App 已承载 Apple 主链，并保留既有开发组件的 owner 互斥。每次公开新版都必须重新签名、公证、验证下载包；源码构建不自动获得发行信任。干净账户和不同硬件上的真实端到端验收仍须单独记录。可选云端需要独立后台，不能把这个要求泛化成 Apple 模式必须安装 Python。
 
 当前 Apple-only MVP 刻意不扩展新翻译供应商、多语言、OCR 或翻译历史。Python 后端继续服务可选云端和兼容路径；Hammerspoon 只保留旧链兼容与 owner 交接职责。

@@ -25,6 +25,18 @@ final class NativeOwnerHandoffStatusReader {
         )
     }
 
+    /// Only proven absence is a clean installation. Do not interpret a stale,
+    /// malformed, unreadable or dangling legacy artifact as "no legacy owner".
+    static func legacyArtifactsMayExist(homePath: String) -> Bool {
+        guard homePath.hasPrefix("/"), !homePath.utf8.contains(0) else { return true }
+        for relative in [".hammerspoon", ".config/argos-translator/hs-status.json"] {
+            var value = stat()
+            let result = (homePath + "/" + relative).withCString { lstat($0, &value) }
+            if result == 0 || errno != ENOENT { return true }
+        }
+        return false
+    }
+
     func read() -> Snapshot {
         guard let directory = NativeOwnerHandoffStatusPOSIX.openPrivateDirectory(
             directoryPath

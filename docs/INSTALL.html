@@ -13,12 +13,12 @@ small { opacity: .75; } code { font-size: .92em; }
 </style>
 <h1>读懂这一句，继续读下去。</h1>
 <p>句译 · 选中英文，连按两次 Option（⌥⌥），在选区旁查看中文。</p>
-<p class="note"><strong>开发者预览</strong>：这份说明和本地 DMG 不表示签名、公证或首次安装验收已经通过。公众发行状态以 <a href="https://github.com/Eim-aa/juyi/releases">GitHub Releases</a> 为准。若 macOS 阻止打开，请等待合格发行包；不要关闭 Gatekeeper 或移除隔离属性。</p>
+<p class="note"><strong>公开测试版 · build 12 起的安装流程</strong>：从 <a href="https://github.com/Eim-aa/juyi/releases">GitHub Releases</a> 下载标明已签名、公证的 DMG，无需登录 GitHub。源码 ZIP 和本地构建不等于已公证安装包；首次安装及不同硬件仍需要实际验证。若 macOS 阻止打开，请报告提示，不要关闭 Gatekeeper 或移除隔离属性。</p>
 <h2>1. 安装到“应用程序”</h2>
 <ol>
 <li>需要 macOS 15 或更新系统。安装包包含 Apple Silicon 与 Intel 架构；这不代表两类硬件均已实测。</li>
 <li>更新前正常退出旧版句译，并保留旧安装包以便回退。把 DMG 内的<strong>句译.app</strong>拖到<strong>Applications</strong>，然后从“应用程序”打开句译，不要直接在 DMG 中启用。</li>
-<li>当前预览仍需 <a href="https://www.hammerspoon.org/">Hammerspoon</a>。从其官网下载安装到“应用程序”，打开一次，再回句译点击继续。句译会准备兼容组件；不要同时运行旧的独立翻译快捷键。</li>
+<li><strong>本地翻译只需安装句译，不需要 Hammerspoon、Python 或 Homebrew。</strong>若这台 Mac 留有早期开发版的快捷键组件，句译会先处理兼容交接；不要同时运行旧的独立翻译快捷键。全新安装没有这一步。</li>
 </ol>
 <h2>2. 按句译的提示完成准备</h2>
 <ol>

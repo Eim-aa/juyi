@@ -227,9 +227,9 @@ final class AppModel: ObservableObject {
     init() {
         try? FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: configDir.path)
-        // Preserve the user's preference across updates, but do not allow it
-        // to resume native ownership until this exact bundle resource has been
-        // deployed and observed from a fresh Hammerspoon process.
+        // Preserve the user's preference. Existing development components
+        // still require this exact bundle resource and a fresh legacy ack;
+        // installations without those components use the native-only path.
         NativeProductionTranslationCoordinator.shared.setShortcutDeploymentReady(
             bundledShortcutIsCurrent
         )
@@ -288,6 +288,9 @@ final class AppModel: ObservableObject {
     }
     var hammerspoonRunning: Bool {
         !NSRunningApplication.runningApplications(withBundleIdentifier: "org.hammerspoon.Hammerspoon").isEmpty
+    }
+    var nativeNeedsLegacyHandoff: Bool {
+        NativeProductionTranslationCoordinator.requiresLegacyHandoff
     }
     var serviceReady: Bool { health?.ok == true }
     var userPaused: Bool {
@@ -406,7 +409,6 @@ final class AppModel: ObservableObject {
             let native = NativeProductionTranslationCoordinator.shared
             if native.isEnabled { return "选中英文，连按两次 Option，查看中文译文。" }
             if shortcutRepairBusy { return "正在更新兼容组件，请稍候。" }
-            if !hammerspoonInstalled { return "此预览版需要 Hammerspoon；安装后回到这里继续。" }
             return native.detail
         }
         if !serviceReady { return serviceBusy ? "正在重新连接翻译组件…" : "翻译组件暂时没有响应，可以自动修复。" }
@@ -483,7 +485,6 @@ final class AppModel: ObservableObject {
         if selectedEngine == "apple" {
             if native.phase == .requestingAccessibility { return "打开系统设置" }
             if native.phase == .waitingForHammerspoon { return "正在启用双 Option…" }
-            if !hammerspoonInstalled { return "下载 Hammerspoon" }
             if native.phase == .languagePackRequired { return "准备语言包" }
             if native.phase == .unsupported { return "诊断与帮助" }
             if native.phase == .unavailable { return "重新检查并启用" }
@@ -510,7 +511,6 @@ final class AppModel: ObservableObject {
         if userPaused || ready { togglePause(); return }
         if selectedEngine == "apple" {
             if native.phase == .requestingAccessibility { openAccessibility() }
-            else if !hammerspoonInstalled { openHammerspoon() }
             else if native.phase == .languagePackRequired { native.prepareLanguages() }
             else if native.phase == .unsupported { showDiagnostics = true }
             else if native.phase == .unavailable || onboardingCompleted { enableNativeShortcut() }
@@ -657,19 +657,31 @@ final class AppModel: ObservableObject {
         practiceTroubleshooting = false
         onboardingScreen = .permission
         onboardingPresented = true
-        installBundledShortcut(enableNativeAfterInstall: false)
+        if selectedEngine == "apple" && !nativeNeedsLegacyHandoff {
+            enableNativeShortcut()
+        } else {
+            installBundledShortcut(enableNativeAfterInstall: false)
+        }
         onChange?()
     }
 
     func enableNativeShortcut() {
         notice = ""
         let native = NativeProductionTranslationCoordinator.shared
+        guard bundleIsInApplicationsFolder else {
+            notice = "请先把句译拖到“应用程序”文件夹，再启用双 Option。"
+            return
+        }
         guard selectedEngine == "apple" || setEngine("apple") else { return }
         if native.isEnabled {
             native.enableByUser()
             return
         }
         readLocalState()
+        if !nativeNeedsLegacyHandoff {
+            native.enableByUser()
+            return
+        }
         let deploymentIsCurrent = bundledShortcutIsCurrent
         native.setShortcutDeploymentReady(deploymentIsCurrent)
         if nativeOwnerBridgeReady && deploymentIsCurrent {
@@ -2659,7 +2671,7 @@ private struct OnboardingView: View {
 
     private var permission: some View {
         VStack(alignment: .leading, spacing: 18) {
-            stepTitle("完成三项准备", subtitle: "兼容组件、句译权限和语言资源就绪后，就能启用双 Option。")
+            stepTitle("完成首次准备", subtitle: "允许辅助功能、准备 Apple 语言资源，就能启用双 Option。")
             DisclosureGroup("这项权限有什么作用？", isExpanded: $showPermissionExplanation) {
                 Text("macOS 将选区读取和全局按键归入“辅助功能”权限。句译只在你触发翻译时读取选中的文字；你可以随时在系统设置中关闭权限。")
                     .font(.callout).foregroundStyle(.secondary).padding(.top, 8)
@@ -2680,7 +2692,9 @@ private struct OnboardingView: View {
             if model.permissionTroubleshooting {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("仍然无法完成？").font(.subheadline.weight(.medium))
-                    Text("确认 Hammerspoon 已打开并载入当前模块；同时在辅助功能中允许句译。模块更新失败时，句译不会覆盖你的自定义配置。")
+                    Text(model.nativeNeedsLegacyHandoff
+                        ? "这台 Mac 留有早期快捷键组件，句译需要先安全交接。不会覆盖你的自定义配置；同时请在辅助功能中允许句译。"
+                        : "请在辅助功能中允许句译，返回这里重新检查。语言资源准备由 macOS 完成，不需要额外安装快捷键工具。")
                         .font(.callout).foregroundStyle(.secondary)
                     Button("打开诊断") { model.showDiagnostics = true }.buttonStyle(.link)
                 }
@@ -2691,10 +2705,12 @@ private struct OnboardingView: View {
     private var shortcutStatusCard: some View {
         let state = shortcutStatus
         return VStack(alignment: .leading, spacing: 12) {
-            preparationRow("Hammerspoon 兼容组件",
-                detail: "参与快捷键交接；原生按键监听和翻译由句译完成。",
-                complete: model.nativeOwnerBridgeReady || nativeTranslation.isEnabled)
-            Divider()
+            if model.nativeNeedsLegacyHandoff {
+                preparationRow("处理这台 Mac 上的早期快捷键组件",
+                    detail: "仅已有开发组件需要交接；全新安装不需要 Hammerspoon。",
+                    complete: model.nativeOwnerBridgeReady || nativeTranslation.isEnabled)
+                Divider()
+            }
             preparationRow("允许句译使用辅助功能",
                 detail: "用于按键监听和读取选区。授权后返回句译，会自动复检。",
                 complete: AccessibilityController.status == .authorized)
@@ -2747,7 +2763,7 @@ private struct OnboardingView: View {
         if model.selectedEngine != "apple" {
             return ("lock.shield.fill", Color(nsColor: .systemOrange), "原生双 Option 使用 Apple 离线翻译", "点击下一步会明确切换到 Apple 离线；现有火山云端密钥不会被删除。")
         }
-        if model.nativeOwnerBridgeReady {
+        if !model.nativeNeedsLegacyHandoff || model.nativeOwnerBridgeReady {
             return ("hand.tap.fill", Color(nsColor: .systemOrange), "可以启用双 Option", "点击启用后，按系统提示为句译开启辅助功能权限。")
         }
         switch model.hotkeyProblem {
@@ -2788,7 +2804,7 @@ private struct OnboardingView: View {
             case .disabled:
                 if model.selectedEngine != "apple" {
                     footer(primary: "切换到 Apple 离线并启用", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
-                } else if model.nativeOwnerBridgeReady || model.hotkeyProblem == .ready {
+                } else if !model.nativeNeedsLegacyHandoff || model.nativeOwnerBridgeReady || model.hotkeyProblem == .ready {
                     footer(primary: "启用双 Option", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
                 } else {
                     switch model.hotkeyProblem {
@@ -2979,9 +2995,11 @@ private struct DiagnosticsView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("当前仅支持英语到简体中文。文本编辑和 WPS 文本 PDF 已在本机验证；其他 App 的取词能力取决于其辅助功能接口。扫描图片型 PDF、安全输入框和受保护内容暂不支持。")
                         Text("WPS PDF 兼容取词会临时执行系统复制，并尽力恢复原剪贴板。剪贴板管理器可能保留原文或干扰取词；敏感内容请避免使用这条兼容路径。")
-                        Text("此预览版仍需安装 Hammerspoon 作为快捷键兼容组件。句译负责原生取词和翻译，Apple 离线失败时不会自动上传云端。")
+                        Text("本地翻译由句译独立完成，不需要额外安装快捷键工具。检测到已有的早期开发组件时，才会处理兼容交接。Apple 离线失败时不会自动上传云端。")
                         Text("关闭窗口后继续运行；暂停或退出会停止翻译。退出后重新打开，需要点击“恢复句译”。")
-                        Button("打开 Hammerspoon 或官方网站") { model.openHammerspoon() }
+                        if model.nativeNeedsLegacyHandoff || model.selectedEngine != "apple" {
+                            Button("检查已有 Hammerspoon 组件") { model.openHammerspoon() }
+                        }
                         Button("打开技术日志") { model.openLogs() }
                     }.font(.callout).foregroundStyle(.secondary).padding(.top, 6)
                 }
@@ -3058,7 +3076,7 @@ private struct SupportInfoView: View {
                     }
                     section("后台运行与停止", symbol: "menubar.rectangle") {
                         Text("关闭窗口：句译继续运行。\n暂停翻译：停止翻译，保留设置。\n退出句译：停止翻译；重开后需要点击“恢复翻译”。")
-                        Text("此预览版仍需 Hammerspoon 兼容组件参与快捷键交接；Apple 路径的按键监听、取词和翻译由句译原生完成。")
+                        Text("Apple 路径的按键监听、取词和翻译由句译独立完成，无需安装 Hammerspoon。已有早期开发组件时，句译会先安全处理快捷键交接。")
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -3110,7 +3128,7 @@ private struct AppView: View {
                 HStack(alignment: .top) {
                     Text("开发者预览 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
                     Spacer()
-                    Text("仍需 Hammerspoon 兼容组件")
+                    Text(model.selectedEngine == "apple" ? "原生本地翻译" : "云端需另行配置")
                 }.font(.caption).foregroundStyle(.secondary)
             }.padding(.horizontal, 24).padding(.top, 40).padding(.bottom, 20)
         }.background(Color(nsColor: .windowBackgroundColor))
@@ -3137,7 +3155,7 @@ private struct AppView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if model.selectedEngine == "apple" && nativeTranslation.phase == .disabled
                     && !model.userPaused && !model.translationSetupInProgress {
-                    Text("需要 Hammerspoon 兼容组件、句译辅助功能权限，以及 Apple 中英语言资源。")
+                    Text("需要句译辅助功能权限和 Apple 中英语言资源；无需另装快捷键工具。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
