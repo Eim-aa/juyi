@@ -236,6 +236,8 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
     private var resultLabIdentity: NativeTranslationOverlayExternalIdentity?
     #endif
     private let footerStack = NSStackView()
+    private let headerStack = NSStackView()
+    private let bodyStack = NSStackView()
     private var bodyHeightConstraint: NSLayoutConstraint!
     private var separatorHeightConstraint: NSLayoutConstraint!
 
@@ -260,8 +262,19 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         statefulActionsEnabled: Bool = true
     ) {
         titleField.stringValue = state.title
+        let isSuccess = state.kind == .success
+        headerStack.isHidden = isSuccess
+        // Keep the same close control and keyboard topology. Success puts it
+        // beside the translation instead of spending a row on a "译文" title.
+        let closeContainer = isSuccess ? bodyStack : headerStack
+        if closeButton.superview !== closeContainer {
+            closeButton.removeFromSuperview()
+            closeContainer.addArrangedSubview(closeButton)
+        }
+        setAccessibilityLabel(isSuccess ? state.title : nil)
         bodyField.attributedStringValue = attributedBody(state)
         bodyScrollView.isHidden = state.body.isEmpty
+        bodyStack.isHidden = state.body.isEmpty
         metadataField.stringValue = state.metadata ?? ""
         metadataField.isHidden = state.metadata == nil
         fallbackField.stringValue = state.fallbackNotice ?? ""
@@ -340,7 +353,7 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         }
         titleField.font = scaledSystemFont(ofSize: 13, weight: .semibold)
         bodyField.font = scaledSystemFont(
-            ofSize: state.kind == .success ? 14 : 12,
+            ofSize: state.kind == .success ? 15 : 13,
             weight: .regular
         )
         for field in [metadataField, fallbackField] {
@@ -383,16 +396,15 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
             let baseline = min(152, max(104, 116 + extra))
             return CGSize(width: 360, height: CGFloat(baseline) * scale)
         case .success:
-            let scalarCount = state.body.unicodeScalars.count
-            let explicitLines = max(1, state.body.split(separator: "\n", omittingEmptySubsequences: false).count)
-            let estimatedWrappedLines = max(explicitLines, Int(ceil(Double(scalarCount) / 34.0)))
-            let footerExpansion = max(0, footerHeight(for: state) / scale - 28)
-            let estimated: CGFloat = (112
-                + footerExpansion
-                + CGFloat(min(208, estimatedWrappedLines * 20))) * scale
+            let textHeight = attributedBody(state).boundingRect(
+                with: CGSize(width: 296, height: CGFloat.greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading]
+            ).height
+            let estimated = 28 + 17 + footerHeight(for: state)
+                + max(28 * scale, ceil(textHeight) + 4)
             return CGSize(
                 width: 360,
-                height: min(320 * scale, max(132 * scale, estimated))
+                height: min(320 * scale, max(104 * scale, estimated))
             )
         }
     }
@@ -520,9 +532,8 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         ctaButton.target = self
         ctaButton.action = #selector(ctaPressed)
 
-        let header = NSStackView(
-            views: [loadingIndicator, iconView, titleField, NSView(), closeButton]
-        )
+        let header = headerStack
+        header.setViews([loadingIndicator, iconView, titleField, NSView(), closeButton], in: .leading)
         header.orientation = .horizontal
         header.alignment = .centerY
         header.spacing = 8
@@ -555,6 +566,14 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         ])
         bodyHeightConstraint = bodyScrollView.heightAnchor.constraint(equalToConstant: 40)
         bodyHeightConstraint.isActive = true
+        bodyStack.setViews([bodyScrollView], in: .leading)
+        bodyStack.orientation = .horizontal
+        bodyStack.alignment = .top
+        bodyStack.spacing = 8
+        bodyStack.translatesAutoresizingMaskIntoConstraints = false
+        bodyScrollView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        closeButton.setContentHuggingPriority(.required, for: .horizontal)
+        closeButton.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         separator.boxType = .separator
         separator.translatesAutoresizingMaskIntoConstraints = false
@@ -611,7 +630,7 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         footerStack.spacing = 8
         footerStack.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
 
-        let root = NSStackView(views: [header, bodyScrollView, separator, footerStack])
+        let root = NSStackView(views: [header, bodyStack, separator, footerStack])
         root.orientation = .vertical
         root.alignment = .leading
         root.spacing = 8
@@ -623,7 +642,7 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
             root.topAnchor.constraint(equalTo: topAnchor, constant: 14),
             root.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -14),
             header.widthAnchor.constraint(equalTo: root.widthAnchor),
-            bodyScrollView.widthAnchor.constraint(equalTo: root.widthAnchor),
+            bodyStack.widthAnchor.constraint(equalTo: root.widthAnchor),
             separator.widthAnchor.constraint(equalTo: root.widthAnchor),
             footerStack.widthAnchor.constraint(equalTo: root.widthAnchor),
         ])
@@ -634,9 +653,9 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         _ state: NativeTranslationOverlayState
     ) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineSpacing = 3
+        paragraph.lineSpacing = state.kind == .success ? 6 : 3
         let font = scaledSystemFont(
-            ofSize: state.kind == .success ? 14 : 12,
+            ofSize: state.kind == .success ? 15 : 13,
             weight: .regular
         )
         return NSAttributedString(
@@ -663,9 +682,9 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         // 28pt outer insets + 28pt header + 8pt group gaps. A visible
         // footer also contributes separator, two further gaps and its height.
         let scale = accessibilityFontScale
-        let fixedHeight: CGFloat = hasFooter
-            ? 28 + (28 * scale) + 24 + 1 + footerHeight(for: state)
-            : 28 + (28 * scale) + 8
+        let headerHeight: CGFloat = state.kind == .success ? 0 : 28 * scale + 8
+        let fixedHeight: CGFloat = 28 + headerHeight
+            + (hasFooter ? 17 + footerHeight(for: state) : 0)
         let minimumBody: CGFloat = (state.kind == .success ? 23 : 12) * scale
         let baseline = max(minimumBody, desired - fixedHeight)
         guard let availablePanelHeight, availablePanelHeight.isFinite else {
@@ -754,7 +773,7 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
     private func updateAccessibilityOrder(
         _ state: NativeTranslationOverlayState
     ) {
-        var children: [Any] = [titleField]
+        var children: [Any] = headerStack.isHidden ? [] : [titleField]
         if !bodyScrollView.isHidden { children.append(bodyField) }
         if !metadataField.isHidden { children.append(metadataField) }
         if !fallbackField.isHidden { children.append(fallbackField) }
@@ -1709,7 +1728,7 @@ final class NativeTranslationOverlayController: NSObject {
         )
         guard shouldResetPresentation else { return }
         let generation = currentGeneration
-        copyResetTask = clock.schedule(1.2) { [weak self] in
+        copyResetTask = clock.schedule(2.0) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self,
                       self.panel.isVisible,

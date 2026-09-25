@@ -28,7 +28,7 @@ def test_completion_requires_active_native_hotkey_and_explicit_confirmation():
 
 def test_practice_uses_an_external_app_and_separate_root_is_present():
     assert "SelectablePracticeText" not in SWIFT
-    assert "切换到另一个 App，选中一段英文" in SWIFT
+    assert "打开示例文稿，选中英文，再连按两次 Option。" in SWIFT
     assert "句译不会读取自身窗口中的文字" in SWIFT
     assert "struct OnboardingView: View" in SWIFT
     assert "struct RootView: View" in SWIFT
@@ -56,7 +56,7 @@ def test_accessible_scroll_layout_and_window_policy_are_wired():
     assert "onboardingFooter.padding" in SWIFT
     assert "window.titleVisibility = .hidden" in SWIFT
     assert "guard lastOnboardingMode != mode" in SWIFT
-    assert "max(current.width, target.width)" in SWIFT
+    assert "NSSize(width: 520, height: 520)" in SWIFT
 
 
 def test_initialization_never_persists_an_implicit_engine_choice():

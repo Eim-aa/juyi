@@ -27,7 +27,7 @@ CURRENT_PROJECT_VERSION = <单调递增的整数 build>
 
 `macos/Info.plist` 使用 Xcode 变量展开。发布时同时递增 build number；Release tag 应与 `v$(MARKETING_VERSION)` 一致，但 tag 不是反向生成版本的来源。
 
-本轮产品改进候选为 `0.4.0`、build `9`。这是源码中的版本标识，不代表已完成安装或真机验收。以后生成新的实机候选包前应递增 build，避免与已安装的同版本产物混淆；实际证据应记录运行包的版本、构建号和路径，不能用旧版截图证明新版通过。
+当前本地产品候选为 `0.4.0`、build `11`，已安装到 `/Applications/句译.app`。用户确认 PDF 断词修复有效；此前也确认 PDF 长段落及暂停恢复可用。此结论只覆盖本机使用，不代表新账户、macOS 15 或 Intel 真机验收。以后修改 App 源码生成新候选包前应递增 build，避免与已安装的同版本产物混淆；实际证据应记录运行包的版本、构建号和路径，不能用旧版截图证明新版通过。
 
 ## 本地构建
 
@@ -64,8 +64,10 @@ macOS CI 同时构建 Debug 与 Release Xcode 配置，并验证：
 
 ## 公开发布前仍需完成
 
-1. 配置稳定的 Developer ID Application 团队与临时 CI keychain。
-2. 生成 Release 并使用 Developer ID 签名、Hardened Runtime 和 timestamp。当前 App 不内嵌 helper；如果另行分发兼容 helper，应对它单独签名并纳入公证容器。
+2026-09-25 进展：隔离候选 `build/release/句译.app`（0.4.0 build 11）已完成 Developer ID Application 签名，Team ID `FNZVY8U7Q4`，可信时间戳及 Hardened Runtime 校验通过。日常安装的 App 保持原样。已新增 `scripts/package_macos_dmg.sh`，将候选 App、Applications 链接和可离线打开的安装说明放入 DMG；该脚本不把打包成功当作公证成功。公证凭据、干净环境验收和公众发布仍待完成。当前不要求把私钥导出到 GitHub，正式候选可在本机签名并公证。
+
+1. 使用稳定的 Developer ID Application 团队；若日后改为 CI 签名，再配置临时 CI keychain，不将私钥提交到仓库。
+2. 本地候选 App 已完成 Developer ID 签名、Hardened Runtime 和 timestamp。当前 App 不内嵌 helper；如果另行分发兼容 helper，应对它单独签名并纳入公证容器。
 3. 制作并签名最终 DMG/PKG，以最终分发容器提交 `notarytool` 公证；获准后 staple、验证票据与 Gatekeeper，再公布下载和校验值。
 4. 为 Apple-first 产品提供可验证的完整安装体验，解决当前独立 Hammerspoon 依赖；若保留该依赖，应由发行流程明确交付与引导，而不是要求普通用户理解 owner 协议。可选云端所需的 Python 后台另行封装或明确标为高级安装，不得说成原生 Apple 必需运行时。
 5. 在干净 macOS 账户完成下载、安装、授权、首次语言包准备、真实选区翻译、暂停、退出再开与升级验证；记录最低支持系统及不同硬件的实际兼容结果。

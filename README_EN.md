@@ -1,20 +1,61 @@
 # juyi 句译
 
+<img src="macos/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" width="72" height="72" alt="Juyi icon" />
+
+**Understand the sentence. Keep reading.**
+
+Select English in a supported Mac app → double-tap **Option (⌥⌥)** → read Simplified Chinese beside the selection.
+
+![Actual PDF selection and translated popup in Preview](docs/media/selection-demo.gif)
+
+[Watch the MP4 recording](docs/media/selection-demo.mp4). Recorded by the user, cropped to remove the desktop, without speeding up the interaction or replacing the translation. This build 10 clip demonstrates the workflow, not acceptance of the build 11 PDF word-break fix. The displayed single-request duration is not a performance guarantee.
+
+[Get Juyi](#get-juyi) · [First translation](#first-translation) · [Current interface](#current-interface) · [中文](README.md)
+
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
-![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)
-![Engine](https://img.shields.io/badge/engine-offline%20%2B%20Volcengine-blue.svg)
+![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-lightgrey.svg)
+![Status](https://img.shields.io/badge/status-developer%20preview-blue.svg)
 
 > Select English in a supported macOS app and **double-tap Option (⌥⌥)** to see Simplified Chinese. Apple on-device translation is the default; translation text is processed on the Mac. macOS may need to download the language pack on first use.
 
-中文版: [README.md](README.md)
+## Get Juyi
+
+**Developer preview: no public installer is available yet.** The repository ZIP and CI artifacts are not a signed, notarized installer.
+
+- **Looking for a ready-to-install app?** Check [GitHub Releases](https://github.com/Eim-aa/juyi/releases). There are currently no releases; public downloads are pending signing, notarization, and installation validation.
+- **Comfortable with source builds?** Follow [manual installation](#install-manual) or [AI-assisted source installation](#source-installation-with-an-ai-agent).
+- **Requirements:** macOS 15+, Hammerspoon, Accessibility permission for Juyi, and the system English–Simplified Chinese language resources. Source installation additionally requires Homebrew, Python ≥ 3.10, and working Xcode/Command Line Tools. Universal 2 includes Apple Silicon and Intel slices; it is not proof of testing on every device or app.
+
+App Store distribution is a future evaluation item, not an available download channel or a promised release date.
 
 > **Developer preview, not a public release package.** There is no completed Developer ID-signed, notarized public download yet. The instructions below install from source. A prebuilt native app does not need the Python service for Apple translation, but this preview still needs Hammerspoon, macOS 15+, Accessibility permission for **句译 (Juyi)**, and the system language pack. See [installation and usage](docs/MENU_BAR_APP.md).
 
 The Xcode project builds a Universal 2 app and a compatibility helper. A successful build does not establish public-release readiness. See the [release boundaries](docs/RELEASE_BASELINE.md) and [product review and pending acceptance checks](docs/PRODUCT_REVIEW_2026-09-22.md).
 
-![demo](docs/demo.gif)
+## First translation
 
-This demo illustrates the interaction; it is not current-candidate UI or compatibility acceptance evidence.
+1. Open Juyi after installation. Follow setup to prepare its compatibility component, grant Accessibility permission to **Juyi**, and download Apple's language resources if prompted.
+2. Open the sample document from the practice screen and select English in TextEdit.
+3. Tap Option twice in succession, rather than holding both Option keys. Read the translated popup beside your selection.
+
+Closing the main window keeps Juyi running. Pausing stops translation; reopening after quitting requires **Resume translation**.
+
+The demo above is an actual interaction recording. The Chinese README also links to a clearly labeled three-step illustration; the old drawn animation is no longer presented as the main demo.
+
+## Current interface
+
+Actual screenshots of the current local developer preview, not mockups. The interface is currently Chinese. These images show readiness and settings, not an end-to-end translation recording.
+
+<img src="docs/media/home-ready.jpg" width="440" alt="Juyi's actual home screen: Apple local translation is ready; select English and double-tap Option" />
+
+<details>
+<summary>Local and cloud translation settings</summary>
+
+<img src="docs/media/settings-local-cloud.jpg" width="520" alt="Actual settings: Apple processes text locally; cloud supports only Volcengine and uploads selected text" />
+
+</details>
+
+**Local translation:** Apple, on-device, no key required. **Cloud translation:** currently Volcengine only; selected text is uploaded to Volcengine. Other providers' keys and custom API endpoints are not supported.
 
 ## Why this?
 
@@ -82,7 +123,7 @@ The installer checks Homebrew, Python >= 3.10, and disk space. It creates a venv
 After install:
 
 1. Open Juyi and enable double Option. Juyi updates its bundled Hammerspoon compatibility module when necessary, then asks you to grant **Juyi** Accessibility permission. Return to Juyi after enabling it in System Settings; prepare the Apple language pack if prompted.
-2. Use **Open TextEdit** to create a document, enter and select `Good tools should feel effortless.`, then **double-tap Option (⌥⌥)**. Return to Juyi and confirm only after seeing a translated popup. Juyi does not read selections from its own window.
+2. On the practice screen, use **Open in TextEdit** (在文本编辑中打开), select `Good tools should feel effortless.` in the sample document, then **double-tap Option (⌥⌥)**. Return to Juyi and confirm only after seeing a translated popup. Juyi does not read selections from its own window.
 
 > Before deploying a fork, follow [AGENTS.md](AGENTS.md) to check repository links and LaunchAgent identifiers. Do not describe a local build as a notarized public release.
 
@@ -107,7 +148,7 @@ The default engine is `apple` (on-device, offline), and the runtime choice is st
 **Switch to the Volcengine cloud engine:**
 
 1. In the [Volcengine console](https://console.volcengine.com/), enable "Machine Translation", grant your (sub-)user `TranslateFullAccess`, and create an AK/SK pair.
-2. Install the optional cloud backend first. In Juyi, expand **Other translation methods and saved settings** (其他翻译方式与已有设置), choose **Use Volcengine Cloud**, and enter the AK/SK yourself. Existing credentials remain available here; the simplified home screen does not remove them.
+2. Install the optional cloud backend first. In Juyi, expand **Translation method** (翻译方式), choose **Use cloud translation** (使用云端翻译…), and enter your Volcengine AK/SK in **Volcengine configuration** (火山翻译配置). Existing credentials can be managed here. Other providers and custom API endpoints are not supported.
 3. Juyi stores the candidate in a separate pending Keychain item and runs a real translation. Only a successful candidate is promoted, and the transaction marker remains until the restarted service passes another real translation. An interrupted setup is recovered on the next launch; validation failure never overwrites the previous working credential.
 4. Cloud removal first creates a local transaction marker. Until removal completes, both the hotkey client and local service block cloud requests, including after an app crash.
 
@@ -123,7 +164,7 @@ The native app uses the system Translation framework directly. The source instal
 
 ### Switch engines at runtime (menu bar, no restart)
 
-The menu-bar **Translation Mode** submenu switches between prepared engines; the active mode is checkmarked and remembered. The home screen prioritizes Apple offline and shortcut status, while optional cloud settings are under **Other translation methods and saved settings**. The legacy `ENGINE` value in `volc.env` is used only when there is no explicit saved choice.
+The menu-bar **Translation method** submenu switches between prepared engines; the active mode is checkmarked and remembered. The home screen identifies local Apple or cloud Volcengine translation alongside shortcut status. Expand **Translation method** (翻译方式) to find cloud configuration. The legacy `ENGINE` value in `volc.env` is used only when there is no explicit saved choice.
 
 Successful translations show their **source and measured duration**, for example `Apple 离线 · … 毫秒`.
 

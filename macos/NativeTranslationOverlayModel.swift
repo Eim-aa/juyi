@@ -21,8 +21,8 @@ enum NativeTranslationOverlayCTA: Equatable {
 
     var title: String {
         switch self {
-        case .openJuyi: return "在句译中打开"
-        case .openDiagnostics: return "打开诊断与帮助"
+        case .openJuyi: return "打开句译设置"
+        case .openDiagnostics: return "诊断与帮助"
         case .prepareAppleLanguages: return "准备语言包"
         case .checkCloudSettings: return "检查云端设置"
         case .chooseEngine: return "选择翻译方式"
@@ -188,7 +188,7 @@ enum NativeTranslationOverlayReducer {
             return NativeTranslationOverlayState(
                 kind: .loading,
                 title: "正在翻译…",
-                body: isExtended ? "仍在翻译，请稍候…" : "",
+                body: isExtended ? "长段落可能需要更久；可关闭浮窗取消本次翻译。" : "",
                 metadata: nil,
                 fallbackNotice: nil,
                 truncationBadge: nil,
@@ -236,20 +236,20 @@ enum NativeTranslationOverlayReducer {
             return terminal(
                 kind: .notice,
                 title: "此 App 暂不支持直接取词",
-                body: "句译没有使用剪贴板。请换到支持选中文字的 App 后重试。"
+                body: "当前无法取得可翻译的选区。可把文字复制到文本编辑中再试。"
             )
         case .accessibilityRequired:
             return terminal(
                 kind: .error,
                 title: "需要开启辅助功能权限",
-                body: "打开句译，按引导完成设置后再试。",
+                body: "请在系统辅助功能设置中允许句译，再返回继续。",
                 cta: .openJuyi
             )
         case .noFocusedElement, .temporarilyUnavailable:
             return terminal(
                 kind: .notice,
                 title: "暂时无法读取选中文字",
-                body: "请保持选中状态，再试一次。"
+                body: "保持文字选中，再连按两次 Option。"
             )
         }
     }
@@ -295,9 +295,9 @@ enum NativeTranslationOverlayReducer {
             body: result,
             metadata: "\(actualEngine.displayName) · \(elapsedMilliseconds) 毫秒",
             fallbackNotice: fallbackNotice,
-            truncationBadge: isTruncated ? "原文已截断" : nil,
+            truncationBadge: isTruncated ? "仅翻译部分内容" : nil,
             truncationAccessibilityHelp: isTruncated
-                ? "仅翻译原文前 5000 个 Unicode 标量"
+                ? "原文或返回结果达到长度限制；复制的是本次保留的译文，不是完整原文的全部译文。"
                 : nil,
             copyText: result,
             cta: nil,

@@ -120,6 +120,7 @@ final class AppModel: ObservableObject {
     @Published var notice = ""
     @Published var showCloudSetup = false
     @Published var showDiagnostics = false
+    @Published var showSupportInfo = false
     @Published var cloudBusy = false
     @Published var cloudError = ""
     @Published var onboardingPresented = false
@@ -436,6 +437,88 @@ final class AppModel: ObservableObject {
         if ready { return Color(nsColor: .systemGreen) }
         return selectedEngine == "apple" || serviceReady
             ? Color(nsColor: .systemOrange) : Color(nsColor: .systemRed)
+    }
+
+    // Presentation only: reuse the existing owner, pause and readiness state.
+    // A disabled native path does not imply the legacy watcher has stopped.
+    var translationSetupInProgress: Bool {
+        let native = NativeProductionTranslationCoordinator.shared
+        return !hasChecked || shortcutRepairBusy || native.isPreparingLanguages
+            || (selectedEngine == "apple" && (native.phase == .requestingAccessibility
+                || native.phase == .waitingForHammerspoon))
+            || (selectedEngine == "volc" && (serviceBusy || cloudBusy))
+    }
+    var canPauseTranslation: Bool {
+        !userPaused && (NativeProductionTranslationCoordinator.shared.isEnabled
+            || hotkey?.watcher_active == true || translationSetupInProgress)
+    }
+    var summaryStatus: String {
+        if userPaused { return "已暂停" }
+        if translationSetupInProgress { return "设置中" }
+        if ready { return "已就绪" }
+        if selectedEngine == "apple"
+            && NativeProductionTranslationCoordinator.shared.phase == .disabled {
+            return "未启用"
+        }
+        return "需要处理"
+    }
+    var summarySymbol: String {
+        if userPaused { return "pause.circle.fill" }
+        if translationSetupInProgress { return "clock" }
+        if ready { return "checkmark.circle.fill" }
+        return summaryStatus == "未启用" ? "circle" : "exclamationmark.circle.fill"
+    }
+    var summaryColor: Color {
+        if userPaused || summaryStatus == "未启用" { return .secondary }
+        if translationSetupInProgress { return .accentColor }
+        return ready ? Color(nsColor: .systemGreen) : Color(nsColor: .systemOrange)
+    }
+    var primaryActionTitle: String {
+        let native = NativeProductionTranslationCoordinator.shared
+        if userPaused { return "恢复翻译" }
+        if ready { return "暂停翻译" }
+        if !hasChecked { return "正在检查…" }
+        if shortcutRepairBusy { return "正在准备兼容组件…" }
+        if native.isPreparingLanguages { return "正在准备语言包…" }
+        if selectedEngine == "apple" {
+            if native.phase == .requestingAccessibility { return "打开系统设置" }
+            if native.phase == .waitingForHammerspoon { return "正在启用双 Option…" }
+            if !hammerspoonInstalled { return "下载 Hammerspoon" }
+            if native.phase == .languagePackRequired { return "准备语言包" }
+            if native.phase == .unsupported { return "诊断与帮助" }
+            if native.phase == .unavailable { return "重新检查并启用" }
+            return onboardingCompleted ? "启用双 Option" : "继续设置"
+        }
+        if serviceBusy || cloudBusy { return "正在检查云端…" }
+        if !serviceReady { return "修复云端组件" }
+        if !engineReady { return "设置火山云端" }
+        if !hammerspoonInstalled { return "下载 Hammerspoon" }
+        return "检查快捷键设置"
+    }
+    var primaryActionEnabled: Bool {
+        if userPaused || ready { return true }
+        let native = NativeProductionTranslationCoordinator.shared
+        if !hasChecked || shortcutRepairBusy || native.isPreparingLanguages { return false }
+        if selectedEngine == "apple" {
+            return native.phase == .requestingAccessibility || native.actionIsEnabled
+        }
+        return !serviceBusy && !cloudBusy
+    }
+    func performPrimaryAction() {
+        guard primaryActionEnabled else { return }
+        let native = NativeProductionTranslationCoordinator.shared
+        if userPaused || ready { togglePause(); return }
+        if selectedEngine == "apple" {
+            if native.phase == .requestingAccessibility { openAccessibility() }
+            else if !hammerspoonInstalled { openHammerspoon() }
+            else if native.phase == .languagePackRequired { native.prepareLanguages() }
+            else if native.phase == .unsupported { showDiagnostics = true }
+            else if native.phase == .unavailable || onboardingCompleted { enableNativeShortcut() }
+            else { startOnboarding() }
+        } else if !serviceReady { repairService() }
+        else if !engineReady { chooseCloud() }
+        else if !hammerspoonInstalled { openHammerspoon() }
+        else { showDiagnostics = true }
     }
 
     private func migrateOnboardingState() {
@@ -2245,6 +2328,24 @@ final class AppModel: ObservableObject {
         announce("句译准备好了")
         onChange?()
     }
+    func openPracticeDocument() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Juyi-Practice-\(UUID().uuidString).txt")
+        do {
+            try "Good tools should feel effortless.\n".write(to: url, atomically: true, encoding: .utf8)
+            NSWorkspace.shared.open(
+                [url],
+                withApplicationAt: URL(fileURLWithPath: "/System/Applications/TextEdit.app"),
+                configuration: .init()
+            ) { _, error in
+                if error != nil {
+                    Task { @MainActor in self.notice = "无法打开文本编辑，请手动新建文稿并输入示例英文。" }
+                }
+            }
+        } catch {
+            notice = "无法创建练习文稿，请在文本编辑中新建文稿并输入示例英文。"
+        }
+    }
     func togglePause() {
         let previous = paused
         let native = NativeProductionTranslationCoordinator.shared
@@ -2403,14 +2504,14 @@ private struct OnboardingView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .top)
-                .id(model.onboardingScreen)
                 .transition(.opacity)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: model.onboardingScreen)
             }
+            .id(model.onboardingScreen)
             Divider()
             onboardingFooter.padding(.horizontal, 34).padding(.vertical, 16)
         }
-        .frame(minWidth: 580, minHeight: 480)
+        .frame(minWidth: 560, minHeight: 480)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { focusAndAnnouncePage() }
         .onChange(of: model.onboardingScreen) { focusAndAnnouncePage() }
@@ -2441,8 +2542,13 @@ private struct OnboardingView: View {
                 Button("稍后再说") { model.deferOnboarding() }.keyboardShortcut(.cancelAction)
                 Button("没有出现译文") { model.practiceTroubleshooting.toggle() }
                 Spacer()
-                Button("我看到了译文") { model.confirmHotkeyWorked() }
-                    .keyboardShortcut(.defaultAction).disabled(!nativeTranslation.isEnabled)
+                if nativeTranslation.isEnabled {
+                    Button("我看到了译文") { model.confirmHotkeyWorked() }
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button("返回检查快捷键") { model.showPermissionStep() }
+                        .keyboardShortcut(.defaultAction)
+                }
             }
         case .complete:
             HStack { Spacer(); Button("开始使用") { model.finishOnboarding() }.keyboardShortcut(.defaultAction) }
@@ -2451,18 +2557,18 @@ private struct OnboardingView: View {
 
     private var progressText: String? {
         switch model.onboardingScreen {
-        case .prepare: return "准备翻译"
-        case .permission: return "步骤 1，共 2 步"
-        case .practice: return "步骤 2，共 2 步"
-        case .welcome, .complete: return nil
+        case .welcome: return "欢迎 · 准备 · 练习 · 完成"
+        case .prepare, .permission: return "第 2 步 · 准备"
+        case .practice: return "第 3 步 · 练习"
+        case .complete: return "第 4 步 · 完成"
         }
     }
 
     private var progressAccessibilityLabel: String {
         switch model.onboardingScreen {
         case .prepare: return "准备翻译"
-        case .permission: return "步骤 1，共 2 步：启用原生快捷键"
-        case .practice: return "步骤 2，共 2 步：实际试用"
+        case .permission: return "第 2 步，共 4 步：准备快捷键和翻译"
+        case .practice: return "第 3 步，共 4 步：实际试用"
         case .welcome, .complete: return ""
         }
     }
@@ -2472,10 +2578,10 @@ private struct OnboardingView: View {
             Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 72, height: 72)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             VStack(spacing: 8) {
-                Text("欢迎使用句译").font(.system(size: 28, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                Text("选中英文，旁边就是中文").font(.system(size: 25, weight: .semibold)).accessibilityAddTraits(.isHeader)
                     .accessibilityFocused($accessibilityFocus, equals: .pageTitle)
-                Text("选中英文，连按两次 Option，中文译文就会出现在旁边。")
-                    .font(.title3).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Text("不用切换窗口。默认由 Apple 在这台 Mac 上翻译。")
+                    .font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             HStack(spacing: 16) {
                 welcomeAction("选中英文", symbol: "selection.pin.in.out")
@@ -2484,7 +2590,9 @@ private struct OnboardingView: View {
                 Image(systemName: "arrow.right").foregroundStyle(.tertiary)
                 welcomeAction("查看中文", symbol: "character.bubble")
             }.accessibilityElement(children: .combine).accessibilityLabel("选中英文，然后连按两次 Option，查看中文")
-            HStack(spacing: 10) { pill("默认离线"); pill("支持多数可选文本 App"); pill("Dock 与菜单栏") }
+            Text("先在文本编辑中试用。其他 App 和文字层 PDF 的支持情况取决于选区接口；扫描件、图片和安全输入框不支持。")
+                .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }.padding(.horizontal, 34).padding(.vertical, 24)
     }
 
@@ -2551,7 +2659,7 @@ private struct OnboardingView: View {
 
     private var permission: some View {
         VStack(alignment: .leading, spacing: 18) {
-            stepTitle("启用双 Option 翻译", subtitle: "允许句译读取你选中的英文，并在连按两次 Option 时显示中文。")
+            stepTitle("完成三项准备", subtitle: "兼容组件、句译权限和语言资源就绪后，就能启用双 Option。")
             DisclosureGroup("这项权限有什么作用？", isExpanded: $showPermissionExplanation) {
                 Text("macOS 将选区读取和全局按键归入“辅助功能”权限。句译只在你触发翻译时读取选中的文字；你可以随时在系统设置中关闭权限。")
                     .font(.callout).foregroundStyle(.secondary).padding(.top, 8)
@@ -2582,27 +2690,36 @@ private struct OnboardingView: View {
 
     private var shortcutStatusCard: some View {
         let state = shortcutStatus
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 14) {
-                Image(systemName: state.symbol).font(.title2).foregroundStyle(state.color).frame(width: 28)
-                VStack(alignment: .leading, spacing: 5) { Text(state.title).font(.headline); Text(state.detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-                Spacer()
-            }
-            if nativeTranslation.phase == .unavailable
-                && AccessibilityController.status != .authorized {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("辅助功能").fontWeight(.medium)
-                    Text("请在列表中找到句译，并打开它右侧的系统开关；然后回到句译重试。")
-                        .foregroundStyle(.secondary)
-                }
-                .padding(10).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                .accessibilityHidden(true)
-            }
+        return VStack(alignment: .leading, spacing: 12) {
+            preparationRow("Hammerspoon 兼容组件",
+                detail: "参与快捷键交接；原生按键监听和翻译由句译完成。",
+                complete: model.nativeOwnerBridgeReady || nativeTranslation.isEnabled)
+            Divider()
+            preparationRow("允许句译使用辅助功能",
+                detail: "用于按键监听和读取选区。授权后返回句译，会自动复检。",
+                complete: AccessibilityController.status == .authorized)
+            Divider()
+            preparationRow("Apple 英语 → 简体中文语言资源",
+                detail: nativeTranslation.isEnabled ? "已准备好，可在本机翻译。" : "首次准备可能联网，并需要你确认系统下载提示。",
+                complete: nativeTranslation.isEnabled)
+            Divider()
+            Label(state.title, systemImage: state.symbol).font(.callout.weight(.medium)).foregroundStyle(state.color)
+            Text(state.detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.modifier(Surface()).accessibilityElement(children: .combine)
-            .accessibilityLabel("快捷键状态：\(state.title)。\(state.detail)")
             .accessibilityFocused($accessibilityFocus, equals: .statusSummary)
     }
 
+    private func preparationRow(_ title: String, detail: String, complete: Bool) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: complete ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(complete ? Color(nsColor: .systemGreen) : Color.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.callout.weight(.semibold))
+                Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }.accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(title)：\(complete ? "已确认" : "待检查")。\(detail)")
+    }
     private var shortcutStatus: (symbol: String, color: Color, title: String, detail: String) {
         if model.userPaused {
             return ("pause.circle.fill", Color(nsColor: .systemOrange), "句译目前已暂停", "恢复句译后即可继续设置或练习双击 Option。")
@@ -2654,7 +2771,9 @@ private struct OnboardingView: View {
             footer(primary: "正在更新…", primaryEnabled: false) {}
         } else {
             switch nativeTranslation.phase {
-            case .requestingAccessibility, .waitingForHammerspoon:
+            case .requestingAccessibility:
+                footer(primary: "打开系统设置", primaryEnabled: true) { model.openAccessibility() }
+            case .waitingForHammerspoon:
                 footer(primary: nativeTranslation.actionTitle, primaryEnabled: false) {}
             case .languagePackRequired:
                 footer(primary: nativeTranslation.isPreparingLanguages ? "正在准备…" : "准备 Apple 语言包", primaryEnabled: !nativeTranslation.isPreparingLanguages) { nativeTranslation.prepareLanguages() }
@@ -2670,17 +2789,17 @@ private struct OnboardingView: View {
                 if model.selectedEngine != "apple" {
                     footer(primary: "切换到 Apple 离线并启用", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
                 } else if model.nativeOwnerBridgeReady || model.hotkeyProblem == .ready {
-                    footer(primary: "启用原生双 Option", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
+                    footer(primary: "启用双 Option", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
                 } else {
                     switch model.hotkeyProblem {
                     case .notInstalled: footer(primary: "前往下载 Hammerspoon", primaryEnabled: true) { model.openHammerspoon() }
-                    case .notRunning: footer(primary: "部署并启用原生双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
+                    case .notRunning: footer(primary: "准备并启用双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
                     case .notAuthorized: footer(primary: "继续启用双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
                     case .paused: footer(primary: "恢复句译", primaryEnabled: true) { model.togglePause() }
                     case .heartbeatExpired, .needsUpdate, .notLoaded:
-                        footer(primary: "更新并启用原生双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
+                        footer(primary: "更新并启用双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
                     case .ready:
-                        footer(primary: "启用原生双 Option", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
+                        footer(primary: "启用双 Option", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
                     }
                 }
             }
@@ -2689,20 +2808,15 @@ private struct OnboardingView: View {
 
     private var practice: some View {
         VStack(alignment: .leading, spacing: 18) {
-            stepTitle("试一次，马上就会", subtitle: "切换到另一个 App，选中一段英文，再快速连按两次 Option。")
+            stepTitle("在另一个 App 里试一次", subtitle: "打开示例文稿，选中英文，再连按两次 Option。")
             VStack(alignment: .leading, spacing: 14) {
                 Label("先在“文本编辑”中试一次", systemImage: "macwindow.on.rectangle")
                     .font(.headline)
-                Text("在文本编辑中新建文稿，输入并选中下面这句英文：")
+                Text("点击下方按钮，在文本编辑中打开这句英文：")
                     .font(.callout).foregroundStyle(.secondary)
                 Text("Good tools should feel effortless.")
                     .font(.callout.monospaced()).textSelection(.enabled)
-                Button("打开文本编辑") {
-                    NSWorkspace.shared.openApplication(
-                        at: URL(fileURLWithPath: "/System/Applications/TextEdit.app"),
-                        configuration: .init()
-                    )
-                }
+                Button("在文本编辑中打开") { model.openPracticeDocument() }
                 HStack { Spacer(); keycap("⌥"); keycap("⌥"); Spacer() }
                 Text("译文会出现在选中文字附近。").font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .center)
                 Text("句译不会读取自身窗口中的文字；这是为了避免把设置页误当成翻译目标。")
@@ -2733,8 +2847,13 @@ private struct OnboardingView: View {
                 .accessibilityFocused($accessibilityFocus, equals: .pageTitle)
             Text("以后只需：选中英文，连按两次 Option。")
                 .font(.title3).multilineTextAlignment(.center)
-            Text("句译会留在 Dock 和菜单栏，关闭窗口不会停止翻译。")
-                .foregroundStyle(.secondary).multilineTextAlignment(.center)
+            VStack(alignment: .leading, spacing: 12) {
+                Label("关闭窗口：继续在菜单栏运行，仍可翻译。", systemImage: "macwindow")
+                Divider()
+                Label("暂停翻译：停止响应双 Option，保留设置。", systemImage: "pause.circle")
+                Divider()
+                Label("退出句译：翻译停止，重开后需手动恢复。", systemImage: "power")
+            }.font(.callout).frame(maxWidth: .infinity, alignment: .leading).modifier(Surface())
         }.padding(.horizontal, 34).padding(.vertical, 36)
     }
 
@@ -2748,7 +2867,10 @@ private struct OnboardingView: View {
 
     private func footer(primary: String, primaryEnabled: Bool, action: @escaping () -> Void) -> some View {
         HStack {
-            Button("稍后再说") { model.deferOnboarding() }.keyboardShortcut(.cancelAction)
+            Button(model.translationSetupInProgress ? "暂停并稍后继续" : "稍后再说") {
+                if model.translationSetupInProgress && !model.userPaused { model.togglePause() }
+                model.deferOnboarding()
+            }.keyboardShortcut(.cancelAction)
             Spacer()
             Button(primary, action: action).keyboardShortcut(.defaultAction).disabled(!primaryEnabled)
         }
@@ -2793,19 +2915,20 @@ private struct CloudSetupView: View {
     @State private var confirmRemoval = false
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack { Image(systemName: "cloud.fill").font(.title).foregroundStyle(.blue); VStack(alignment: .leading) { Text("设置火山云端翻译").font(.title2.bold()); Text("可按自己的语料对比，需要联网").foregroundStyle(.secondary) } }
-            Text("使用云端时，选中的英文会发送至火山翻译。访问密钥只保存在这台 Mac。")
+            HStack { Image(systemName: "cloud.fill").font(.title).foregroundStyle(.blue); VStack(alignment: .leading) { Text("火山翻译配置").font(.title2.bold()); Text("云端翻译目前仅支持火山翻译，需要联网").foregroundStyle(.secondary) } }
+            Text("选中的英文会发送至火山翻译。请使用火山的访问密钥，不支持其他服务商的密钥。密钥保存在这台 Mac 的钥匙串中。")
+                .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 6) { Text("Access Key ID").font(.subheadline.weight(.medium)); TextField("输入 Access Key ID", text: $access).textFieldStyle(.roundedBorder) }
             VStack(alignment: .leading, spacing: 6) { Text("Secret Access Key").font(.subheadline.weight(.medium)); HStack { Group { if reveal { TextField("输入 Secret Access Key", text: $secret) } else { SecureField("输入 Secret Access Key", text: $secret) } }.textFieldStyle(.roundedBorder); Button(reveal ? "隐藏" : "显示") { reveal.toggle() } } }
             Button("如何获取访问密钥？") { NSWorkspace.shared.open(URL(string: "https://console.volcengine.com/")!) }.buttonStyle(.link)
             if model.cloudConfigExists && !model.cloudBusy {
-                HStack { Label("这台 Mac 已保存一组云端密钥。", systemImage: "checkmark.shield"); Spacer(); Button("重新验证") { model.validateExistingCloud() } }
+                HStack { Label("这台 Mac 已保存一组火山密钥。", systemImage: "checkmark.shield"); Spacer(); Button("重新验证") { model.validateExistingCloud() } }
                     .font(.callout).foregroundStyle(.secondary)
             }
             if !model.cloudError.isEmpty { Label(model.cloudError, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red).font(.callout) }
             Spacer()
             HStack { if model.cloudConfigExists { Button("移除已有云端配置…", role: .destructive) { confirmRemoval = true } }; Spacer(); Button("取消") { model.showCloudSetup = false }.keyboardShortcut(.cancelAction).disabled(model.cloudBusy); Button(model.cloudBusy ? "正在验证…" : "保存并验证") { model.configureCloud(accessKey: access, secretKey: secret) }.keyboardShortcut(.defaultAction).disabled(model.cloudBusy) }
-        }.padding(28).frame(width: 500, height: 430)
+        }.padding(28).frame(width: 500, height: 470)
             .interactiveDismissDisabled(model.cloudBusy)
             .alert("移除云端翻译设置？", isPresented: $confirmRemoval) {
                 Button("取消", role: .cancel) {}
@@ -2913,112 +3036,200 @@ private struct DiagnosticsView: View {
     }
 }
 
+private struct SupportInfoView: View {
+    @ObservedObject var model: AppModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("支持范围与隐私").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    section("哪些文字可以翻译？", symbol: "text.cursor") {
+                        Text("当前仅支持英语 → 简体中文。先在文本编辑中试用；网页、其他 App 和含文字层的 PDF 能否读取，取决于具体 App 提供的选区接口。")
+                        Text("扫描图片型 PDF、图片中的文字、安全输入框及受保护内容不支持。句译不会读取自身设置窗口中的文字。")
+                    }
+                    section("本地翻译 · Apple", symbol: "lock.shield") {
+                        Text("由 Apple 提供，翻译在本机完成，无需密钥。首次准备英语和简体中文语言资源可能需要联网；准备完成后可离线使用，失败时不会自动改用云端。")
+                    }
+                    section("WPS PDF 与剪贴板", symbol: "doc.on.clipboard") {
+                        Text("WPS PDF 的兼容取词会临时执行系统复制，并尽力恢复原剪贴板。剪贴板管理器可能保留原文或干扰取词；敏感内容请避免使用这条路径。")
+                    }
+                    section("云端翻译 · 火山", symbol: "cloud") {
+                        Text("目前仅支持火山翻译，需联网并配置火山密钥，不支持其他服务商或自定义 API。只有你主动选择并配置云端后，选中的英文才会发送至火山翻译。密钥保存在这台 Mac 的钥匙串中。")
+                    }
+                    section("后台运行与停止", symbol: "menubar.rectangle") {
+                        Text("关闭窗口：句译继续运行。\n暂停翻译：停止翻译，保留设置。\n退出句译：停止翻译；重开后需要点击“恢复翻译”。")
+                        Text("此预览版仍需 Hammerspoon 兼容组件参与快捷键交接；Apple 路径的按键监听、取词和翻译由句译原生完成。")
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack { Spacer(); Button("完成") { model.showSupportInfo = false }.keyboardShortcut(.defaultAction) }
+        }.padding(24).frame(width: 472, height: 510)
+    }
+    private func section<Content: View>(_ title: String, symbol: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: symbol).font(.headline)
+            VStack(alignment: .leading, spacing: 6, content: content)
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
 private struct AppView: View {
     @ObservedObject var model: AppModel
     @State private var showOtherEngines = false
-    @ObservedObject private var nativeTranslation =
-        NativeProductionTranslationCoordinator.shared
+    @ObservedObject private var nativeTranslation = NativeProductionTranslationCoordinator.shared
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 14) {
-                    Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 48, height: 48).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                    VStack(alignment: .leading, spacing: 3) { Text(model.statusTitle).font(.system(size: 23, weight: .semibold)); Text(model.statusMessage).foregroundStyle(.secondary) }
-                    Spacer(); Image(systemName: model.statusSymbol).font(.system(size: 27)).foregroundStyle(model.statusColor).accessibilityLabel(model.statusTitle)
-                }
-
-                if !model.onboardingCompleted {
-                    HStack(alignment: .center, spacing: 12) {
-                        Image(systemName: "sparkles").font(.title2).foregroundStyle(Color(nsColor: .systemOrange))
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("完成快捷键设置").font(.headline)
-                            Text("授权后，在文本编辑中试一次真实翻译。").font(.callout).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button("继续设置") { model.startOnboarding() }.keyboardShortcut(.defaultAction)
-                    }.modifier(Surface())
-                }
-                VStack(alignment: .leading, spacing: 14) {
-                    Label(model.selectedEngine == "apple" ? "Apple 离线 · 英语 → 简体中文" : "火山云端 · 选中文字会上传翻译", systemImage: model.selectedEngine == "apple" ? "lock.shield.fill" : "cloud.fill")
-                        .font(.subheadline.weight(.medium))
-                    HStack(alignment: .center, spacing: 18) {
-                        HStack(spacing: 6) { keycap("⌥"); keycap("⌥") }
-                        VStack(alignment: .leading, spacing: 3) { Text("选中英文，连按两次 Option").font(.headline); Text("译文会出现在选中文字附近").foregroundStyle(.secondary).font(.subheadline) }
-                        Spacer()
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(spacing: 12) {
+                    Image(nsImage: NSApp.applicationIconImage).resizable()
+                        .frame(width: 40, height: 40).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("句译").font(.headline)
+                        Text(model.selectedEngine == "apple"
+                            ? "英语 → 简体中文 · 本地翻译（Apple）"
+                            : "英语 → 简体中文 · 云端翻译（火山）")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    Divider()
-                    Text(nativeTranslation.detail)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack {
-                        if model.userPaused {
-                            Button("恢复句译") { model.togglePause() }.buttonStyle(.borderedProminent)
-                        } else if model.selectedEngine == "apple" && nativeTranslation.isEnabled {
-                            Button("暂停句译") { model.togglePause() }
-                        } else if !model.hammerspoonInstalled {
-                            Button("下载 Hammerspoon") { model.openHammerspoon() }.buttonStyle(.borderedProminent)
-                        } else {
-                            Button(model.shortcutRepairBusy
-                            ? "正在更新快捷键…"
-                            : (model.selectedEngine == "apple"
-                                ? nativeTranslation.actionTitle
-                                : "切换到 Apple 离线并启用")) {
-                            model.enableNativeShortcut()
-                        }
-                        .disabled(
-                            !nativeTranslation.actionIsEnabled
-                                || model.shortcutRepairBusy
-                                || model.userPaused
-                        )
-                        }
-                        if nativeTranslation.phase == .languagePackRequired {
-                            Button(nativeTranslation.isPreparingLanguages
-                                ? "正在准备…" : "准备 Apple 语言包…") {
-                                nativeTranslation.prepareLanguages()
-                            }
-                            .disabled(model.userPaused || nativeTranslation.isPreparingLanguages)
-                        }
-                        Spacer()
-                    }
-                }.modifier(Surface())
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("先在文本编辑中选中一句英文，再试双 Option。扫描图片型 PDF 暂不支持。")
+                    Spacer(minLength: 8)
+                    Label(model.summaryStatus, systemImage: model.summarySymbol)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(model.summaryColor)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(model.summaryColor.opacity(0.10), in: Capsule())
+                        .accessibilityLabel("翻译状态：\(model.summaryStatus)")
+                }
+                statusPanel
+                settingsList
+                if !model.notice.isEmpty {
+                    Label(model.notice, systemImage: "info.circle")
                         .font(.callout).foregroundStyle(.secondary)
-                    Text("WPS PDF 会临时使用剪贴板，剪贴板管理器可能保留原文。")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button("支持范围与隐私详情…") { model.showDiagnostics = true }.buttonStyle(.link)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-
-                DisclosureGroup("其他翻译方式与已有设置", isExpanded: $showOtherEngines) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Button("使用 Apple 离线") { model.chooseApple() }
-                        Text("火山云端需要另外配置后台服务和密钥，选中的英文会上传至火山翻译。")
-                            .font(.callout).foregroundStyle(.secondary)
-                        Button("使用火山云端…") { model.chooseCloud() }
-                        if model.cloudConfigExists {
-                            Button("管理已有云端设置…") { model.cloudError = ""; model.showCloudSetup = true }
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
-                }
-
-                if !model.notice.isEmpty { Label(model.notice, systemImage: "info.circle.fill").font(.callout).foregroundStyle(.secondary) }
-                HStack {
-                    Button("诊断与帮助…") { model.showDiagnostics = true }.buttonStyle(.link)
-                    if model.onboardingCompleted { Button("重新学习双击 Option…") { model.relearnShortcut() }.buttonStyle(.link) }
+                HStack(alignment: .top) {
+                    Text("开发者预览 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
                     Spacer()
-                    if !model.userPaused && !(model.selectedEngine == "apple" && nativeTranslation.isEnabled) {
-                        Button("暂停句译") { model.togglePause() }
-                    }
-                }
-                Text("开发者预览 · 仍需 Hammerspoon 兼容组件")
-                    .font(.caption).foregroundStyle(.secondary)
-            }.padding(.horizontal, 30).padding(.vertical, 26)
+                    Text("仍需 Hammerspoon 兼容组件")
+                }.font(.caption).foregroundStyle(.secondary)
+            }.padding(.horizontal, 24).padding(.top, 40).padding(.bottom, 20)
         }.background(Color(nsColor: .windowBackgroundColor))
     }
-    private func keycap(_ text: String) -> some View {
-        Text(text).font(.system(size: 20, weight: .semibold, design: .rounded)).frame(width: 42, height: 40).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+
+    private var statusPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if model.ready {
+                HStack(alignment: .top, spacing: 16) {
+                    HStack(spacing: 6) { keycap(); keycap() }.accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("选中英文，连按两次 Option").font(.system(size: 17, weight: .semibold))
+                        Text("译文出现在选区旁。关闭此窗口后，句译会在菜单栏继续运行。")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                HStack(spacing: 10) {
+                    if model.translationSetupInProgress { ProgressView().controlSize(.small) }
+                    Text(model.userPaused ? "需要时，随时继续" : model.statusTitle)
+                        .font(.system(size: 19, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                }
+                Text(panelDetail).font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if model.selectedEngine == "apple" && nativeTranslation.phase == .disabled
+                    && !model.userPaused && !model.translationSetupInProgress {
+                    Text("需要 Hammerspoon 兼容组件、句译辅助功能权限，以及 Apple 中英语言资源。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            HStack(spacing: 12) {
+                if model.ready {
+                    Button(model.primaryActionTitle) { model.performPrimaryAction() }
+                } else {
+                    Button(model.primaryActionTitle) { model.performPrimaryAction() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!model.primaryActionEnabled)
+                }
+                Spacer(minLength: 0)
+                if !model.ready && model.canPauseTranslation {
+                    Button(model.translationSetupInProgress ? "暂停并稍后继续" : "暂停所有翻译") {
+                        model.togglePause()
+                    }.font(.callout)
+                }
+            }
+            if !model.ready && model.canPauseTranslation && !model.translationSetupInProgress {
+                Text("兼容快捷键可能仍在运行；暂停会同时停止两条翻译路径。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var panelDetail: String {
+        if model.userPaused {
+            return "现在连按两次 Option 不会翻译。设置仍保留；退出后重新打开，也需要手动恢复。"
+        }
+        if model.ready { return "" }
+        if model.selectedEngine == "apple" && nativeTranslation.phase == .disabled
+            && !model.translationSetupInProgress {
+            return model.onboardingCompleted ? "启用快捷键后，即可在其他 App 中划词翻译。" : "跟随设置完成授权，再在文本编辑中试一次真实翻译。"
+        }
+        return model.statusMessage
+    }
+
+    private var settingsList: some View {
+        VStack(spacing: 0) {
+            DisclosureGroup(isExpanded: $showOtherEngines) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Button("使用本地翻译") { model.chooseApple() }
+                    Text("由 Apple 提供，翻译在本机完成，无需密钥。首次准备语言资源可能需要联网，之后可离线使用。")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Divider()
+                    Button("使用云端翻译…") { model.chooseCloud() }
+                    Text("目前仅支持火山翻译，需联网并配置后台服务和火山密钥。选中的英文会发送至火山翻译，不支持其他服务商的密钥或自定义 API。")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if model.cloudConfigExists {
+                        Button("管理火山翻译配置…") { model.cloudError = ""; model.showCloudSetup = true }
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+            } label: {
+                HStack {
+                    Text("翻译方式")
+                    Spacer()
+                    Text(model.selectedEngine == "apple" ? "本地 · Apple" : "云端 · 火山").foregroundStyle(.secondary)
+                }
+            }.padding(12).disabled(model.cloudBusy || model.translationSetupInProgress)
+            Divider().padding(.horizontal, 12)
+            settingsRow("支持范围与隐私", symbol: "hand.raised") { model.showSupportInfo = true }
+            Divider().padding(.horizontal, 12)
+            settingsRow("诊断与帮助", symbol: "questionmark.circle") { model.showDiagnostics = true }
+            if model.onboardingCompleted {
+                Divider().padding(.horizontal, 12)
+                settingsRow("重新练习双 Option", symbol: "keyboard") { model.relearnShortcut() }
+            } else if model.ready {
+                Divider().padding(.horizontal, 12)
+                settingsRow("完成首次练习", symbol: "keyboard") { model.startOnboarding() }
+            }
+        }.font(.callout)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func settingsRow(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Label(title, systemImage: symbol)
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+            }.padding(12).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+
+    private func keycap() -> some View {
+        Text("⌥").font(.system(size: 22, weight: .medium, design: .rounded))
+            .frame(width: 42, height: 44)
+            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
     }
 }
 
@@ -3055,6 +3266,7 @@ private struct RootView: View {
         }
         .sheet(isPresented: $model.showCloudSetup) { CloudSetupView(model: model) }
         .sheet(isPresented: $model.showDiagnostics) { DiagnosticsView(model: model) }
+        .sheet(isPresented: $model.showSupportInfo) { SupportInfoView(model: model) }
         .background(
             NativeAppleProductionTranslationHost(
                 service: NativeAppleProductionTranslationService.shared
@@ -3326,9 +3538,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             && event?.paramDescriptor(forKeyword: keyAELaunchedAsLogInItem) != nil
     }
     private func createWindow() {
-        let initialSize = model.onboardingPresented ? NSSize(width: 620, height: 520) : NSSize(width: 680, height: 650)
+        let initialSize = model.onboardingPresented ? NSSize(width: 600, height: 560) : NSSize(width: 520, height: 520)
         window = NSWindow(contentRect: NSRect(origin: .zero, size: initialSize), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.title = "句译"; window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true; window.isReleasedWhenClosed = false; window.minSize = NSSize(width: 580, height: 480); window.delegate = self
+        window.title = "句译"; window.titleVisibility = .hidden; window.titlebarAppearsTransparent = true; window.isReleasedWhenClosed = false; window.minSize = model.onboardingPresented ? NSSize(width: 560, height: 500) : NSSize(width: 520, height: 440); window.delegate = self
         ensureWindowVisible(forceCenter: true)
         window.contentView = NSHostingView(rootView: RootView(model: model))
         lastOnboardingMode = model.onboardingPresented
@@ -3415,15 +3627,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func item(_ title: String, action: Selector? = nil, enabled: Bool = true) -> NSMenuItem { let i = NSMenuItem(title: title, action: action, keyEquivalent: ""); i.target = self; i.isEnabled = enabled; return i }
     private func updateMenu() {
-        let symbol = model.userPaused ? "pause.circle" : (model.ready ? "character.bubble.fill" : "exclamationmark.triangle.fill")
-        statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: model.statusTitle); statusItem.button?.image?.isTemplate = true
-        let menu = NSMenu(); menu.addItem(item(model.statusTitle, enabled: false)); menu.addItem(item("打开句译…", action: #selector(showWindow)))
-        let onboardingTitle = model.onboardingCompleted
-            ? (model.hotkeyReady ? "重新学习双击 Option…" : "修复快捷键设置…")
-            : "继续设置…"
-        menu.addItem(item(onboardingTitle, action: #selector(onboarding)))
-        let engine = item("翻译方式"), sub = NSMenu(); let apple = item("Apple 离线", action: #selector(apple)); apple.state = model.selectedEngine == "apple" ? .on : .off; let cloud = item("火山云端…", action: #selector(cloud)); cloud.state = model.selectedEngine == "volc" ? .on : .off; sub.addItem(apple); sub.addItem(cloud); engine.submenu = sub; menu.addItem(engine)
-        menu.addItem(.separator()); menu.addItem(item(model.userPaused ? "恢复句译" : "暂停句译", action: #selector(pause))); menu.addItem(item("诊断与帮助…", action: #selector(diagnostics))); menu.addItem(.separator()); menu.addItem(item("退出句译", action: #selector(terminate))); statusItem.menu = menu
+        let symbol = model.ready ? "character.bubble.fill" : model.summarySymbol
+        statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "句译 · \(model.summaryStatus)")
+        statusItem.button?.image?.isTemplate = true
+        statusItem.button?.toolTip = "句译 · \(model.summaryStatus)"
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.addItem(item("句译 · \(model.summaryStatus)", enabled: false))
+        menu.addItem(item(model.primaryActionTitle, action: #selector(primaryAction), enabled: model.primaryActionEnabled))
+        if !model.ready && model.canPauseTranslation {
+            menu.addItem(item("暂停所有翻译", action: #selector(pause)))
+        }
+        menu.addItem(.separator())
+        menu.addItem(item("打开句译…", action: #selector(showWindow)))
+        let engine = item("翻译方式")
+        let sub = NSMenu()
+        sub.autoenablesItems = false
+        let apple = item("本地翻译（Apple）", action: #selector(apple))
+        apple.state = model.selectedEngine == "apple" ? .on : .off
+        let cloud = item("云端翻译（仅火山）…", action: #selector(cloud))
+        cloud.state = model.selectedEngine == "volc" ? .on : .off
+        sub.addItem(apple); sub.addItem(cloud); engine.submenu = sub
+        engine.isEnabled = !model.translationSetupInProgress && !model.cloudBusy
+        menu.addItem(engine)
+        menu.addItem(item(model.onboardingCompleted ? "重新练习双 Option…" : "继续设置…", action: #selector(onboarding)))
+        menu.addItem(item("支持范围与隐私…", action: #selector(supportInfo)))
+        menu.addItem(item("诊断与帮助…", action: #selector(diagnostics)))
+        menu.addItem(.separator())
+        let quit = item("退出句译", action: #selector(terminate))
+        quit.keyEquivalent = "q"
+        menu.addItem(quit)
+        statusItem.menu = menu
     }
     private func updateChrome() {
         #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
@@ -3435,13 +3669,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let mode = model.onboardingPresented
         guard lastOnboardingMode != mode else { return }
         lastOnboardingMode = mode
-        let target = model.onboardingPresented ? NSSize(width: 620, height: 520) : NSSize(width: 680, height: 650)
-        let current = window.contentLayoutRect.size
-        let suggested = NSSize(width: max(current.width, target.width), height: max(current.height, target.height))
-        if suggested.width > current.width || suggested.height > current.height {
-            window.setContentSize(suggested)
-            ensureWindowVisible()
-        }
+        window.minSize = mode ? NSSize(width: 560, height: 500) : NSSize(width: 520, height: 440)
+        window.setContentSize(mode ? NSSize(width: 600, height: 560) : NSSize(width: 520, height: 520))
+        ensureWindowVisible()
     }
     private func ensureWindowVisible(forceCenter: Bool = false) {
         let screens = NSScreen.screens
@@ -3628,6 +3858,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         #endif
         model.chooseCloud(); showWindow()
     }
+    @objc private func primaryAction() {
+        model.performPrimaryAction()
+        if !model.ready && !model.userPaused { showWindow() }
+    }
+    @objc private func supportInfo() { model.showSupportInfo = true; showWindow() }
     @objc private func pause() { model.togglePause() }; @objc private func diagnostics() { model.showDiagnostics = true; showWindow() }; @objc private func terminate() { NSApp.terminate(nil) }
 }
 

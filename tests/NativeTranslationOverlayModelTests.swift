@@ -236,9 +236,9 @@ enum NativeTranslationOverlayModelTests {
                     )
                 )
             )
-            expect(state.truncationBadge == "原文已截断", "all truncation sources OR together")
+            expect(state.truncationBadge == "仅翻译部分内容", "all truncation sources OR together")
             expect(
-                state.truncationAccessibilityHelp == "仅翻译原文前 5000 个 Unicode 标量",
+                state.truncationAccessibilityHelp == "原文或返回结果达到长度限制；复制的是本次保留的译文，不是完整原文的全部译文。",
                 "truncation help is exact"
             )
         }
@@ -263,7 +263,7 @@ enum NativeTranslationOverlayModelTests {
         clock.advance(to: 1.999)
         expect(session.state.body.isEmpty, "1999ms has no extended message")
         clock.advance(to: 2.0)
-        expect(session.state.body == "仍在翻译，请稍候…", "2000ms updates in place")
+        expect(session.state.body == "长段落可能需要更久；可关闭浮窗取消本次翻译。", "2000ms updates in place")
         clock.advance(to: 11.999)
         expect(session.state.kind == .loading, "11999ms remains loading")
         clock.advance(to: 12.0)

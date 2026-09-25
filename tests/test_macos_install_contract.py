@@ -245,7 +245,7 @@ def test_window_frame_policy_preserves_valid_positions_and_repairs_before_show()
 
 
 def test_completion_and_docs_name_the_discoverable_install_location():
-    message = "句译会留在 Dock 和菜单栏，关闭窗口不会停止翻译。"
+    message = "译文出现在选区旁。关闭此窗口后，句译会在菜单栏继续运行。"
     assert message in SWIFT
     for relative in ("README.md", "README_EN.md", "docs/MENU_BAR_APP.md"):
         text = (ROOT / relative).read_text(encoding="utf-8")

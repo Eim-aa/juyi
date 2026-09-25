@@ -1,20 +1,70 @@
 # 句译 juyi
 
+<img src="macos/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" width="72" height="72" alt="句译图标" />
+
+**读懂这一句，继续读下去。**
+
+在支持的 Mac App 中选中英文，连按两次 **Option（⌥⌥）**，中文译文出现在选区旁。
+
+![句译真实操作：在预览中选中 PDF 英文标题，译文浮窗出现](docs/media/selection-demo.gif)
+
+[观看清晰版实录（MP4）](docs/media/selection-demo.mp4) · 选中英文 → 连按两次 Option → 查看译文。由用户实际操作录制，裁掉桌面与无关区域，未加速或替换译文。此片段来自 build 10，展示基本操作，不作为 build 11 PDF 断词修复的验收录像；界面中的单次耗时不代表性能保证。
+
+[获取与安装](#获取与安装) · [第一次翻译](#第一次翻译) · [真实界面](#真实界面) · [支持范围](#支持范围) · [English](README_EN.md)
+
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
-![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)
-![Engine](https://img.shields.io/badge/engine-offline%20%2B%20Volcengine-blue.svg)
+![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-lightgrey.svg)
+![Status](https://img.shields.io/badge/status-developer%20preview-blue.svg)
 
-> macOS 英语划词译为简体中文：在支持的 App 中选中英文，**连按两次 Option（⌥⌥）**。默认使用 Apple 端上翻译，正文在本机处理；首次使用可能需要系统下载语言包。
+默认使用 **本地翻译 · Apple**，无需密钥，翻译正文在本机处理；首次准备系统语言资源可能需要联网。**云端翻译目前仅支持火山**，需自行配置火山密钥，选中文字会发送至火山翻译，不支持任意服务商或自定义 API。
 
-English: [README_EN.md](README_EN.md)
+## 获取与安装
 
-> **开发者预览，不是正式发行包。** 当前尚无已完成 Developer ID 签名、公证的公众下载包；下方是源码安装路径。预编译原生 App 的 Apple 翻译不依赖 Python 后台，但当前仍需 Hammerspoon 兼容组件、macOS 15+、句译辅助功能权限及系统中英语言包。详见 [安装与使用说明](docs/MENU_BAR_APP.md)。
+**当前是开发者预览，尚无正式公众安装包。** 请按下面的入口选择，不要把仓库 ZIP 或 CI 构建产物当成正式安装器。
 
-Xcode 工程构建 Universal 2 App 与兼容 helper；构建通过不等于具备公开发行条件。见[构建与发行边界](docs/RELEASE_BASELINE.md)、[本轮产品审查与待验收项](docs/PRODUCT_REVIEW_2026-09-22.md)。
+| 你想做什么 | 从这里开始 |
+| --- | --- |
+| 我希望下载后直接安装 | [查看 GitHub Releases](https://github.com/Eim-aa/juyi/releases)；目前尚无 Release，签名、公证和完整安装体验完成后再提供公众安装包 |
+| 我愿意从源码试用 | [手动源码安装](#安装手动)，或 [让 AI Agent 协助](#用-ai-agent-协助源码安装) |
+| 我想了解安装前提 | [安装与使用说明](docs/MENU_BAR_APP.md) |
 
-![demo](docs/demo.gif)
+**安装前确认：** macOS 15+；当前预览仍需 Hammerspoon、句译辅助功能权限和系统中英语言资源。源码安装还需 Homebrew、Python ≥ 3.10 及可用的 Xcode/Command Line Tools。Universal 2 构建包含 Apple Silicon 与 Intel 架构，但不代表所有硬件和 App 均已实测。
 
-演示用于说明划词交互，不作为当前候选包界面或兼容性验收证据。
+App Store 上架是后续评估项，本页暂不提供商店下载入口，也不承诺上架时间。
+
+预编译原生 App 的 Apple 翻译不依赖 Python 后台；可选云端和源码安装的依赖不同。详见 [安装与使用说明](docs/MENU_BAR_APP.md)。
+
+构建通过不等于具备公开发行条件。见[构建与发行边界](docs/RELEASE_BASELINE.md)。
+
+## 第一次翻译
+
+1. 安装后打开句译，按设置提示准备兼容组件、为**句译**授予辅助功能权限，并按需下载 Apple 中英语言资源。
+2. 在句译的首次练习中点击“在文本编辑中打开”，在打开的示例文稿中选中英文。
+3. **连按两次 Option，不是同时按住两个 Option 键。** 看到选区旁出现中文译文后，就可以继续阅读。
+
+关闭主窗口仍会在菜单栏运行；暂停后不会触发翻译；退出再打开，需要点击“恢复翻译”。
+
+上方为真实操作录屏；也可查看[三步操作示意图](docs/media/overview.png)。旧版绘制动图不再作为首屏展示。
+
+## 真实界面
+
+以下是当前本地开发者预览的实机截图，不是设计稿；公开发布版本可能不同。截图展示就绪状态和翻译方式设置，不代替真实选区翻译演示。
+
+<img src="docs/media/home-ready.jpg" width="440" alt="句译实机首页：本地 Apple 翻译已就绪，提示选中英文后连按两次 Option" />
+
+<details>
+<summary>查看本地／云端选择与隐私说明</summary>
+
+<img src="docs/media/settings-local-cloud.jpg" width="520" alt="句译实机设置：Apple 本地处理；云端目前仅支持火山，文字会发送至火山翻译" />
+
+</details>
+
+## 支持范围
+
+- **文本编辑、网页阅读、文字型 PDF**：在具体 App 提供可用选区接口时使用；不是所有 App 通用的取词承诺。
+- **不支持**：扫描图片型 PDF、图片中的文字、安全输入框和受保护内容；没有 OCR。
+- **WPS PDF**：兼容取词可能临时使用系统复制并尽力恢复剪贴板；剪贴板管理器可能保留原文，敏感内容请避免该路径。
+- **翻译方向**：目前仅英语 → 简体中文。
 
 ## 为什么用这个？
 
@@ -71,7 +121,7 @@ git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
 装完后打开“句译”，按两步首次设置完成启用：
 
 1. 点击启用原生双 Option。必要时，句译会部署安装包内的当前 Hammerspoon owner 交接模块并重新启动 Hammerspoon；随后会提示你在“系统设置 → 隐私与安全性 → 辅助功能”中授权 **句译**，授权后回到句译即可继续。
-2. 点击“打开文本编辑”，新建文稿，输入并选中 `Good tools should feel effortless.`，再**连按两次 Option（⌥⌥）**。看到原生译文浮窗后回到句译确认。句译自身窗口不作为取词目标。
+2. 在首次练习中点击“在文本编辑中打开”，在示例文稿中选中 `Good tools should feel effortless.`，再**连按两次 Option（⌥⌥）**。看到原生译文浮窗后回到句译确认。句译自身窗口不作为取词目标。
 
 原生 Apple 链路由句译负责双 Option 监听、AX 取词、端上翻译和浮窗；Hammerspoon 不再处理这条链的取词或显示，只按现有 owner 协议安全停止并让出旧监听、请求和浮窗。
 
@@ -95,7 +145,7 @@ git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
 **切换到火山翻译（Volcengine）云端引擎：**
 
 1. 在[火山引擎控制台](https://console.volcengine.com/)开通"机器翻译"，给（子）用户授予 `TranslateFullAccess`，创建一对 AK/SK。
-2. 先完成可选云端后台安装。打开主窗口的“其他翻译方式与已有设置”，点击“使用火山云端…”，由你本人输入 AK/SK。已有密钥与配置仍可在这里管理；首页简化不会删除它们。
+2. 先完成可选云端后台安装。打开主窗口的“翻译方式”，点击“使用云端翻译…”，在“火山翻译配置”中由你本人输入火山 AK/SK。已有密钥可通过“管理火山翻译配置…”管理；不支持其他服务商的密钥或自定义 API。
 3. 句译会先把候选凭据放入独立的待验证钥匙串项，真实翻译通过后才替换正式凭据；该事务标记会保留到后台服务重启并再次实测成功，意外中断时由下次启动继续恢复。验证失败不会覆盖原有可用配置。
 4. 移除云端配置时会先建立本机事务标记；在移除完成前，快捷键端和本地服务都会阻止云端请求，即使 App 在中途退出也不会继续上传新选中的文本。
 
@@ -111,7 +161,7 @@ git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
 
 ### 运行时一键切换（菜单栏，无需重启）
 
-装好后菜单栏会出现句译图标。点击“翻译方式”可切换已准备好的引擎，当前模式带勾显示、选择会被记住。主页优先展示 Apple 离线及快捷键状态，云端配置放在“其他翻译方式与已有设置”。旧版 `volc.env` 中的 `ENGINE` 只在没有明确选择时作为默认值。
+装好后菜单栏会出现句译图标。点击“翻译方式”可切换已准备好的引擎，当前模式带勾显示、选择会被记住。主页展示“本地 · Apple”或“云端 · 火山”及快捷键状态，云端配置位于展开的“翻译方式”中。旧版 `volc.env` 中的 `ENGINE` 只在没有明确选择时作为默认值。
 
 成功译文下方标注**来源和本次耗时**，例如 `Apple 离线 · … 毫秒`。
 

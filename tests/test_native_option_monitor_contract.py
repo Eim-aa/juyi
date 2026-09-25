@@ -428,6 +428,12 @@ def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
     assert "retryRevocation()" in FEATURE
     assert "cancellationCheck()" in SELECTION
 
+    # Prose comments may describe the downstream translator; only executable
+    # source should be checked for unwanted transport/logging dependencies.
+    selection_code = "\n".join(
+        line for line in SELECTION.splitlines()
+        if not line.lstrip().startswith("//")
+    )
     for forbidden in (
         "URLSession",
         "translator",
@@ -438,7 +444,7 @@ def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
         "kAXDescriptionAttribute",
         "kAXValueAttribute",
     ):
-        assert forbidden not in SELECTION
+        assert forbidden not in selection_code
 
 
 def test_selection_normalization_matches_existing_backend_limit():

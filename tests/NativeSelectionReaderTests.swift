@@ -445,11 +445,40 @@ enum NativeSelectionReaderTests {
         )
     }
 
+    private static func testPDFLineBreakRepair() {
+        let repair = SystemNativeSelectionAXClient.repairPDFLineBreaks
+        // From the user's Ramp/Revelio PDF, abstract and introduction.
+        expect(repair("using ob-\nserved AI and work-\nforce records")
+            == "using observed AI and workforce records", "Preview PDF words are rejoined")
+        expect(repair("using ob\u{fffe}served AI and work\u{fffe}force records")
+            == "using observed AI and workforce records", "WPS noncharacters are repaired")
+        expect(repair("artificial in-\ntelligence; em-\nployment; engi\u{00ad}\nneering")
+            == "artificial intelligence; employment; engineering", "other real PDF breaks are repaired")
+        expect(repair("high-\nintensity and firm-\nlevel")
+            == "high-intensity and firm-level", "real compound hyphens survive")
+        expect(repair("re-\nsign and un-\nion") == "re-sign and un-ion",
+            "ambiguous meaning-changing prefixes retain their hyphen")
+        expect(repair("observed\nAI spending\n\nNew paragraph\n- item")
+            == "observed\nAI spending\n\nNew paragraph\n- item", "ordinary lines paragraphs and lists survive")
+        expect(repair("ob-\n\nserved") == "ob-\n\nserved", "never join across paragraphs")
+        expect(repair("work-force and re-sign") == "work-force and re-sign",
+            "inline hard hyphens are untouched")
+        expect(repair("ob- \r\n  served") == "observed", "CRLF and layout indentation are supported")
+        expect(repair("xxzy\u{fffe}qqaa") == "xxzy-qqaa",
+            "unknown words are not guessed and invalid marker is removed")
+        let client = StubClient()
+        client.response = .text("ob-\nserved")
+        expect(NativeSelectionReader(client: client).readSelection(for: source)
+            == .success(text: "ob-\nserved", didTruncate: false),
+            "ordinary editor text is not subjected to PDF repairs")
+    }
+
     static func main() {
         testTargetAndPermissionGuards()
         testNormalizationAndLengthPolicy()
         testStableAXOutcomes()
         testPureAXErrorAndSecurityPolicy()
+        testPDFLineBreakRepair()
         print("NativeSelectionReaderTests: \(passed) passed")
     }
 }

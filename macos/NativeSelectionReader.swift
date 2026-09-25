@@ -358,6 +358,75 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
     ) -> NativeSelectionAXRead {
         guard !cancellationCheck() else { return .cancelled }
         let application = AXUIElementCreateApplication(target.processIdentifier)
+        guard AXUIElementSetMessagingTimeout(application, Self.messagingTimeout)
+            == .success else { return .temporarilyUnavailable }
+        // Capture document identity before reading. Never apply PDF repairs to
+        // an editor, web page, or a different document opened during capture.
+        let pdf = wpsPDFContext(application: application, target: target)
+        let result = copyRawSelectedText(from: target)
+        guard let pdf, case let .text(rawText) = result else { return result }
+        guard !cancellationCheck(), isCurrentWPSPDFContext(
+            pdf, application: application, target: target
+        ) else { return .cancelled }
+        let repaired = Self.repairPDFLineBreaks(rawText)
+        guard !cancellationCheck(), isCurrentWPSPDFContext(
+            pdf, application: application, target: target
+        ) else { return .cancelled }
+        return .text(repaired)
+    }
+
+    /// Repairs layout artifacts, not spelling. Called on the selection worker;
+    /// the checker is local to this call and never shared with the main thread.
+    static func repairPDFLineBreaks(_ rawText: String) -> String {
+        let text = rawText.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        guard (text.contains("-") && text.contains("\n"))
+            || text.contains("\u{00ad}") || text.contains("\u{fffe}")
+            || text.contains("\u{0002}") else { return text }
+        // Bound dictionary work to the input range the translator can consume.
+        let head = String(text.unicodeScalars.prefix(6_000))
+        let tail = String(text.unicodeScalars.dropFirst(6_000))
+        let pattern = #"([A-Za-z]{2,})((?:-[ \t]*\n[ \t]*)|(?:[\u00AD\uFFFE\u0002][ \t]*(?:\n[ \t]*)?))([a-z]{2,})"#
+        guard let expression = try? NSRegularExpression(pattern: pattern) else { return text }
+        let matches = expression.matches(in: head, range: NSRange(head.startIndex..., in: head))
+        guard !matches.isEmpty else { return text }
+        let checker = NSSpellChecker()
+        // Joining these can change meaning (re-sign → resign, un-ion → union).
+        let ambiguousPrefixes: Set<String> = [
+            "re", "co", "ex", "un", "non", "anti", "pro", "pre", "post",
+            "self", "well", "ill", "all", "cross"
+        ]
+        let source = head as NSString
+        let output = NSMutableString(string: head)
+        for match in matches.prefix(128).reversed() {
+            let left = source.substring(with: match.range(at: 1))
+            let separator = source.substring(with: match.range(at: 2))
+            let right = source.substring(with: match.range(at: 3))
+            let joined = left + right
+            var wordCount = 0
+            let spelling = checker.checkSpelling(
+                of: joined, startingAt: 0, language: "en_US", wrap: false,
+                inSpellDocumentWithTag: 0, wordCount: &wordCount
+            )
+            let recognized = spelling.location == NSNotFound && wordCount == 1
+            let isHardHyphen = separator.hasPrefix("-")
+            let preserveHyphen = isHardHyphen && ambiguousPrefixes.contains(left.lowercased())
+            // Unknown compounds retain the hyphen, but lose the layout newline.
+            // Unknown special markers become a hyphen rather than leaking an
+            // invalid Unicode character into Apple Translation.
+            output.replaceCharacters(
+                in: match.range,
+                with: recognized && !preserveHyphen ? joined : left + "-" + right
+            )
+        }
+        return (output as String) + tail
+    }
+
+    private func copyRawSelectedText(
+        from target: NativeSelectionTarget
+    ) -> NativeSelectionAXRead {
+        guard !cancellationCheck() else { return .cancelled }
+        let application = AXUIElementCreateApplication(target.processIdentifier)
         let applicationTimeoutError = AXUIElementSetMessagingTimeout(
             application,
             Self.messagingTimeout
