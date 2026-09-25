@@ -4,7 +4,7 @@
 
 Select English in a supported Mac app, double-tap **Option (⌥⌥)**, and read Simplified Chinese beside the selection.
 
-[Download the Mac DMG · build 12](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.12/Juyi-0.4.0-build12-universal.dmg) · [Release notes and checksums](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.12) · [中文](README.md)
+[Download the Mac DMG · build 13](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.13/Juyi-0.4.0-build13-universal.dmg) · [Release notes and checksums](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.13) · [中文](README.md)
 
 This is a signed, notarized **public preview, not a stable release**. No GitHub account is needed to download. Use the DMG, not the repository ZIP or unsigned CI artifacts.
 
@@ -33,15 +33,15 @@ Closing the main window keeps Juyi running; pausing stops translation; reopening
 
 ## Verification status
 
-The package passed Universal 2, signature, notarization, Gatekeeper, and anonymous-download checks. A user confirmed build 12's real TextEdit selection → double Option → translated popup on the existing development Mac. Including both architectures is not proof of Intel hardware testing.
+Build 13 fixes a permission-restoration edge case that could display Ready without a running shortcut monitor. The package passed Universal 2, signature, notarization, and Gatekeeper checks; the existing Mac's upgrade, Resume, normal Quit, and paused state after reopening were tested. See the release notes for real-gesture acceptance; build 12's human results are not reused for build 13. Including both architectures is not proof of Intel hardware testing.
 
-Clean-account first permission/language setup, this build's PDF regression, macOS 15, and Intel hardware still need acceptance. See the [version-specific release notes](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.12). Distribution is through GitHub, not the App Store.
+Clean-account first permission/language setup, this build's PDF regression, macOS 15, and Intel hardware still need acceptance. See the [version-specific release notes](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.13). Distribution is through GitHub, not the App Store.
 
 ## Source and feedback
 
-The early scripts in the default branch are not the installer for this native preview. Use the [release-tag source](https://github.com/Eim-aa/juyi/tree/v0.4.0-preview.12); later development is in the [existing PR](https://github.com/Eim-aa/juyi/pull/1). Read the [version-specific instructions](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.12/AGENTS.md) before source builds or optional cloud setup. Do not mix old-branch instructions with the preview.
+The early scripts in the default branch are not the installer for this native preview. Use the [release-tag source](https://github.com/Eim-aa/juyi/tree/v0.4.0-preview.13); later development is in the [existing PR](https://github.com/Eim-aa/juyi/pull/1). Read the [version-specific instructions](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.13/AGENTS.md) before source builds or optional cloud setup. Do not mix old-branch instructions with the preview.
 
-The linked tag's one-line command pointing to `main/scripts/bootstrap.sh` is outdated: skip it. For source installation, check out `v0.4.0-preview.12` (commit `5e0a92f`) in a new directory, then run `scripts/install.sh` from that checkout. Changing only the bootstrap download URL to a tag does not pin its internal clone. Do not overwrite an existing working directory.
+For optional source installation, use the pinned `v0.4.0-preview.13` checkout (commit `b4ad739`) and that tag's instructions. Do not substitute the early default-branch bootstrap or overwrite an existing working directory.
 
 [Report issues](https://github.com/Eim-aa/juyi/issues) with the app/system/reader versions and non-sensitive reproduction steps. Never include keys or complete private documents.
 

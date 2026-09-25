@@ -1,6 +1,6 @@
 # Juyi installation guidance
 
-Use the signed, notarized native preview from [GitHub Releases](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.12) for normal local translation. The early scripts on this default branch are not the installer for that app.
+Use the signed, notarized native preview from [GitHub Releases](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.13) for normal local translation. The early scripts on this default branch are not the installer for that app.
 
 ## Native installation
 
@@ -13,9 +13,9 @@ Apple local translation needs no Hammerspoon, Python, Homebrew, background servi
 
 ## Source and optional cloud setup
 
-Before source installation, use the [instructions at the release tag](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.12/AGENTS.md), not the old default-branch bootstrap. The native release source is at that tag; the existing development PR is https://github.com/Eim-aa/juyi/pull/1.
+Before source installation, use the [instructions at the release tag](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.13/AGENTS.md), not the old default-branch bootstrap. The native release source is at that tag; the existing development PR is https://github.com/Eim-aa/juyi/pull/1.
 
-The tag's instruction to download `main/scripts/bootstrap.sh` is outdated and must be skipped. First check out `v0.4.0-preview.12` (commit `5e0a92f`) in a new directory, then run that checkout's `scripts/install.sh` after verifying its prerequisites. Merely changing a bootstrap URL to the tag does not pin the branch cloned inside the script. Preserve any existing checkout and user configuration.
+For optional source installation, check out `v0.4.0-preview.13` (commit `b4ad739`) in a new directory, then follow that tag's prerequisites and run its `scripts/install.sh`. The release instructions use a pinned checkout; do not substitute the old main-branch bootstrap or overwrite an existing checkout or user configuration.
 
 Cloud is optional, currently Volcengine only, and requires separate background components. Do not enable it or upload text unless the user explicitly chooses it.
 
