@@ -143,6 +143,9 @@ and diagnostics too; do not silently test an older installation.
 
 ## Security rules (do not violate)
 
+- Do not read, execute, modify, stage, or commit `scripts/start_service.command`.
+  Do not inspect the repository `tmp/` directory. Preserve unrelated user edits.
+
 - Volcengine credentials live in **macOS Keychain**, not source files or the
   repository. A legacy `volc.env` may be read only for migration; never create
   a new plaintext key file.

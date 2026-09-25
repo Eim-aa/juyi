@@ -20,7 +20,7 @@
 
 ## 获取与安装
 
-[直接下载公开测试版（build 12，Universal 2 DMG）](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.12/Juyi-0.4.0-build12-universal.dmg) · [发布说明与校验文件](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.12)
+[直接下载公开测试版（build 13，Universal 2 DMG）](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.13/Juyi-0.4.0-build13-universal.dmg) · [发布说明与校验文件](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.13)
 
 **当前是公开测试阶段，不是稳定版。** 下载已签名、公证的 DMG，无需登录 GitHub；不要把仓库 ZIP 或 CI 构建产物当成安装器。具体构建状态与已验证范围以发布说明为准。
 

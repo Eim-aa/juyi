@@ -20,7 +20,7 @@ Select English in a supported Mac app → double-tap **Option (⌥⌥)** → rea
 
 ## Get Juyi
 
-[Download the public preview (build 12, Universal 2 DMG)](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.12/Juyi-0.4.0-build12-universal.dmg) · [Release notes and checksums](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.12)
+[Download the public preview (build 13, Universal 2 DMG)](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.13/Juyi-0.4.0-build13-universal.dmg) · [Release notes and checksums](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.13)
 
 **Public testing, not a stable release.** Signed, notarized DMGs are available without a GitHub login. The repository ZIP and CI artifacts are not installers. Check each release's verification status and remaining acceptance checks.
 
