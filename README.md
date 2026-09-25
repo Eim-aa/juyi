@@ -41,7 +41,7 @@ build 13 修复辅助功能权限恢复后可能显示就绪但监听未运行�
 
 默认分支中的早期脚本不是上述原生测试版的安装入口。新版源码在[发布标签](https://github.com/Eim-aa/juyi/tree/v0.4.0-preview.13)，后续改动见[现有开发 PR](https://github.com/Eim-aa/juyi/pull/1)。源码开发或可选云端安装请先阅读[对应版本的说明](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.13/AGENTS.md)，不要混用旧分支安装步骤。
 
-可选源码安装使用 `v0.4.0-preview.13`（提交 `b4ad739`）的固定 checkout，按该标签的安装说明操作；不要改用默认分支的早期 bootstrap，也不要覆盖已有工作目录。
+可选源码安装使用 `v0.4.0-preview.13`（提交 `62a4ab1`）的固定 checkout，安装、验证和诊断都使用同一目录（说明默认为 `~/.local/share/juyi-build13`），不要误验旧安装。不要改用默认分支的早期 bootstrap，也不要覆盖已有工作目录。
 
 [提交问题](https://github.com/Eim-aa/juyi/issues)时请附版本、macOS、阅读器和不含隐私的复现步骤；不要附密钥或完整私人文档。
 

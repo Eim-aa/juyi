@@ -15,7 +15,7 @@ Apple local translation needs no Hammerspoon, Python, Homebrew, background servi
 
 Before source installation, use the [instructions at the release tag](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.13/AGENTS.md), not the old default-branch bootstrap. The native release source is at that tag; the existing development PR is https://github.com/Eim-aa/juyi/pull/1.
 
-For optional source installation, check out `v0.4.0-preview.13` (commit `b4ad739`) in a new directory, then follow that tag's prerequisites and run its `scripts/install.sh`. The release instructions use a pinned checkout; do not substitute the old main-branch bootstrap or overwrite an existing checkout or user configuration.
+For optional source installation, check out `v0.4.0-preview.13` (commit `62a4ab1`) in a new directory, then follow that tag's prerequisites and run its `scripts/install.sh`. Installation, verification, and diagnostics must use that same checkout (the guide uses `~/.local/share/juyi-build13`), not an older installation. Do not substitute the old main-branch bootstrap or overwrite an existing checkout or user configuration.
 
 Cloud is optional, currently Volcengine only, and requires separate background components. Do not enable it or upload text unless the user explicitly chooses it.
 

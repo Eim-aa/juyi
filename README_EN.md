@@ -41,7 +41,7 @@ Clean-account first permission/language setup, this build's PDF regression, macO
 
 The early scripts in the default branch are not the installer for this native preview. Use the [release-tag source](https://github.com/Eim-aa/juyi/tree/v0.4.0-preview.13); later development is in the [existing PR](https://github.com/Eim-aa/juyi/pull/1). Read the [version-specific instructions](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.13/AGENTS.md) before source builds or optional cloud setup. Do not mix old-branch instructions with the preview.
 
-For optional source installation, use the pinned `v0.4.0-preview.13` checkout (commit `b4ad739`) and that tag's instructions. Do not substitute the early default-branch bootstrap or overwrite an existing working directory.
+For optional source installation, use the pinned `v0.4.0-preview.13` checkout (commit `62a4ab1`) and that tag's instructions. Installation, verification, and diagnostics must all use that checkout (the guide uses `~/.local/share/juyi-build13`), not an older installation. Do not substitute the early default-branch bootstrap or overwrite an existing working directory.
 
 [Report issues](https://github.com/Eim-aa/juyi/issues) with the app/system/reader versions and non-sensitive reproduction steps. Never include keys or complete private documents.
 
