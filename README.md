@@ -186,11 +186,13 @@ flowchart LR
 ## 常用命令
 
 ```bash
-~/.local/share/argos-translator/scripts/test.sh        # 全套诊断
-~/.local/share/argos-translator/scripts/bench.sh       # IPC + 翻译性能基准
-~/.local/share/argos-translator/eval/run_eval.py       # 翻译质量评估
-~/.local/share/argos-translator/scripts/demo.sh        # 简短交互演示
+~/.local/share/juyi-build13/scripts/test.sh           # 全套诊断
+~/.local/share/juyi-build13/scripts/bench.sh          # IPC + 翻译性能基准
+~/.local/share/juyi-build13/eval/run_eval.py          # 翻译质量评估
+~/.local/share/juyi-build13/scripts/demo.sh           # 简短交互演示
 ```
+
+这些命令用于上文的可选源码安装。若克隆到其他新目录，验证与诊断也须使用同一目录，不能指向旧安装。
 
 ## 故障排查
 

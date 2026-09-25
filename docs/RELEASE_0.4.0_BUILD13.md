@@ -13,6 +13,8 @@
 - 独立代理只读复核未发现新增恢复循环、暂停绕过或 owner 交接顺序问题，允许进入打包验证。
 - 独立 build 13 App 与 DMG 已完成 Developer ID 签名、可信时间戳和 Hardened Runtime；Apple 公证 Accepted、DMG staple/validate 和 Gatekeeper 检查通过。最终 DMG SHA-256：`67c5a46bf7d5a2638262971f41b4d1cf4177af24a543ba4ee5b7624ae11ee3e6`。
 - 上述检查不是系统 TCC 真机撤回/重授权或干净账户首次安装验收。build 12 的本机 TextEdit 成功不能直接作为 build 13 的真人结果。
+- 本机已从上述正式 DMG 升级到 build 13，完整保留旧版备份。Computer Use 验证启动保持暂停、手动恢复显示就绪、从运行状态正常退出并结束进程、重新打开保持暂停、再次恢复显示就绪。未通过模拟按键声称真实翻译通过。
+- 独立代理复核最终 DMG 与其中 App 的版本、两种架构、签名、票据、Gatekeeper 和校验文件一致，没有新增包级阻断；首次安装与真实选区仍按下方边界验收。
 
 ## 分发与验收边界
 

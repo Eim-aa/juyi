@@ -187,11 +187,15 @@ Explicitly switching to cloud stops the native Apple workflow and returns owners
 ## Commands
 
 ```bash
-~/.local/share/argos-translator/scripts/test.sh        # full diagnostic matrix
-~/.local/share/argos-translator/scripts/bench.sh       # IPC + translate benchmark
-~/.local/share/argos-translator/eval/run_eval.py       # translation quality eval
-~/.local/share/argos-translator/scripts/demo.sh        # short interactive demo
+~/.local/share/juyi-build13/scripts/test.sh           # full diagnostic matrix
+~/.local/share/juyi-build13/scripts/bench.sh          # IPC + translate benchmark
+~/.local/share/juyi-build13/eval/run_eval.py          # translation quality eval
+~/.local/share/juyi-build13/scripts/demo.sh           # short interactive demo
 ```
+
+These commands are for the optional source installation above. If you cloned
+into another new directory, use that same checkout for verification and
+diagnostics; do not accidentally validate an older installation.
 
 ## Troubleshooting
 

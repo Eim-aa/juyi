@@ -27,7 +27,7 @@ CURRENT_PROJECT_VERSION = <单调递增的整数 build>
 
 `macos/Info.plist` 使用 Xcode 变量展开。发布时同时递增 build number；Release tag 应与 `v$(MARKETING_VERSION)` 一致，但 tag 不是反向生成版本的来源。
 
-当前源码候选为 `0.4.0`、build `13`，权限恢复修复与验证边界见 [build 13 记录](RELEASE_0.4.0_BUILD13.md)。现有已验收日常安装仍为 build `12`：2026-09-25，用户确认该安装版在文本编辑中实际双 Option 后出现中文译文；运行路径为 `/Applications/句译.app`，系统为 macOS 26.5.1、Apple Silicon。此前 build 11 的 PDF 断词、长段落验收不等于 build 12/13 的 PDF 或首次安装已验收，也不代表 macOS 15 或 Intel 真机验收。实际证据必须记录运行包版本、构建号和路径，不能用旧版截图证明新版通过。
+当前源码候选为 `0.4.0`、build `13`，权限恢复修复与验证边界见 [build 13 记录](RELEASE_0.4.0_BUILD13.md)。2026-09-26，已将已公证的 build 13 从正式 DMG 安装到 `/Applications/句译.app`，保留完整旧版备份，实测启动保持暂停、恢复显示就绪、正常退出和重开保持暂停。真实全局快捷键尚未计入本版验收。2026-09-25 用户确认的文本编辑双 Option 中文译文属于 build 12，不能直接算作 build 13 结果。系统为 macOS 26.5.1、Apple Silicon。此前 build 11 的 PDF 断词、长段落验收不等于 build 12/13 的 PDF 或首次安装已验收，也不代表 macOS 15 或 Intel 真机验收。实际证据必须记录运行包版本、构建号和路径，不能用旧版截图证明新版通过。
 
 ## 本地构建
 
