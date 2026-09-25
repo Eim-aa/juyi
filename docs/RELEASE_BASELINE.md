@@ -1,6 +1,6 @@
 # macOS 构建基线与正式发行边界
 
-当前版本定位为**公开测试版，不是稳定版**。build 11 已完成签名、公证并公开下载，证据见 [发布记录](RELEASE_0.4.0.md)。当前 build 12 移除全新本地安装的 Hammerspoon 前提，仍需按新版独立记录发行检查。Apple 主链由原生 App 负责双 Option、AX 取词、端上翻译和浮窗；已有早期开发组件继续通过既有 owner 协议交接。Python 后端只服务可选云端和兼容路径。
+当前版本定位为**公开测试版，不是稳定版**。build 12 已完成签名、公证并公开下载，且通过已有开发配置机器上的实际文本翻译验收，证据见 [build 12 发布记录](RELEASE_0.4.0_BUILD12.md)。该版本移除全新本地安装的 Hammerspoon 前提，但干净账户首次安装仍待实测。Apple 主链由原生 App 负责双 Option、AX 取词、端上翻译和浮窗；已有早期开发组件继续通过既有 owner 协议交接。Python 后端只服务可选云端和兼容路径。
 
 ## 工程与兼容性
 
@@ -27,7 +27,7 @@ CURRENT_PROJECT_VERSION = <单调递增的整数 build>
 
 `macos/Info.plist` 使用 Xcode 变量展开。发布时同时递增 build number；Release tag 应与 `v$(MARKETING_VERSION)` 一致，但 tag 不是反向生成版本的来源。
 
-当前源码候选为 `0.4.0`、build `12`；日常安装仍是 build `11`。用户此前确认 build 11 PDF 断词修复有效，PDF 长段落及暂停恢复可用，不等于 build 12 首次安装已验收，也不代表 macOS 15 或 Intel 真机验收。实际证据必须记录运行包版本、构建号和路径，不能用旧版截图证明新版通过。
+当前源码及日常安装为 `0.4.0`、build `12`。2026-09-25，用户确认该安装版在文本编辑中实际双 Option 后出现中文译文；运行路径为 `/Applications/句译.app`，系统为 macOS 26.5.1、Apple Silicon。此前 build 11 的 PDF 断词、长段落验收不等于 build 12 的 PDF 或首次安装已验收，也不代表 macOS 15 或 Intel 真机验收。实际证据必须记录运行包版本、构建号和路径，不能用旧版截图证明新版通过。
 
 ## 本地构建
 
@@ -62,14 +62,14 @@ macOS CI 同时构建 Debug 与 Release Xcode 配置，并验证：
 - 旧安装脚本构建路径仍可用，并单独核验其 ad-hoc runtime 签名；
 - Swift 策略测试、Python/Lua/Bash 契约继续通过。
 
-## 公开发布前仍需完成
+## 发行状态与稳定版前仍需完成
 
-2026-09-25：build 11 已完成 Developer ID 签名、Apple 公证、staple、Gatekeeper 以及匿名下载验证，并作为公开测试版发布。源码对应提交的 GitHub CI 全部通过。这些证据不自动覆盖 build 12。公证凭据已存于本机钥匙串，无需把私钥导出到 GitHub。打包脚本将 App、Applications 链接与离线说明放入 DMG，打包成功仍不等于公证成功。
+2026-09-25：build 12 已独立完成 Developer ID 签名、Apple 公证、staple、Gatekeeper 以及匿名下载验证，并作为公开测试版发布。安装包源码对应提交的 GitHub CI 全部通过，本机升级后的真实文本翻译通过，完整证据见 build 12 发布记录，不沿用 build 11 结果。公证凭据已存于本机钥匙串，无需把私钥导出到 GitHub。打包脚本将 App、Applications 链接与离线说明放入 DMG，打包成功仍不等于公证成功。
 
 1. 使用稳定的 Developer ID Application 团队；若日后改为 CI 签名，再配置临时 CI keychain，不将私钥提交到仓库。
 2. 本地候选 App 已完成 Developer ID 签名、Hardened Runtime 和 timestamp。当前 App 不内嵌 helper；如果另行分发兼容 helper，应对它单独签名并纳入公证容器。
-3. 制作并签名最终 DMG/PKG，以最终分发容器提交 `notarytool` 公证；获准后 staple、验证票据与 Gatekeeper，再公布下载和校验值。
-4. build 12 已实现无 Hammerspoon 的全新原生启用路径；验证实际安装后才能宣告端到端完成。可选云端的 Python 后台仍明确标为高级安装，不是原生 Apple 必需运行时。
+3. build 12 的最终 DMG 签名、公证、staple、票据与 Gatekeeper 验证、下载及校验值已完成。以后更改分发包仍需重新执行，不能复用旧包的公证结果。
+4. build 12 已实现无 Hammerspoon 的全新原生启用路径；已有配置机器上的真实文本链路已通过，干净环境安装后仍需独立验证。可选云端的 Python 后台明确标为高级安装，不是原生 Apple 必需运行时。
 5. 在干净 macOS 账户完成下载、安装、授权、首次语言包准备、真实选区翻译、暂停、退出再开与升级验证；记录最低支持系统及不同硬件的实际兼容结果。
 
 公开测试包和稳定版应明确区分。每个下载包分别披露签名、公证及真实安装验证状态；不把源码构建或旧版本测试作为新版本的验收证据。
