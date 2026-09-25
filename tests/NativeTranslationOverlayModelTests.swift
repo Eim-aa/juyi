@@ -302,6 +302,121 @@ enum NativeTranslationOverlayModelTests {
         expect(updates.filter { $0.1.isTerminal }.count == 1, "first timeline emitted one terminal")
     }
 
+    private static func testSelectionCaptureAndTranslationDeadlines() {
+        let clock = ManualClock()
+        var updates: [(Int, NativeTranslationOverlayState)] = []
+        let session = NativeTranslationOverlaySession(clock: clock.clock) {
+            updates.append(($0, $1))
+        }
+        let generation = session.beginSelectionCapture()
+        expect(session.isCapturingSelection, "capture phase starts before text is available")
+        expect(session.state == .hidden, "capture feedback retains the short anti-flash delay")
+        expect(clock.activeTaskCount == 1, "capture schedules only its feedback deadline")
+        clock.advance(to: 0.149)
+        expect(session.state == .hidden, "capture remains hidden before 150ms")
+        clock.advance(to: 0.150)
+        expect(session.state.kind == .loading, "capture feedback is nonterminal loading")
+        expect(session.state.title == "正在读取选中文字…", "capture does not claim Apple is translating")
+        expect(!session.state.canCopy && session.state.copyText == nil, "capture feedback contains no copyable text")
+        clock.advance(to: 13)
+        expect(session.isCapturingSelection, "slow capture remains in capture phase")
+        expect(session.state.title == "正在读取选中文字…", "capture never becomes a translation timeout or long-paragraph message")
+        expect(clock.activeTaskCount == 0, "capture has no translation-stage timers")
+
+        session.selectionCaptured(for: generation)
+        expect(session.generation == generation, "capture transition retains the same panel generation")
+        expect(!session.isCapturingSelection, "completed capture clears the capture phase")
+        expect(session.state.title == "正在翻译…" && session.state.body.isEmpty, "visible feedback changes to translating immediately")
+        expect(clock.activeTaskCount == 2, "visible transition schedules only extended and timeout deadlines")
+        let transitionUpdateCount = updates.count
+        clock.advance(to: 13.5)
+        session.selectionCaptured(for: generation)
+        expect(updates.count == transitionUpdateCount, "duplicate capture completion does not republish")
+        expect(clock.activeTaskCount == 2, "duplicate capture completion does not restart deadlines")
+        clock.advance(to: 14.999)
+        expect(session.state.body.isEmpty, "extended message is measured from capture completion")
+        clock.advance(to: 15)
+        expect(session.state.body == "长段落可能需要更久；可关闭浮窗取消本次翻译。", "extended translation message appears two seconds after capture")
+        clock.advance(to: 24.999)
+        expect(session.state.kind == .loading, "translation retains its full twelve-second budget")
+        clock.advance(to: 25)
+        expect(session.state.title == "翻译超时", "translation times out twelve seconds after capture completion")
+        session.selectionCaptured(for: generation)
+        expect(session.state.title == "翻译超时" && clock.activeTaskCount == 0, "late capture completion cannot resurrect a timed-out panel")
+    }
+
+    private static func testFastSelectionCaptureDoesNotFlashOrRegress() {
+        let clock = ManualClock()
+        var visibleTitles: [String] = []
+        let session = NativeTranslationOverlaySession(clock: clock.clock) { _, state in
+            if state.isVisible { visibleTitles.append(state.title) }
+        }
+        let generation = session.beginSelectionCapture()
+        clock.advance(to: 0.02)
+        session.selectionCaptured(for: generation)
+        expect(!session.isCapturingSelection && session.state == .hidden, "fast capture transitions without flashing its reading state")
+        expect(clock.activeTaskCount == 3, "hidden transition schedules ordinary translation deadlines")
+        clock.advance(to: 0.150)
+        expect(session.state == .hidden, "cancelled capture timer cannot overwrite the new translation stage")
+        clock.advance(to: 0.169)
+        expect(session.state == .hidden, "translation loading keeps its 150ms delay when no panel was visible")
+        clock.advance(to: 0.171)
+        expect(session.state.title == "正在翻译…", "fast capture only reveals translating feedback")
+        expect(visibleTitles == ["正在翻译…"], "reading feedback never reappears after capture completes")
+        session.resolve(.response(response()), for: generation)
+        expect(session.state.kind == .success && clock.activeTaskCount == 0, "translation result cancels all pending stage timers")
+        clock.advance(to: 30)
+        expect(session.state.kind == .success, "old capture and translation timers cannot replace the result")
+
+        let quickClock = ManualClock()
+        var quickVisibleKinds: [NativeTranslationOverlayState.Kind] = []
+        let quick = NativeTranslationOverlaySession(clock: quickClock.clock) { _, state in
+            if state.isVisible { quickVisibleKinds.append(state.kind) }
+        }
+        let quickGeneration = quick.beginSelectionCapture()
+        quickClock.advance(to: 0.02)
+        quick.selectionCaptured(for: quickGeneration)
+        quickClock.advance(to: 0.05)
+        quick.resolve(.response(response()), for: quickGeneration)
+        quickClock.advance(to: 20)
+        expect(quickVisibleKinds == [.success], "fast capture plus fast translation never flashes either loading stage")
+    }
+
+    private static func testSelectionCaptureCancellationAndStaleCompletions() {
+        let clock = ManualClock()
+        let session = NativeTranslationOverlaySession(clock: clock.clock) { _, _ in }
+        let superseded = session.beginSelectionCapture()
+        let current = session.beginSelectionCapture()
+        session.selectionCaptured(for: superseded)
+        expect(session.isCapturingSelection && session.state == .hidden, "stale capture cannot advance its replacement")
+        expect(session.generation == current && clock.activeTaskCount == 1, "stale completion preserves the replacement timer and generation")
+        clock.advance(to: 0.15)
+        session.resolve(.capture(.unsupported), for: current)
+        expect(!session.isCapturingSelection, "capture failure clears capture phase")
+        let failure = session.state
+        session.selectionCaptured(for: current)
+        expect(session.state == failure && clock.activeTaskCount == 0, "completion after capture failure cannot reopen loading")
+
+        let dismissed = session.beginSelectionCapture()
+        session.invalidate()
+        session.selectionCaptured(for: dismissed)
+        clock.advance(to: 20)
+        expect(!session.isCapturingSelection && session.state == .hidden, "dismissed capture never reappears")
+        expect(clock.activeTaskCount == 0, "dismissal cancels capture feedback")
+
+        let cancelled = session.beginSelectionCapture()
+        session.resolve(.capture(.cancelled), for: cancelled)
+        session.selectionCaptured(for: cancelled)
+        expect(!session.isCapturingSelection && session.state == .hidden, "reader cancellation clears capture phase and remains silent")
+        expect(clock.activeTaskCount == 0, "reader cancellation cancels its pending feedback")
+
+        let replacedByTranslation = session.beginSelectionCapture()
+        let ordinaryGeneration = session.begin()
+        session.selectionCaptured(for: replacedByTranslation)
+        expect(!session.isCapturingSelection && session.generation == ordinaryGeneration, "ordinary translation supersedes capture phase")
+        expect(clock.activeTaskCount == 3, "old capture completion cannot alter ordinary translation timers")
+    }
+
     private static func testCopyEffectIsExactAndGenerationBound() {
         let exact = "  完整 fixture 译文\n第二行 😀 " + String(repeating: "长", count: 8_000)
         let success = NativeTranslationOverlayReducer.reduce(
@@ -439,6 +554,9 @@ enum NativeTranslationOverlayModelTests {
         testMalformedAndErrorPrivacy()
         testErrorCopyAndTruncationPolicy()
         testInjectableClockAndGeneration()
+        testSelectionCaptureAndTranslationDeadlines()
+        testFastSelectionCaptureDoesNotFlashOrRegress()
+        testSelectionCaptureCancellationAndStaleCompletions()
         testCopyEffectIsExactAndGenerationBound()
         testTerminalAnnouncementGate()
         print("NativeTranslationOverlayModelTests: \(passed) passed")

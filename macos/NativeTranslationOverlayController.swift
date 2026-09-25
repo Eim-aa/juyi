@@ -957,6 +957,7 @@ final class NativeTranslationOverlayController: NSObject {
     func beginNativeTranslation(
         sourceApplication: NSRunningApplication?,
         anchorPoint: CGPoint?,
+        startsWithSelectionCapture: Bool = false,
         onDismiss: @escaping (NativeTranslationOverlayDismissReason) -> Void
     ) -> Int? {
         guard !isPaused else { return nil }
@@ -972,7 +973,11 @@ final class NativeTranslationOverlayController: NSObject {
                 presentationPhase: presentationLifecycle.phase
             )
         nativeDismissHandler = onDismiss
-        return session.begin()
+        return startsWithSelectionCapture ? session.beginSelectionCapture() : session.begin()
+    }
+
+    func nativeSelectionCaptured(generation: Int) {
+        session.selectionCaptured(for: generation)
     }
 
     func resolveNativeTranslation(
@@ -1396,6 +1401,13 @@ final class NativeTranslationOverlayController: NSObject {
         guard state.isVisible,
               let placement = placement(for: state) else {
             dismiss(.displayRemoved)
+            return
+        }
+        // During AX capture the original hit-test point must remain exposed.
+        // Small-screen clamping can defeat the normal mouse gap. In that rare
+        // case defer the early panel until capture finishes, not the AX check.
+        if session.isCapturingSelection,
+           placement.frame.insetBy(dx: -1, dy: -1).contains(anchorMousePoint) {
             return
         }
         // NSWindow remains isVisible while an order-out animation is pending.

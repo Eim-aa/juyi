@@ -682,6 +682,15 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
                 self.suspendForAppleFailure(target: target, readiness: readiness)
                 return
             }
+            guard let app = NSRunningApplication(processIdentifier: target.processIdentifier),
+                  NativeSelectionTarget(application: app)?.hasSameProcess(as: target) == true,
+                  let panelGeneration = overlay.beginNativeTranslation(
+                    sourceApplication: app,
+                    anchorPoint: Self.overlayAnchorPoint(for: target),
+                    startsWithSelectionCapture: true,
+                    onDismiss: { [weak self] _ in self?.overlayWasDismissed(generation) }
+                  ) else { return }
+            overlayGeneration = panelGeneration
             capture.capture(target: target) { [weak self] result in
                 self?.receiveCapture(
                     result,
@@ -754,17 +763,16 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         generation: UInt64
     ) {
         guard generation == pipelineGeneration,
-              let app = NSRunningApplication(
+              let panelGeneration = overlayGeneration else { return }
+        guard let app = NSRunningApplication(
                 processIdentifier: target.processIdentifier
-              ), NativeSelectionTarget(application: app)?.hasSameProcess(as: target) == true,
-              let panelGeneration = overlay.beginNativeTranslation(
-                sourceApplication: app,
-                anchorPoint: Self.overlayAnchorPoint(for: target),
-                onDismiss: { [weak self] _ in self?.overlayWasDismissed(generation) }
-              ) else { return }
-        overlayGeneration = panelGeneration
+              ), NativeSelectionTarget(application: app)?.hasSameProcess(as: target) == true else {
+            cancelPipeline(dismissOverlay: true)
+            return
+        }
         switch result {
         case let .success(text, didTruncate):
+            overlay.nativeSelectionCaptured(generation: panelGeneration)
             startTimeout(generation: generation, panelGeneration: panelGeneration)
             let started = ProcessInfo.processInfo.systemUptime
             translationTask = Task { [weak self] in

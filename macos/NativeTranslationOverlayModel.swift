@@ -139,6 +139,19 @@ struct NativeTranslationOverlayState: Equatable {
         cta: nil,
         terminalAnnouncement: nil
     )
+
+    static let capturingSelection = NativeTranslationOverlayState(
+        kind: .loading,
+        title: "正在读取选中文字…",
+        body: "请保持选区；可关闭浮窗取消。",
+        metadata: nil,
+        fallbackNotice: nil,
+        truncationBadge: nil,
+        truncationAccessibilityHelp: nil,
+        copyText: nil,
+        cta: nil,
+        terminalAnnouncement: nil
+    )
 }
 
 enum NativeTranslationOverlayCopyResult: Equatable {
@@ -444,9 +457,12 @@ final class NativeTranslationOverlaySession {
     private let stateHandler: StateHandler
     private var scheduledTasks: [NativeTranslationOverlayScheduledTask] = []
     private var terminalGeneration: Int?
+    private var captureGeneration: Int?
 
     private(set) var generation = 0
     private(set) var state: NativeTranslationOverlayState = .hidden
+
+    var isCapturingSelection: Bool { captureGeneration == generation }
 
     init(
         clock: NativeTranslationOverlayClock = .main,
@@ -467,6 +483,41 @@ final class NativeTranslationOverlaySession {
             ),
             includesTimeout: true
         )
+    }
+
+    @discardableResult
+    func beginSelectionCapture() -> Int {
+        let next = beginInternal(
+            initialLoadingState: .capturingSelection,
+            extendedLoadingState: nil,
+            includesTimeout: false
+        )
+        captureGeneration = next
+        return next
+    }
+
+    /// Keep the same panel/cancellation owner. Translation deadlines begin only
+    /// after selection capture, so a slow PDF read cannot consume that budget.
+    func selectionCaptured(for expectedGeneration: Int) {
+        guard generation == expectedGeneration,
+              captureGeneration == expectedGeneration,
+              terminalGeneration != expectedGeneration else { return }
+        captureGeneration = nil
+        cancelScheduledTasks()
+        let initial = NativeTranslationOverlayReducer.reduce(.loading(isExtended: false))
+        if state.isVisible {
+            publish(initial)
+        } else {
+            schedule(after: 0.15, generation: expectedGeneration) { [weak self] in
+                self?.publish(initial)
+            }
+        }
+        schedule(after: 2.0, generation: expectedGeneration) { [weak self] in
+            self?.publish(NativeTranslationOverlayReducer.reduce(.loading(isExtended: true)))
+        }
+        schedule(after: 12.0, generation: expectedGeneration) { [weak self] in
+            self?.resolve(.timeout, for: expectedGeneration)
+        }
     }
 
     #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
@@ -527,6 +578,7 @@ final class NativeTranslationOverlaySession {
         generation += 1
         cancelScheduledTasks()
         terminalGeneration = nil
+        captureGeneration = nil
         publish(.hidden)
         let requestGeneration = generation
         schedule(after: 0.15, generation: requestGeneration) { [weak self] in
@@ -576,6 +628,7 @@ final class NativeTranslationOverlaySession {
         }
         guard terminal.isTerminal else { return }
         terminalGeneration = expectedGeneration
+        captureGeneration = nil
         cancelScheduledTasks()
         publish(terminal)
     }
@@ -584,6 +637,7 @@ final class NativeTranslationOverlaySession {
         generation += 1
         cancelScheduledTasks()
         terminalGeneration = nil
+        captureGeneration = nil
         publish(.hidden)
     }
 
