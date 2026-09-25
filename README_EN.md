@@ -20,6 +20,8 @@ Select English in a supported Mac app → double-tap **Option (⌥⌥)** → rea
 
 ## Get Juyi
 
+[Download the public preview (build 12, Universal 2 DMG)](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.12/Juyi-0.4.0-build12-universal.dmg) · [Release notes and checksums](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.12)
+
 **Public testing, not a stable release.** Signed, notarized DMGs are available without a GitHub login. The repository ZIP and CI artifacts are not installers. Check each release's verification status and remaining acceptance checks.
 
 - **Looking for a ready-to-install app?** Check [GitHub Releases](https://github.com/Eim-aa/juyi/releases) for the latest preview DMG. Clean local installations starting with build 12 do not require Hammerspoon.
