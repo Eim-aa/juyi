@@ -10,13 +10,16 @@ selection read, on-device translation, and popup. A Hammerspoon Lua module remai
 only to participate in the existing owner handoff protocol. The optional cloud path
 also uses a local FastAPI service on `127.0.0.1:54321`.
 
-Read this whole file before acting. Most steps you can run yourself; **two steps
-require the human** and are marked `HUMAN STEP`. Do not try to automate those.
+Read this whole file before acting. Permissions, Apple language downloads,
+real global shortcut acceptance, and optional cloud account/credential entry
+require the human. Do not automate or bypass those steps.
 
 ## Native local installation (preferred, build 12 onward)
 
 For Apple local translation on a clean Mac, download the signed, notarized DMG
-from GitHub Releases, drag Juyi into Applications, and open it. No Hammerspoon,
+from [GitHub Releases](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15),
+drag Juyi into Applications, and open it. Build 15 is a public preview, not a
+stable release; its CI and anonymous-download verification passed. No Hammerspoon,
 Python, Homebrew, background service, or source build is required. Verify the
 actual release build: build 11 still has the Hammerspoon requirement.
 
@@ -25,6 +28,11 @@ resource download, and test the real global double-Option gesture in another
 app. Never bypass TCC or simulate this acceptance. A Mac containing earlier
 development components still uses the existing owner handoff; missing or stale
 legacy status must not be treated as proof of absence.
+
+Record the exact build and environment. An already-configured Mac is not a clean
+installation test; an engine self-test does not establish end-to-end acceptance.
+Never bypass Gatekeeper. Outstanding device checks are recorded in
+[the build 15 release scope](docs/RELEASE_0.4.0_BUILD15.md).
 
 The remaining full source-installation steps are for optional cloud/legacy
 components, not prerequisites for the standalone native app. Do not run them
@@ -41,7 +49,9 @@ for an Apple-only DMG installation.
 
 ## Step 1 — Install the service (you can do this)
 
-Use the version-pinned release checkout, not the early default-branch bootstrap.
+Use the version-pinned release checkout for reproducible installation.
+Build 15's tag points to `892e4d8`; the App was built from `4bf42ad`. Only
+documentation and test synchronization differ, not production code or resources.
 Clone into a new directory; do not replace an existing installation or worktree:
 
 ```bash
@@ -86,7 +96,7 @@ window. After the native popup appears, they can return to Juyi and confirm it.
 
 ## Step 4 — Choose the engine
 
-Two modes (see the "Local vs Cloud" section in README for the trade-off):
+Two modes (see [translation settings](docs/MENU_BAR_APP.md#翻译方式)):
 
 - **Apple on-device (default and recommended, `apple`, macOS 15+)** — offline,
   no keys, and text stays on the machine. The helper is compiled automatically

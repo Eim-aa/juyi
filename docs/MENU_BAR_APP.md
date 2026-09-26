@@ -9,14 +9,14 @@
 以下是**可选云端／早期兼容组件的完整源码安装**，不属于普通本地用户的安装步骤。它要求 Homebrew、Python ≥ 3.10 和 Xcode/Command Line Tools。`scripts/install.sh` 会准备后台、Hammerspoon 并安装 App：
 
 ```bash
-git clone https://github.com/Eim-aa/juyi.git ~/.local/share/argos-translator
-~/.local/share/argos-translator/scripts/install.sh
+git clone --branch v0.4.0-preview.15 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build15
+~/.local/share/juyi-build15/scripts/install.sh
 ```
 
 只重新构建和安装原生 App（不会安装完整依赖）：
 
 ```bash
-~/.local/share/argos-translator/scripts/install_macos_app.sh
+~/.local/share/juyi-build15/scripts/install_macos_app.sh
 ```
 
 **源码安装依赖与运行依赖不同。** build 12 起的全新 Apple 本地安装只需要句译、辅助功能权限和系统中英语言包，不需要 Python、FastAPI、独立 translation helper 或 Hammerspoon。检测到早期开发配置或运行中的 Hammerspoon 时，仍需完成安全交接；不会把过期状态当成安全证明。
