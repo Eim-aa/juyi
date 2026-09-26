@@ -6,7 +6,7 @@
 
 在 Mac 上选中英文，连按两次 **Option（⌥⌥）**，中文译文就在旁边。不必切换窗口，也不用来回复制粘贴。
 
-**[下载 macOS 测试版](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.15/Juyi-0.4.0-build15-universal.dmg)** · [更新说明](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15) · [English](README_EN.md)
+**[下载 macOS 测试版](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.16/Juyi-0.4.0-build16-universal.dmg)** · [更新说明](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.16) · [English](README_EN.md)
 
 macOS 15+ · 英语 → 简体中文 · 免费开源 · MIT
 
@@ -17,6 +17,7 @@ macOS 15+ · 英语 → 简体中文 · 免费开源 · MIT
 ## 少一点打断，多一点阅读
 
 - **译文就在旁边**：读网页、文档和文字型 PDF 时，在支持的 App 中划词翻译。
+- **也可以听这一句**：翻译后点击「朗读原文」或「朗读译文」，用本机语音听英文或中文。关闭浮窗即停止。
 - **默认本地翻译**：使用 Apple 翻译，在 Mac 上处理正文；语言包准备好后可离线使用。
 - **安装就能开始**：本地模式无需 API 密钥、Hammerspoon、Python 或 Homebrew。
 
@@ -26,7 +27,7 @@ macOS 15+ · 英语 → 简体中文 · 免费开源 · MIT
 2. **完成设置**：按提示为句译开启「辅助功能」权限；首次使用可能需要联网下载 Apple 中英语言包。
 3. **选中 → ⌥⌥ → 看译文**：在文本编辑、预览等支持的 App 中选中英文，再快速连按两次 Option。
 
-是**连按两次同一个 Option 键**，不是同时按住两个 Option。关闭主窗口后仍可翻译；退出再打开时，点击「恢复翻译」。
+是**连按两次同一个 Option 键**，不是同时按住两个 Option。想听发音？点译文浮窗底部的朗读按钮，再点即可停止。关闭主窗口后仍可翻译；退出再打开时，点击「恢复翻译」。
 
 <details>
 <summary>看看句译的界面</summary>
@@ -39,7 +40,7 @@ macOS 15+ · 英语 → 简体中文 · 免费开源 · MIT
 
 ## 下载前了解这几点
 
-- **当前是公开测试版**：build 15 已签名并通过 Apple 公证，不是稳定版，也不是 App Store 版本。安装包包含 Apple Silicon 和 Intel 两种架构；[实测范围与待验收项](docs/RELEASE_0.4.0_BUILD15.md)仍在逐步补齐。
+- **当前是公开测试版**：build 16，不是稳定版，也不是 App Store 版本。安装包包含 Apple Silicon 和 Intel 两种架构；签名、公证及[实测范围与待验收项](docs/RELEASE_0.4.0_BUILD16.md)见发布记录。
 - **不是所有 App 都能取词**：兼容性取决于 App 提供的选区接口。不支持扫描 PDF、图片文字、安全输入框或受保护内容；没有 OCR。
 - **WPS PDF 通常比预览慢**：兼容取词需要额外复制校验，可能临时使用剪贴板并尽力恢复。剪贴板管理器可能保留原文，敏感内容请避免这条路径。
 

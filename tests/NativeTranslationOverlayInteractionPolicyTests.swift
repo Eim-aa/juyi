@@ -435,6 +435,22 @@ enum NativeTranslationOverlayInteractionPolicyTests {
         expect(loading == [.close], "loading exposes only Close to the keyboard loop")
         expect(success == [.copy, .close], "loading→success rebuilds Copy→Close")
         expect(errorCTA == [.cta, .close], "success→CTA rebuilds CTA→Close")
+        let speech = NativeTranslationOverlayFocusTopologyPolicy.orderedControls(
+            hasCTA: false, canCopy: true, canReadAloud: true
+        )
+        expect(speech == [.copy, .readOriginal, .readTranslation, .close], "successful native result exposes both speech buttons in keyboard order")
+        expect(
+            NativeTranslationOverlayFocusTopologyPolicy.decision(
+                current: .readOriginal, orderedControls: speech
+            ) == .preserveCurrent,
+            "speech state changes preserve focus on the active button"
+        )
+        expect(
+            NativeTranslationOverlayFocusTopologyPolicy.decision(
+                current: .readTranslation, orderedControls: loading
+            ) == .moveTo(.close),
+            "new selection removes hidden speech buttons from the keyboard loop"
+        )
         expect(
             NativeTranslationOverlayFocusTopologyPolicy.decision(
                 current: .close,

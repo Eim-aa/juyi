@@ -417,6 +417,50 @@ enum NativeTranslationOverlayModelTests {
         expect(clock.activeTaskCount == 3, "old capture completion cannot alter ordinary translation timers")
     }
 
+    private static func testReadAloudUsesCurrentSuccessfulSelectionOnly() {
+        let clock = ManualClock()
+        let session = NativeTranslationOverlaySession(clock: clock.clock) { _, _ in }
+        let generation = session.beginSelectionCapture()
+        let source = "An intact paragraph.\nA second sentence."
+        let translation = "完整译文\n" + String(repeating: "长段落。", count: 2_000)
+        expect(session.speechText(for: .original, generation: generation) == nil, "capture cannot read stale text")
+        session.selectionCaptured(for: generation, sourceText: source)
+        expect(session.speechText(for: .original, generation: generation) == nil, "loading does not enable speech")
+        session.resolve(.response(response(result: translation)), for: generation)
+        expect(session.speechText(for: .original, generation: generation) == source, "original speech uses captured text without changing line breaks")
+        expect(session.speechText(for: .translation, generation: generation) == translation, "speech uses the full translation, not its display preview")
+        expect(session.speechText(for: .original, generation: generation - 1) == nil, "stale button cannot read current source")
+        session.selectionCaptured(for: generation, sourceText: "late replacement")
+        expect(session.sourceText == source, "late capture cannot replace successful source")
+
+        let replacement = session.beginSelectionCapture()
+        expect(session.sourceText == nil, "new selection discards old source")
+        session.selectionCaptured(for: generation, sourceText: source)
+        session.resolve(.response(response(result: translation)), for: generation)
+        expect(session.sourceText == nil, "stale capture and result cannot revive speech")
+        session.selectionCaptured(for: replacement, sourceText: "Next paragraph")
+        session.resolve(.timeout, for: replacement)
+        expect(session.sourceText == nil, "translation error discards source")
+        expect(session.speechText(for: .translation, generation: replacement) == nil, "error messages are never spoken as translations")
+
+        let dismissed = session.beginSelectionCapture()
+        session.selectionCaptured(for: dismissed, sourceText: source)
+        session.resolve(.response(response()), for: dismissed)
+        session.invalidate()
+        expect(session.sourceText == nil, "dismissal discards source")
+        expect(session.speechText(for: .original, generation: dismissed) == nil, "dismissed speech is unavailable")
+
+        let empty = session.beginSelectionCapture()
+        session.selectionCaptured(for: empty, sourceText: " \n ")
+        session.resolve(.response(response()), for: empty)
+        expect(session.speechText(for: .original, generation: empty) == nil, "blank source cannot enable speech")
+        let noSource = session.begin()
+        session.resolve(.response(response()), for: noSource)
+        expect(session.speechText(for: .translation, generation: noSource) == nil, "presentations without real captured text cannot enable speech")
+        expect(NativeTranslationSpeechTarget.original.language == "en-US", "English original uses English voice")
+        expect(NativeTranslationSpeechTarget.translation.language == "zh-CN", "Chinese translation uses Mandarin voice")
+    }
+
     private static func testCopyEffectIsExactAndGenerationBound() {
         let exact = "  完整 fixture 译文\n第二行 😀 " + String(repeating: "长", count: 8_000)
         let success = NativeTranslationOverlayReducer.reduce(
@@ -557,6 +601,7 @@ enum NativeTranslationOverlayModelTests {
         testSelectionCaptureAndTranslationDeadlines()
         testFastSelectionCaptureDoesNotFlashOrRegress()
         testSelectionCaptureCancellationAndStaleCompletions()
+        testReadAloudUsesCurrentSuccessfulSelectionOnly()
         testCopyEffectIsExactAndGenerationBound()
         testTerminalAnnouncementGate()
         print("NativeTranslationOverlayModelTests: \(passed) passed")

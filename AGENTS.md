@@ -17,9 +17,9 @@ require the human. Do not automate or bypass those steps.
 ## Native local installation (preferred, build 12 onward)
 
 For Apple local translation on a clean Mac, download the signed, notarized DMG
-from [GitHub Releases](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15),
-drag Juyi into Applications, and open it. Build 15 is a public preview, not a
-stable release; its CI and anonymous-download verification passed. No Hammerspoon,
+from [GitHub Releases](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.16),
+drag Juyi into Applications, and open it. Build 16 adds on-device read-aloud and
+remains a preview, not a stable release; check its release record. No Hammerspoon,
 Python, Homebrew, background service, or source build is required. Verify the
 actual release build: build 11 still has the Hammerspoon requirement.
 
@@ -32,7 +32,7 @@ legacy status must not be treated as proof of absence.
 Record the exact build and environment. An already-configured Mac is not a clean
 installation test; an engine self-test does not establish end-to-end acceptance.
 Never bypass Gatekeeper. Outstanding device checks are recorded in
-[the build 15 release scope](docs/RELEASE_0.4.0_BUILD15.md).
+[the build 16 release scope](docs/RELEASE_0.4.0_BUILD16.md).
 
 The remaining full source-installation steps are for optional cloud/legacy
 components, not prerequisites for the standalone native app. Do not run them
@@ -50,13 +50,13 @@ for an Apple-only DMG installation.
 ## Step 1 — Install the service (you can do this)
 
 Use the version-pinned release checkout for reproducible installation.
-Build 15's tag points to `892e4d8`; the App was built from `4bf42ad`. Only
-documentation and test synchronization differ, not production code or resources.
+Build 16's App was built from `6c441f2`. The release tag additionally includes
+release documentation, not changes to production code, configuration or resources.
 Clone into a new directory; do not replace an existing installation or worktree:
 
 ```bash
-git clone --branch v0.4.0-preview.15 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build15
-~/.local/share/juyi-build15/scripts/install.sh
+git clone --branch v0.4.0-preview.16 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build16
+~/.local/share/juyi-build16/scripts/install.sh
 ```
 
 The installer creates a venv, installs `requirements.txt` (FastAPI/uvicorn only),
@@ -138,7 +138,7 @@ it is not a secret. Do not create a new plaintext credential file.
 curl -s http://127.0.0.1:54321/health
 # Authenticated translation and edge-case checks (reads the token without
 # placing it in shell history or a command-line argument):
-JUYI_INSTALL_ROOT="$HOME/.local/share/juyi-build15"
+JUYI_INSTALL_ROOT="$HOME/.local/share/juyi-build16"
 "$JUYI_INSTALL_ROOT/venv/bin/python" "$JUYI_INSTALL_ROOT/scripts/smoke.py"
 ```
 
@@ -147,7 +147,7 @@ native end-to-end check. That check (in another app: select text → double-tap
 Option → native popup) can only be confirmed by the human because it depends on
 the Accessibility grant from Step 3. Tell them to complete setup step 2.
 
-Full diagnostics: `~/.local/share/juyi-build15/scripts/test.sh`. If Step 1 used
+Full diagnostics: `~/.local/share/juyi-build16/scripts/test.sh`. If Step 1 used
 a different new checkout directory, use that exact directory for verification
 and diagnostics too; do not silently test an older installation.
 

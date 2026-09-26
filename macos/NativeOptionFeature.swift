@@ -772,7 +772,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
         switch result {
         case let .success(text, didTruncate):
-            overlay.nativeSelectionCaptured(generation: panelGeneration)
+            overlay.nativeSelectionCaptured(generation: panelGeneration, sourceText: text)
             startTimeout(generation: generation, panelGeneration: panelGeneration)
             let started = ProcessInfo.processInfo.systemUptime
             translationTask = Task { [weak self] in

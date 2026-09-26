@@ -1,5 +1,13 @@
 import Foundation
 
+enum NativeTranslationSpeechTarget: Equatable {
+    case original
+    case translation
+
+    var language: String { self == .original ? "en-US" : "zh-CN" }
+    var title: String { self == .original ? "朗读原文" : "朗读译文" }
+}
+
 enum NativeTranslationOverlayEngine: String, Equatable {
     case apple
     case volc
@@ -461,6 +469,15 @@ final class NativeTranslationOverlaySession {
 
     private(set) var generation = 0
     private(set) var state: NativeTranslationOverlayState = .hidden
+    private(set) var sourceText: String?
+
+    /// Only the current successful native selection can be read aloud. Never
+    /// read an error message, stale selection, or visually shortened body.
+    func speechText(for target: NativeTranslationSpeechTarget, generation expected: Int) -> String? {
+        guard generation == expected, state.kind == .success,
+              let sourceText, !sourceText.isEmpty else { return nil }
+        return target == .original ? sourceText : state.copyText
+    }
 
     var isCapturingSelection: Bool { captureGeneration == generation }
 
@@ -498,11 +515,12 @@ final class NativeTranslationOverlaySession {
 
     /// Keep the same panel/cancellation owner. Translation deadlines begin only
     /// after selection capture, so a slow PDF read cannot consume that budget.
-    func selectionCaptured(for expectedGeneration: Int) {
+    func selectionCaptured(for expectedGeneration: Int, sourceText: String? = nil) {
         guard generation == expectedGeneration,
               captureGeneration == expectedGeneration,
               terminalGeneration != expectedGeneration else { return }
         captureGeneration = nil
+        self.sourceText = sourceText?.trimmingCharacters(in: .whitespacesAndNewlines)
         cancelScheduledTasks()
         let initial = NativeTranslationOverlayReducer.reduce(.loading(isExtended: false))
         if state.isVisible {
@@ -579,6 +597,7 @@ final class NativeTranslationOverlaySession {
         cancelScheduledTasks()
         terminalGeneration = nil
         captureGeneration = nil
+        sourceText = nil
         publish(.hidden)
         let requestGeneration = generation
         schedule(after: 0.15, generation: requestGeneration) { [weak self] in
@@ -629,6 +648,7 @@ final class NativeTranslationOverlaySession {
         guard terminal.isTerminal else { return }
         terminalGeneration = expectedGeneration
         captureGeneration = nil
+        if terminal.kind != .success { sourceText = nil }
         cancelScheduledTasks()
         publish(terminal)
     }
@@ -638,6 +658,7 @@ final class NativeTranslationOverlaySession {
         cancelScheduledTasks()
         terminalGeneration = nil
         captureGeneration = nil
+        sourceText = nil
         publish(.hidden)
     }
 

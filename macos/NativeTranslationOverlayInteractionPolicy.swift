@@ -129,6 +129,8 @@ enum NativeTranslationOverlayScrollCommand: Equatable {
 enum NativeTranslationOverlayFocusableControl: Equatable {
     case cta
     case copy
+    case readOriginal
+    case readTranslation
     case close
 }
 
@@ -141,11 +143,13 @@ enum NativeTranslationOverlayFocusDecision: Equatable {
 enum NativeTranslationOverlayFocusTopologyPolicy {
     static func orderedControls(
         hasCTA: Bool,
-        canCopy: Bool
+        canCopy: Bool,
+        canReadAloud: Bool = false
     ) -> [NativeTranslationOverlayFocusableControl] {
         var controls: [NativeTranslationOverlayFocusableControl] = []
         if hasCTA { controls.append(.cta) }
         if canCopy { controls.append(.copy) }
+        if canReadAloud { controls += [.readOriginal, .readTranslation] }
         controls.append(.close)
         return controls
     }
