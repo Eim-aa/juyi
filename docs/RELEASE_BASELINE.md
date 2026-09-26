@@ -1,6 +1,6 @@
 # macOS 构建基线与正式发行边界
 
-当前版本定位为**公开测试版，不是稳定版**。build 15 改善取词期间的首次浮窗反馈；本机候选的 WPS PDF 翻译和反馈已由用户确认。最终包的签名、公证、CI、公开下载与真人验收范围以 [build 15 发布记录](RELEASE_0.4.0_BUILD15.md)及对应 GitHub Release 为准。间歇性“不支持”的根因未确证，干净账户首次安装、macOS 15 / Intel 真机未完成。build 12 起已移除全新本地安装的 Hammerspoon 前提。Apple 主链由原生 App 负责双 Option、AX 取词、端上翻译和浮窗；已有早期开发组件继续通过既有 owner 协议交接。Python 后端只服务可选云端和兼容路径。
+当前版本定位为**公开测试版，不是稳定版**。build 16 新增原生译文浮窗的本机朗读，用户已确认本机试用可用；保留 build 15 的取词反馈改进。最终包的签名、公证、CI、公开下载与真人验收范围以 [build 16 发布记录](RELEASE_0.4.0_BUILD16.md)及对应 GitHub Release 为准。间歇性“不支持”的根因未确证，干净账户首次安装、macOS 15 / Intel 真机未完成。build 12 起已移除全新本地安装的 Hammerspoon 前提。Apple 主链由原生 App 负责双 Option、AX 取词、端上翻译和浮窗；已有早期开发组件继续通过既有 owner 协议交接。Python 后端只服务可选云端和兼容路径。
 
 ## 工程与兼容性
 
@@ -27,7 +27,7 @@ CURRENT_PROJECT_VERSION = <单调递增的整数 build>
 
 `macos/Info.plist` 使用 Xcode 变量展开。发布时同时递增 build number；Release tag 应与 `v$(MARKETING_VERSION)` 一致，但 tag 不是反向生成版本的来源。
 
-当前源码为 `0.4.0`、build `15`。2026-09-26，已将已公证的 build 15 从最终 DMG 安装到 `/Applications/句译.app`，保留完整旧版备份，核验启动保持暂停、手动恢复显示就绪。系统为 macOS 26.5.1、Apple Silicon。用户已确认清理日志前候选的 WPS 翻译与反馈；最终包用户报告预览比 WPS 更快，不能仅凭这一对比推定取消、暂停或其它交互全部通过。历史各版本验收不自动沿用；实际证据必须记录运行包版本、构建号和路径，不能用旧版截图证明新版通过。
+当前源码为 `0.4.0`、build `16`。2026-09-27，已将 Developer ID 签名的本地朗读试用包安装到 `/Applications/句译.app`，完整保留 build 15 备份，启动及恢复就绪已核验；用户随后反馈「可以了」。系统为 macOS 26.5.1、Apple Silicon。这不是干净安装、全部生命周期或各硬件配置逐项验收。历史各版本验收不自动沿用；实际证据必须记录运行包版本、构建号和路径，不能用旧版截图证明新版通过。
 
 ## 本地构建
 

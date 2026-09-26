@@ -9,14 +9,14 @@
 以下是**可选云端／早期兼容组件的完整源码安装**，不属于普通本地用户的安装步骤。它要求 Homebrew、Python ≥ 3.10 和 Xcode/Command Line Tools。`scripts/install.sh` 会准备后台、Hammerspoon 并安装 App：
 
 ```bash
-git clone --branch v0.4.0-preview.15 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build15
-~/.local/share/juyi-build15/scripts/install.sh
+git clone --branch v0.4.0-preview.16 --single-branch https://github.com/Eim-aa/juyi.git ~/.local/share/juyi-build16
+~/.local/share/juyi-build16/scripts/install.sh
 ```
 
 只重新构建和安装原生 App（不会安装完整依赖）：
 
 ```bash
-~/.local/share/juyi-build15/scripts/install_macos_app.sh
+~/.local/share/juyi-build16/scripts/install_macos_app.sh
 ```
 
 **源码安装依赖与运行依赖不同。** build 12 起的全新 Apple 本地安装只需要句译、辅助功能权限和系统中英语言包，不需要 Python、FastAPI、独立 translation helper 或 Hammerspoon。检测到早期开发配置或运行中的 Hammerspoon 时，仍需完成安全交接；不会把过期状态当成安全证明。
@@ -61,11 +61,11 @@ WPS PDF 不提供可用选区接口时，兼容取词可能临时执行系统复
 
 译文浮窗支持点击复制完整译文、按 Escape 关闭和点击外部关闭。长译文在屏幕内安全截断展示，复制时仍会得到完整内容；连续触发时，旧请求的定时器或迟到响应不会覆盖较新的译文。
 
-### 听原文和译文（build 16 本地试用，尚未公开发布）
+### 听原文和译文（build 16 起）
 
 本地 Apple 翻译成功后，浮窗底部提供「朗读原文」和「朗读译文」。点击即可听英文原文或完整中文译文；再次点击当前按钮停止，点击另一个按钮切换。不会自动播放，也不新增快捷键。关闭浮窗、触发新选区、暂停或退出句译都会停止朗读。
 
-朗读使用 Mac 已安装的 Apple 系统语音，不需要 API 密钥或麦克风权限，不调用第三方语音服务或个人声音。缺少英语或普通话语音时会提示到系统设置的辅助功能中下载；不会自动下载或切换云端。仅能朗读本次实际取得的文本，取词被截断时无法补回未取得的部分。公开下载的 build 15 尚不包含这项功能。
+朗读使用 Mac 已安装的 Apple 系统语音，不需要 API 密钥或麦克风权限，不调用第三方语音服务或个人声音。缺少英语或普通话语音时会提示到系统设置的辅助功能中下载；不会自动下载或切换云端。仅能朗读本次实际取得的文本，取词被截断时无法补回未取得的部分。旧版 build 15 不包含这项功能。
 
 Dock 与菜单栏会同时保留句译入口。关闭窗口只关闭控制窗口，不会退出句译、停止后台翻译组件或移除双 Option 快捷键；从 Dock、Finder、Launchpad 或菜单栏再次打开时，会前置同一个窗口。
 

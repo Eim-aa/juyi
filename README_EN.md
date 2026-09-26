@@ -6,7 +6,7 @@
 
 Select English on your Mac, double-tap **Option (⌥⌥)**, and read Simplified Chinese beside your selection. No window switching or manual copy-paste.
 
-**[Download for macOS — Preview](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.15/Juyi-0.4.0-build15-universal.dmg)** · [Release notes](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15) · [中文](README.md)
+**[Download for macOS — Preview](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.16/Juyi-0.4.0-build16-universal.dmg)** · [Release notes](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.16) · [中文](README.md)
 
 macOS 15+ · English → Simplified Chinese · Free & open source · MIT
 
@@ -17,6 +17,7 @@ macOS 15+ · English → Simplified Chinese · Free & open source · MIT
 ## Less switching. More reading.
 
 - **Translation beside the text** — read webpages, documents and text-based PDFs in supported apps.
+- **Listen, too** — after translating, play the English original or Chinese translation using an installed system voice. Closing the popup stops playback.
 - **Local by default** — Apple Translation processes text on your Mac. Once the language pack is ready, it works offline.
 - **A standalone Mac app** — local mode needs no API key, Hammerspoon, Python or Homebrew.
 
@@ -26,7 +27,7 @@ macOS 15+ · English → Simplified Chinese · Free & open source · MIT
 2. **Finish setup.** Grant Juyi Accessibility permission when prompted. First use may need an internet connection to download Apple's English–Chinese language pack.
 3. **Select → ⌥⌥ → read.** Select English in a supported app, such as TextEdit or Preview, and tap Option twice in quick succession.
 
-Tap **the same Option key twice**, not both Option keys at once. Closing the main window keeps translation running. After quitting and reopening, click **Resume translation (恢复翻译)**. The app interface is currently in Chinese.
+Tap **the same Option key twice**, not both Option keys at once. To listen, click **Read original (朗读原文)** or **Read translation (朗读译文)** in the popup; click again to stop. Closing the main window keeps translation running. After quitting and reopening, click **Resume translation (恢复翻译)**. The app interface is currently in Chinese.
 
 <details>
 <summary>See the interface</summary>
@@ -39,7 +40,7 @@ An actual app screenshot; the downloaded version may look different.
 
 ## Before you download
 
-- **A public preview, not a stable release.** Build 15 is signed and Apple-notarized, not an App Store release. The Universal 2 package includes Apple Silicon and Intel binaries; [device coverage and acceptance checks](docs/RELEASE_0.4.0_BUILD15.md) are still being completed.
+- **A public preview, not a stable release.** Build 16 is not an App Store release. The Universal 2 package includes Apple Silicon and Intel binaries; see the [release record](docs/RELEASE_0.4.0_BUILD16.md) for signing, notarization, tested scope and outstanding device checks.
 - **Not every app exposes its selection.** Compatibility depends on the source app. Scanned PDFs, text in images, secure fields and protected content are unsupported. No OCR.
 - **WPS PDFs usually take longer than Preview.** The compatibility path performs extra copy checks, temporarily uses the clipboard and attempts to restore it. Clipboard managers may retain the source text; avoid this path for sensitive content.
 
