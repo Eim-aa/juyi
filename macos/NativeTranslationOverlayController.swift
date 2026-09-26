@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import CoreGraphics
 import Foundation
 import QuartzCore
@@ -215,6 +216,10 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
     var closeHandler: (() -> Void)?
     var copyHandler: (() -> Void)?
     var ctaHandler: (() -> Void)?
+    var speechHandler: ((NativeTranslationSpeechTarget) -> Void)?
+    var canReadAloud = false
+    private var speakingTarget: NativeTranslationSpeechTarget?
+    private var speechMessage: String?
 
     private let iconView = NSImageView()
     private let loadingIndicator = NSProgressIndicator()
@@ -230,6 +235,10 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
     private let closeButton = NativeTranslationOverlayButton()
     private let copyButton = NativeTranslationOverlayButton()
     private let ctaButton = NativeTranslationOverlayButton()
+    private let originalSpeechButton = NativeTranslationOverlayButton()
+    private let translationSpeechButton = NativeTranslationOverlayButton()
+    private let speechStack = NSStackView()
+    private let speechInfoField = NSTextField(wrappingLabelWithString: "")
     private let metadataStack = NSStackView()
     private let actionsStack = NSStackView()
     #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB
@@ -337,6 +346,10 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         closeButton.setAccessibilityHelp("关闭当前译文，不停止句译")
         #endif
         actionsStack.isHidden = state.cta == nil && !state.canCopy
+        speechStack.isHidden = !canReadAloud || state.kind != .success
+        originalSpeechButton.isHidden = speechStack.isHidden
+        translationSpeechButton.isHidden = speechStack.isHidden
+        updateSpeechControls()
         setStatefulActionsEnabled(statefulActionsEnabled)
         footerStack.isHidden = metadataStack.isHidden && actionsStack.isHidden
         separator.isHidden = footerStack.isHidden
@@ -360,7 +373,7 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
             field.font = scaledSystemFont(ofSize: 11, weight: .regular)
         }
         truncationField.font = scaledSystemFont(ofSize: 11, weight: .semibold)
-        for button in [closeButton, copyButton, ctaButton] {
+        for button in [closeButton, copyButton, ctaButton, originalSpeechButton, translationSpeechButton] {
             button.font = scaledSystemFont(ofSize: 12, weight: .medium)
         }
         bodyHeightConstraint.constant = bodyViewportHeight(
@@ -400,7 +413,7 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
                 with: CGSize(width: 296, height: CGFloat.greatestFiniteMagnitude),
                 options: [.usesLineFragmentOrigin, .usesFontLeading]
             ).height
-            let estimated = 28 + 17 + footerHeight(for: state)
+            let estimated = 28 + 17 + footerHeight(for: state) + speechHeight
                 + max(28 * scale, ceil(textHeight) + 4)
             return CGSize(
                 width: 360,
@@ -419,14 +432,17 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
     ) -> NSView? {
         let controls = NativeTranslationOverlayFocusTopologyPolicy.orderedControls(
             hasCTA: !ctaButton.isHidden,
-            canCopy: !copyButton.isHidden
+            canCopy: !copyButton.isHidden,
+            canReadAloud: !speechStack.isHidden
         )
         let viewForControl: [NativeTranslationOverlayFocusableControl: NativeTranslationOverlayButton] = [
             .cta: ctaButton,
             .copy: copyButton,
+            .readOriginal: originalSpeechButton,
+            .readTranslation: translationSpeechButton,
             .close: closeButton,
         ]
-        for button in [ctaButton, copyButton, closeButton] {
+        for button in [ctaButton, copyButton, originalSpeechButton, translationSpeechButton, closeButton] {
             button.keyboardFocusEnabled = enabled && !button.isHidden
             button.nextKeyView = nil
         }
@@ -454,6 +470,35 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
     func setStatefulActionsEnabled(_ enabled: Bool) {
         ctaButton.isEnabled = enabled && !ctaButton.isHidden
         copyButton.isEnabled = enabled && !copyButton.isHidden
+        originalSpeechButton.isEnabled = enabled && !originalSpeechButton.isHidden
+        translationSpeechButton.isEnabled = enabled && !translationSpeechButton.isHidden
+    }
+
+    func renderSpeech(target: NativeTranslationSpeechTarget?, message: String? = nil) {
+        speakingTarget = target
+        speechMessage = message
+        updateSpeechControls()
+    }
+
+    private func updateSpeechControls() {
+        for (button, target) in [
+            (originalSpeechButton, NativeTranslationSpeechTarget.original),
+            (translationSpeechButton, NativeTranslationSpeechTarget.translation),
+        ] {
+            let isSpeaking = speakingTarget == target
+            button.title = isSpeaking ? "停止朗读" : target.title
+            button.image = NSImage(systemSymbolName: isSpeaking ? "stop.fill" : "speaker.wave.2", accessibilityDescription: nil)
+            button.imagePosition = .imageLeading
+            button.setAccessibilityLabel(isSpeaking ? "停止" + target.title : target.title)
+            button.toolTip = "使用本机系统语音；关闭浮窗会停止朗读"
+            button.setAccessibilityHelp(button.toolTip)
+        }
+        speechInfoField.stringValue = speechMessage ?? ""
+        speechInfoField.isHidden = speechMessage == nil
+    }
+
+    private var speechHeight: CGFloat {
+        canReadAloud ? (36 + (speechMessage == nil ? 0 : 32)) * accessibilityFontScale : 0
     }
 
     func scrollBody(_ command: NativeTranslationOverlayScrollCommand) {
@@ -531,6 +576,24 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         configureButton(ctaButton, title: "")
         ctaButton.target = self
         ctaButton.action = #selector(ctaPressed)
+
+        configureButton(originalSpeechButton, title: "朗读原文")
+        originalSpeechButton.target = self
+        originalSpeechButton.action = #selector(originalSpeechPressed)
+        configureButton(translationSpeechButton, title: "朗读译文")
+        translationSpeechButton.target = self
+        translationSpeechButton.action = #selector(translationSpeechPressed)
+        let speechButtons = NSStackView(views: [originalSpeechButton, translationSpeechButton])
+        speechButtons.orientation = .horizontal
+        speechButtons.spacing = 8
+        configureMetadata(speechInfoField)
+        speechInfoField.isHidden = true
+        speechStack.setViews([speechButtons, speechInfoField], in: .leading)
+        speechStack.orientation = .vertical
+        speechStack.alignment = .leading
+        speechStack.spacing = 4
+        speechStack.isHidden = true
+        speechStack.translatesAutoresizingMaskIntoConstraints = false
 
         let header = headerStack
         header.setViews([loadingIndicator, iconView, titleField, NSView(), closeButton], in: .leading)
@@ -630,7 +693,7 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         footerStack.spacing = 8
         footerStack.heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
 
-        let root = NSStackView(views: [header, bodyStack, separator, footerStack])
+        let root = NSStackView(views: [header, bodyStack, separator, footerStack, speechStack])
         root.orientation = .vertical
         root.alignment = .leading
         root.spacing = 8
@@ -645,6 +708,8 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
             bodyStack.widthAnchor.constraint(equalTo: root.widthAnchor),
             separator.widthAnchor.constraint(equalTo: root.widthAnchor),
             footerStack.widthAnchor.constraint(equalTo: root.widthAnchor),
+            speechStack.widthAnchor.constraint(equalTo: root.widthAnchor),
+            speechInfoField.widthAnchor.constraint(equalTo: speechStack.widthAnchor),
         ])
         applyAccessibilityAppearance()
     }
@@ -685,6 +750,7 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         let headerHeight: CGFloat = state.kind == .success ? 0 : 28 * scale + 8
         let fixedHeight: CGFloat = 28 + headerHeight
             + (hasFooter ? 17 + footerHeight(for: state) : 0)
+            + (state.kind == .success ? speechHeight : 0)
         let minimumBody: CGFloat = (state.kind == .success ? 23 : 12) * scale
         let baseline = max(minimumBody, desired - fixedHeight)
         guard let availablePanelHeight, availablePanelHeight.isFinite else {
@@ -780,6 +846,10 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         if !truncationBadgeView.isHidden { children.append(truncationBadgeView) }
         if !ctaButton.isHidden { children.append(ctaButton) }
         if !copyButton.isHidden { children.append(copyButton) }
+        if !speechStack.isHidden {
+            children += [originalSpeechButton, translationSpeechButton]
+            if !speechInfoField.isHidden { children.append(speechInfoField) }
+        }
         children.append(closeButton)
         setAccessibilityChildren(children)
     }
@@ -787,6 +857,8 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
     @objc private func closePressed() { closeHandler?() }
     @objc private func copyPressed() { copyHandler?() }
     @objc private func ctaPressed() { ctaHandler?() }
+    @objc private func originalSpeechPressed() { speechHandler?(.original) }
+    @objc private func translationSpeechPressed() { speechHandler?(.translation) }
 }
 
 private struct NativeTranslationOverlayPasteboardWriter {
@@ -817,7 +889,7 @@ private typealias NativeTranslationOverlayPendingPresentation =
     NativeTranslationOverlayPendingLifecycle.Entry
 
 @MainActor
-final class NativeTranslationOverlayController: NSObject {
+final class NativeTranslationOverlayController: NSObject, AVSpeechSynthesizerDelegate {
     static let shared = NativeTranslationOverlayController()
 
     private let panel: NativeTranslationOverlayPanel
@@ -839,6 +911,9 @@ final class NativeTranslationOverlayController: NSObject {
     private var observerTokens: [(NotificationCenter, NSObjectProtocol)] = []
     private var currentState: NativeTranslationOverlayState = .hidden
     private var currentGeneration = 0
+    private var speechSynthesizer: AVSpeechSynthesizer?
+    private var speechUtterance: AVSpeechUtterance?
+    private var speakingTarget: NativeTranslationSpeechTarget?
     private var anchorMousePoint = CGPoint.zero
     private var anchorVisibleFrame: CGRect?
     private var anchorDirection: NativeTranslationOverlayAnchorDirection?
@@ -976,8 +1051,8 @@ final class NativeTranslationOverlayController: NSObject {
         return startsWithSelectionCapture ? session.beginSelectionCapture() : session.begin()
     }
 
-    func nativeSelectionCaptured(generation: Int) {
-        session.selectionCaptured(for: generation)
+    func nativeSelectionCaptured(generation: Int, sourceText: String) {
+        session.selectionCaptured(for: generation, sourceText: sourceText)
     }
 
     func resolveNativeTranslation(
@@ -1309,6 +1384,7 @@ final class NativeTranslationOverlayController: NSObject {
         overlayView.closeHandler = { [weak self] in self?.dismiss(.close) }
         overlayView.copyHandler = { [weak self] in self?.copyCurrentTranslation() }
         overlayView.ctaHandler = { [weak self] in self?.performCurrentCTA() }
+        overlayView.speechHandler = { [weak self] in self?.readAloud($0) }
         panel.scrollKeyHandler = { [weak self] keyCode, flags in
             self?.handlePanelScrollKey(keyCode: keyCode, flags: flags) ?? false
         }
@@ -1353,6 +1429,9 @@ final class NativeTranslationOverlayController: NSObject {
         state: NativeTranslationOverlayState,
         generation: Int
     ) {
+        if generation != currentGeneration || !state.isVisible {
+            stopSpeech()
+        }
         copyResetTask?.cancel()
         copyResetTask = nil
         if !state.isVisible,
@@ -1398,6 +1477,7 @@ final class NativeTranslationOverlayController: NSObject {
         announceTerminal: Bool,
         animateLayout: Bool
     ) {
+        overlayView.canReadAloud = session.speechText(for: .original, generation: generation) != nil
         guard state.isVisible,
               let placement = placement(for: state) else {
             dismiss(.displayRemoved)
@@ -1574,6 +1654,7 @@ final class NativeTranslationOverlayController: NSObject {
     }
 
     private func hidePanel(reason: NativeTranslationOverlayDismissReason?) {
+        stopSpeech()
         let revision = presentationLifecycle.beginHide()
         layoutRevision += 1
         contentTransitionLifecycle.invalidate()
@@ -1621,6 +1702,7 @@ final class NativeTranslationOverlayController: NSObject {
     }
 
     private func dismiss(_ reason: NativeTranslationOverlayDismissReason) {
+        stopSpeech()
         pendingDismissReason = reason
         defer { pendingDismissReason = nil }
         let nativeHandler = nativeDismissHandler
@@ -1681,6 +1763,83 @@ final class NativeTranslationOverlayController: NSObject {
         if keyboardMode, let replacement {
             panel.makeFirstResponder(replacement)
         }
+    }
+
+    private func readAloud(_ target: NativeTranslationSpeechTarget) {
+        guard statefulActionsArePermitted,
+              let text = session.speechText(for: target, generation: currentGeneration) else { return }
+        if speakingTarget == target {
+            stopSpeech()
+            relayoutForCurrentScreen()
+            return
+        }
+        stopSpeech()
+        // Select installed Apple voices only, not Personal Voice or third-party
+        // speech extensions. Never request permissions, downloads or a cloud API.
+        let voices = AVSpeechSynthesisVoice.speechVoices().filter {
+            $0.identifier.hasPrefix("com.apple.")
+                && !$0.voiceTraits.contains(.isPersonalVoice)
+                && !$0.voiceTraits.contains(.isNoveltyVoice)
+                && ($0.language == target.language
+                    || (target == .original && $0.language.hasPrefix("en-")))
+        }.sorted {
+            if ($0.language == target.language) != ($1.language == target.language) {
+                return $0.language == target.language
+            }
+            if $0.quality != $1.quality { return $0.quality.rawValue > $1.quality.rawValue }
+            // Prefer ordinary system reading voices over legacy character voices
+            // when both advertise the same quality.
+            if $0.identifier.hasPrefix("com.apple.voice.") != $1.identifier.hasPrefix("com.apple.voice.") {
+                return $0.identifier.hasPrefix("com.apple.voice.")
+            }
+            return $0.identifier < $1.identifier
+        }
+        guard let voice = voices.first else {
+            let language = target == .original ? "英语" : "中文"
+            let message = "缺少\(language)系统语音，请在系统设置的辅助功能中下载朗读语音。"
+            overlayView.renderSpeech(target: nil, message: message)
+            relayoutForCurrentScreen()
+            postAnnouncement(message)
+            return
+        }
+        if speechSynthesizer == nil {
+            speechSynthesizer = AVSpeechSynthesizer()
+            speechSynthesizer?.delegate = self
+        }
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = voice
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        speechUtterance = utterance
+        speakingTarget = target
+        overlayView.renderSpeech(target: target)
+        relayoutForCurrentScreen()
+        speechSynthesizer?.speak(utterance)
+    }
+
+    private func stopSpeech() {
+        // Revoke the callback identity before stopSpeaking can call the delegate.
+        speechUtterance = nil
+        speakingTarget = nil
+        speechSynthesizer?.stopSpeaking(at: .immediate)
+        overlayView.renderSpeech(target: nil)
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        let identity = ObjectIdentifier(utterance)
+        Task { @MainActor [weak self] in self?.speechEnded(identity) }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        let identity = ObjectIdentifier(utterance)
+        Task { @MainActor [weak self] in self?.speechEnded(identity) }
+    }
+
+    private func speechEnded(_ identity: ObjectIdentifier) {
+        guard let utterance = speechUtterance, ObjectIdentifier(utterance) == identity else { return }
+        speechUtterance = nil
+        speakingTarget = nil
+        overlayView.renderSpeech(target: nil)
+        relayoutForCurrentScreen()
     }
 
     private func copyCurrentTranslation() {
