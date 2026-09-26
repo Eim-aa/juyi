@@ -1,0 +1,515 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A00000000000000000000031 /* JuyiMenuBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000021 /* JuyiMenuBar.swift */; };
+		A00000000000000000000032 /* OnboardingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000022 /* OnboardingPolicy.swift */; };
+		A00000000000000000000033 /* WindowFramePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000023 /* WindowFramePolicy.swift */; };
+		A00000000000000000000034 /* TranslationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000027 /* TranslationHelper.swift */; };
+		A00000000000000000000035 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002C /* Assets.xcassets */; };
+		B00000000000000000000003 /* argos-translator.lua in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000001 /* argos-translator.lua */; };
+		B00000000000000000000004 /* hammerspoon_hook.sh in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000002 /* hammerspoon_hook.sh */; };
+		A00000000000000000000036 /* AccessibilityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002D /* AccessibilityController.swift */; };
+		A00000000000000000000037 /* DoubleOptionStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002E /* DoubleOptionStateMachine.swift */; };
+		A00000000000000000000038 /* NativeOptionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002F /* NativeOptionMonitor.swift */; };
+		A00000000000000000000039 /* NativeOptionFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000030 /* NativeOptionFeature.swift */; };
+		A00000000000000000000051 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000041 /* AppKit.framework */; };
+		A00000000000000000000052 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000042 /* ServiceManagement.framework */; };
+		A00000000000000000000053 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000043 /* SwiftUI.framework */; };
+		A00000000000000000000054 /* CryptoKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000044 /* CryptoKit.framework */; };
+		A00000000000000000000055 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000041 /* AppKit.framework */; };
+		A00000000000000000000056 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000043 /* SwiftUI.framework */; };
+		A00000000000000000000057 /* Translation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000045 /* Translation.framework */; };
+		A00000000000000000000058 /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000046 /* ApplicationServices.framework */; };
+		A00000000000000000000059 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000047 /* CoreGraphics.framework */; };
+		A00000000000000000000062 /* NativeOptionEventAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000060 /* NativeOptionEventAdapter.swift */; };
+		A00000000000000000000063 /* NativeSelectionReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000061 /* NativeSelectionReader.swift */; };
+		A00000000000000000000065 /* NativeSelectionCaptureCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000064 /* NativeSelectionCaptureCoordinator.swift */; };
+		A00000000000000000000070 /* NativeTranslationOverlayModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000066 /* NativeTranslationOverlayModel.swift */; };
+		A00000000000000000000071 /* NativeTranslationOverlayAnchorPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000067 /* NativeTranslationOverlayAnchorPolicy.swift */; };
+		A00000000000000000000072 /* NativeTranslationOverlayInteractionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000068 /* NativeTranslationOverlayInteractionPolicy.swift */; };
+		A00000000000000000000073 /* NativeTranslationOverlayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000069 /* NativeTranslationOverlayController.swift */; };
+		A00000000000000000000075 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000074 /* QuartzCore.framework */; };
+		A00000000000000000000079 /* NativeTranslationDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000076 /* NativeTranslationDomain.swift */; };
+		A0000000000000000000007A /* VolcV4RequestBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000077 /* VolcV4RequestBuilder.swift */; };
+		A0000000000000000000007B /* VolcTranslationResponseParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000078 /* VolcTranslationResponseParser.swift */; };
+		A0000000000000000000007E /* NativeAppleTranslationAdapterModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000007C /* NativeAppleTranslationAdapterModel.swift */; };
+		A0000000000000000000007F /* NativeAppleTranslationAdapterHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000007D /* NativeAppleTranslationAdapterHost.swift */; };
+		A00000000000000000000086 /* NativeVolcDebugCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000080 /* NativeVolcDebugCredentialStore.swift */; };
+		A00000000000000000000087 /* NativeVolcDebugInterlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000081 /* NativeVolcDebugInterlock.swift */; };
+		A00000000000000000000088 /* NativeVolcDebugTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000082 /* NativeVolcDebugTransport.swift */; };
+		A00000000000000000000089 /* NativeVolcDebugWorkflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000083 /* NativeVolcDebugWorkflow.swift */; };
+		A0000000000000000000008A /* NativeVolcTranslationAdapterModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000084 /* NativeVolcTranslationAdapterModel.swift */; };
+		A0000000000000000000008B /* NativeVolcTranslationAdapterHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000085 /* NativeVolcTranslationAdapterHost.swift */; };
+		A00000000000000000000090 /* NativeTranslationOverlayExternalPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008C /* NativeTranslationOverlayExternalPresentation.swift */; };
+		A00000000000000000000091 /* NativeTranslationResultLabPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008D /* NativeTranslationResultLabPresentation.swift */; };
+		A00000000000000000000092 /* NativeTranslationResultLabModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008E /* NativeTranslationResultLabModel.swift */; };
+		A00000000000000000000093 /* NativeTranslationResultLabHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008F /* NativeTranslationResultLabHost.swift */; };
+		A00000000000000000000097 /* NativeTranslationAppleResultLabBindingPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000094 /* NativeTranslationAppleResultLabBindingPresentation.swift */; };
+		A00000000000000000000098 /* NativeTranslationAppleResultLabBindingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000095 /* NativeTranslationAppleResultLabBindingModel.swift */; };
+		A00000000000000000000099 /* NativeTranslationAppleResultLabBindingHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000096 /* NativeTranslationAppleResultLabBindingHost.swift */; };
+		A0000000000000000000009C /* NativeSelectionCaptureLabModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000009A /* NativeSelectionCaptureLabModel.swift */; };
+		A0000000000000000000009D /* NativeSelectionCaptureLabHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000009B /* NativeSelectionCaptureLabHost.swift */; };
+		A0000000000000000000009F /* NativeOwnerHandoffProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000009E /* NativeOwnerHandoffProtocol.swift */; };
+		A000000000000000000000A1 /* NativeOwnerHandoffStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A0 /* NativeOwnerHandoffStore.swift */; };
+		A000000000000000000000A3 /* NativeOwnerHandoffWorkflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */; };
+		A000000000000000000000A5 /* NativeOwnerHandoffStatusReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */; };
+		A000000000000000000000A7 /* NativeOwnerHandoffLabModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A6 /* NativeOwnerHandoffLabModel.swift */; };
+		A000000000000000000000A9 /* NativeOwnerHandoffLabHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A8 /* NativeOwnerHandoffLabHost.swift */; };
+		A000000000000000000000AB /* NativeOwnerActivationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A0000000000000000000000A /* Juyi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Juyi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A0000000000000000000000B /* apple-translation-helper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "apple-translation-helper"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000021 /* JuyiMenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JuyiMenuBar.swift; sourceTree = "<group>"; };
+		A00000000000000000000022 /* OnboardingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPolicy.swift; sourceTree = "<group>"; };
+		A00000000000000000000023 /* WindowFramePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowFramePolicy.swift; sourceTree = "<group>"; };
+		A00000000000000000000024 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A00000000000000000000025 /* AppIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon.png; sourceTree = "<group>"; };
+		A00000000000000000000026 /* Juyi.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Juyi.entitlements; sourceTree = "<group>"; };
+		A00000000000000000000027 /* TranslationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationHelper.swift; sourceTree = "<group>"; };
+		A00000000000000000000028 /* Version.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Version.xcconfig; sourceTree = "<group>"; };
+		A00000000000000000000029 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
+		A0000000000000000000002A /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		A0000000000000000000002B /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		A0000000000000000000002C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A0000000000000000000002D /* AccessibilityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityController.swift; sourceTree = "<group>"; };
+		A0000000000000000000002E /* DoubleOptionStateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoubleOptionStateMachine.swift; sourceTree = "<group>"; };
+		A0000000000000000000002F /* NativeOptionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOptionMonitor.swift; sourceTree = "<group>"; };
+		A00000000000000000000030 /* NativeOptionFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOptionFeature.swift; sourceTree = "<group>"; };
+		A00000000000000000000041 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		A00000000000000000000042 /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
+		A00000000000000000000043 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		A00000000000000000000044 /* CryptoKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CryptoKit.framework; path = System/Library/Frameworks/CryptoKit.framework; sourceTree = SDKROOT; };
+		A00000000000000000000045 /* Translation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Translation.framework; path = System/Library/Frameworks/Translation.framework; sourceTree = SDKROOT; };
+		A00000000000000000000046 /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = System/Library/Frameworks/ApplicationServices.framework; sourceTree = SDKROOT; };
+		A00000000000000000000047 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		A00000000000000000000060 /* NativeOptionEventAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOptionEventAdapter.swift; sourceTree = "<group>"; };
+		A00000000000000000000061 /* NativeSelectionReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSelectionReader.swift; sourceTree = "<group>"; };
+		A00000000000000000000064 /* NativeSelectionCaptureCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSelectionCaptureCoordinator.swift; sourceTree = "<group>"; };
+		A00000000000000000000066 /* NativeTranslationOverlayModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationOverlayModel.swift; sourceTree = "<group>"; };
+		A00000000000000000000067 /* NativeTranslationOverlayAnchorPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationOverlayAnchorPolicy.swift; sourceTree = "<group>"; };
+		A00000000000000000000068 /* NativeTranslationOverlayInteractionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationOverlayInteractionPolicy.swift; sourceTree = "<group>"; };
+		A00000000000000000000069 /* NativeTranslationOverlayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationOverlayController.swift; sourceTree = "<group>"; };
+		A00000000000000000000074 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		A00000000000000000000076 /* NativeTranslationDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationDomain.swift; sourceTree = "<group>"; };
+		A00000000000000000000077 /* VolcV4RequestBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolcV4RequestBuilder.swift; sourceTree = "<group>"; };
+		A00000000000000000000078 /* VolcTranslationResponseParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolcTranslationResponseParser.swift; sourceTree = "<group>"; };
+		A0000000000000000000007C /* NativeAppleTranslationAdapterModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAppleTranslationAdapterModel.swift; sourceTree = "<group>"; };
+		A0000000000000000000007D /* NativeAppleTranslationAdapterHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAppleTranslationAdapterHost.swift; sourceTree = "<group>"; };
+		A00000000000000000000080 /* NativeVolcDebugCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcDebugCredentialStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000081 /* NativeVolcDebugInterlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcDebugInterlock.swift; sourceTree = "<group>"; };
+		A00000000000000000000082 /* NativeVolcDebugTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcDebugTransport.swift; sourceTree = "<group>"; };
+		A00000000000000000000083 /* NativeVolcDebugWorkflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcDebugWorkflow.swift; sourceTree = "<group>"; };
+		A00000000000000000000084 /* NativeVolcTranslationAdapterModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcTranslationAdapterModel.swift; sourceTree = "<group>"; };
+		A00000000000000000000085 /* NativeVolcTranslationAdapterHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcTranslationAdapterHost.swift; sourceTree = "<group>"; };
+		A0000000000000000000008C /* NativeTranslationOverlayExternalPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationOverlayExternalPresentation.swift; sourceTree = "<group>"; };
+		A0000000000000000000008D /* NativeTranslationResultLabPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationResultLabPresentation.swift; sourceTree = "<group>"; };
+		A0000000000000000000008E /* NativeTranslationResultLabModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationResultLabModel.swift; sourceTree = "<group>"; };
+		A0000000000000000000008F /* NativeTranslationResultLabHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationResultLabHost.swift; sourceTree = "<group>"; };
+		A00000000000000000000094 /* NativeTranslationAppleResultLabBindingPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationAppleResultLabBindingPresentation.swift; sourceTree = "<group>"; };
+		A00000000000000000000095 /* NativeTranslationAppleResultLabBindingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationAppleResultLabBindingModel.swift; sourceTree = "<group>"; };
+		A00000000000000000000096 /* NativeTranslationAppleResultLabBindingHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationAppleResultLabBindingHost.swift; sourceTree = "<group>"; };
+		A0000000000000000000009A /* NativeSelectionCaptureLabModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSelectionCaptureLabModel.swift; sourceTree = "<group>"; };
+		A0000000000000000000009B /* NativeSelectionCaptureLabHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSelectionCaptureLabHost.swift; sourceTree = "<group>"; };
+		A0000000000000000000009E /* NativeOwnerHandoffProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffProtocol.swift; sourceTree = "<group>"; };
+		A000000000000000000000A0 /* NativeOwnerHandoffStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffStore.swift; sourceTree = "<group>"; };
+		A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffWorkflow.swift; sourceTree = "<group>"; };
+		A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffStatusReader.swift; sourceTree = "<group>"; };
+		A000000000000000000000A6 /* NativeOwnerHandoffLabModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffLabModel.swift; sourceTree = "<group>"; };
+		A000000000000000000000A8 /* NativeOwnerHandoffLabHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffLabHost.swift; sourceTree = "<group>"; };
+		A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerActivationCoordinator.swift; sourceTree = "<group>"; };
+		B00000000000000000000001 /* argos-translator.lua */ = {isa = PBXFileReference; lastKnownFileType = text; path = "hammerspoon/argos-translator.lua"; sourceTree = SOURCE_ROOT; };
+		B00000000000000000000002 /* hammerspoon_hook.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = scripts/hammerspoon_hook.sh; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A0000000000000000000000E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000058 /* ApplicationServices.framework in Frameworks */,
+				A00000000000000000000051 /* AppKit.framework in Frameworks */,
+				A00000000000000000000059 /* CoreGraphics.framework in Frameworks */,
+				A00000000000000000000054 /* CryptoKit.framework in Frameworks */,
+				A00000000000000000000075 /* QuartzCore.framework in Frameworks */,
+				A00000000000000000000052 /* ServiceManagement.framework in Frameworks */,
+				A00000000000000000000053 /* SwiftUI.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A0000000000000000000000F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000055 /* AppKit.framework in Frameworks */,
+				A00000000000000000000056 /* SwiftUI.framework in Frameworks */,
+				A00000000000000000000057 /* Translation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A00000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000004 /* macos */,
+				A00000000000000000000005 /* apple */,
+				A00000000000000000000006 /* Config */,
+				B00000000000000000000001 /* argos-translator.lua */,
+				B00000000000000000000002 /* hammerspoon_hook.sh */,
+				A00000000000000000000007 /* Frameworks */,
+				A00000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A00000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A0000000000000000000000A /* Juyi.app */,
+				A0000000000000000000000B /* apple-translation-helper */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000004 /* macos */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000021 /* JuyiMenuBar.swift */,
+				A00000000000000000000022 /* OnboardingPolicy.swift */,
+				A00000000000000000000023 /* WindowFramePolicy.swift */,
+				A0000000000000000000002D /* AccessibilityController.swift */,
+				A0000000000000000000002E /* DoubleOptionStateMachine.swift */,
+				A00000000000000000000060 /* NativeOptionEventAdapter.swift */,
+				A0000000000000000000002F /* NativeOptionMonitor.swift */,
+				A00000000000000000000061 /* NativeSelectionReader.swift */,
+				A00000000000000000000064 /* NativeSelectionCaptureCoordinator.swift */,
+				A0000000000000000000009A /* NativeSelectionCaptureLabModel.swift */,
+				A0000000000000000000009B /* NativeSelectionCaptureLabHost.swift */,
+				A0000000000000000000009E /* NativeOwnerHandoffProtocol.swift */,
+				A000000000000000000000A0 /* NativeOwnerHandoffStore.swift */,
+				A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */,
+				A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */,
+				A000000000000000000000A6 /* NativeOwnerHandoffLabModel.swift */,
+				A000000000000000000000A8 /* NativeOwnerHandoffLabHost.swift */,
+				A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */,
+				A00000000000000000000030 /* NativeOptionFeature.swift */,
+				A00000000000000000000066 /* NativeTranslationOverlayModel.swift */,
+				A00000000000000000000067 /* NativeTranslationOverlayAnchorPolicy.swift */,
+				A00000000000000000000068 /* NativeTranslationOverlayInteractionPolicy.swift */,
+				A00000000000000000000069 /* NativeTranslationOverlayController.swift */,
+				A00000000000000000000076 /* NativeTranslationDomain.swift */,
+				A00000000000000000000077 /* VolcV4RequestBuilder.swift */,
+				A00000000000000000000078 /* VolcTranslationResponseParser.swift */,
+				A0000000000000000000007C /* NativeAppleTranslationAdapterModel.swift */,
+				A0000000000000000000007D /* NativeAppleTranslationAdapterHost.swift */,
+				A00000000000000000000080 /* NativeVolcDebugCredentialStore.swift */,
+				A00000000000000000000081 /* NativeVolcDebugInterlock.swift */,
+				A00000000000000000000082 /* NativeVolcDebugTransport.swift */,
+				A00000000000000000000083 /* NativeVolcDebugWorkflow.swift */,
+				A00000000000000000000084 /* NativeVolcTranslationAdapterModel.swift */,
+				A00000000000000000000085 /* NativeVolcTranslationAdapterHost.swift */,
+				A0000000000000000000008C /* NativeTranslationOverlayExternalPresentation.swift */,
+				A0000000000000000000008D /* NativeTranslationResultLabPresentation.swift */,
+				A0000000000000000000008E /* NativeTranslationResultLabModel.swift */,
+				A0000000000000000000008F /* NativeTranslationResultLabHost.swift */,
+				A00000000000000000000094 /* NativeTranslationAppleResultLabBindingPresentation.swift */,
+				A00000000000000000000095 /* NativeTranslationAppleResultLabBindingModel.swift */,
+				A00000000000000000000096 /* NativeTranslationAppleResultLabBindingHost.swift */,
+				A00000000000000000000024 /* Info.plist */,
+				A00000000000000000000025 /* AppIcon.png */,
+				A0000000000000000000002C /* Assets.xcassets */,
+				A00000000000000000000026 /* Juyi.entitlements */,
+			);
+			path = macos;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000005 /* apple */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000027 /* TranslationHelper.swift */,
+			);
+			path = apple;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000006 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000028 /* Version.xcconfig */,
+				A00000000000000000000029 /* Shared.xcconfig */,
+				A0000000000000000000002A /* Debug.xcconfig */,
+				A0000000000000000000002B /* Release.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000007 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000046 /* ApplicationServices.framework */,
+				A00000000000000000000041 /* AppKit.framework */,
+				A00000000000000000000047 /* CoreGraphics.framework */,
+				A00000000000000000000044 /* CryptoKit.framework */,
+				A00000000000000000000074 /* QuartzCore.framework */,
+				A00000000000000000000042 /* ServiceManagement.framework */,
+				A00000000000000000000043 /* SwiftUI.framework */,
+				A00000000000000000000045 /* Translation.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A00000000000000000000008 /* Juyi */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000015 /* Build configuration list for PBXNativeTarget "Juyi" */;
+			buildPhases = (
+				A0000000000000000000000C /* Sources */,
+				A0000000000000000000000E /* Frameworks */,
+				A00000000000000000000010 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Juyi;
+			productName = Juyi;
+			productReference = A0000000000000000000000A /* Juyi.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A00000000000000000000009 /* AppleTranslationHelper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000016 /* Build configuration list for PBXNativeTarget "AppleTranslationHelper" */;
+			buildPhases = (
+				A0000000000000000000000D /* Sources */,
+				A0000000000000000000000F /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AppleTranslationHelper;
+			productName = "apple-translation-helper";
+			productReference = A0000000000000000000000B /* apple-translation-helper */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A00000000000000000000008 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					A00000000000000000000009 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = A00000000000000000000014 /* Build configuration list for PBXProject "Juyi" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A00000000000000000000002;
+			productRefGroup = A00000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A00000000000000000000008 /* Juyi */,
+				A00000000000000000000009 /* AppleTranslationHelper */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A00000000000000000000010 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000035 /* Assets.xcassets in Resources */,
+				B00000000000000000000003 /* argos-translator.lua in Resources */,
+				B00000000000000000000004 /* hammerspoon_hook.sh in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A0000000000000000000000C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000036 /* AccessibilityController.swift in Sources */,
+				A00000000000000000000037 /* DoubleOptionStateMachine.swift in Sources */,
+				A00000000000000000000031 /* JuyiMenuBar.swift in Sources */,
+				A00000000000000000000062 /* NativeOptionEventAdapter.swift in Sources */,
+				A00000000000000000000039 /* NativeOptionFeature.swift in Sources */,
+				A00000000000000000000038 /* NativeOptionMonitor.swift in Sources */,
+				A00000000000000000000063 /* NativeSelectionReader.swift in Sources */,
+				A00000000000000000000065 /* NativeSelectionCaptureCoordinator.swift in Sources */,
+				A0000000000000000000009C /* NativeSelectionCaptureLabModel.swift in Sources */,
+				A0000000000000000000009D /* NativeSelectionCaptureLabHost.swift in Sources */,
+				A0000000000000000000009F /* NativeOwnerHandoffProtocol.swift in Sources */,
+				A000000000000000000000A1 /* NativeOwnerHandoffStore.swift in Sources */,
+				A000000000000000000000A3 /* NativeOwnerHandoffWorkflow.swift in Sources */,
+				A000000000000000000000A5 /* NativeOwnerHandoffStatusReader.swift in Sources */,
+				A000000000000000000000A7 /* NativeOwnerHandoffLabModel.swift in Sources */,
+				A000000000000000000000A9 /* NativeOwnerHandoffLabHost.swift in Sources */,
+				A000000000000000000000AB /* NativeOwnerActivationCoordinator.swift in Sources */,
+				A00000000000000000000070 /* NativeTranslationOverlayModel.swift in Sources */,
+				A00000000000000000000071 /* NativeTranslationOverlayAnchorPolicy.swift in Sources */,
+				A00000000000000000000072 /* NativeTranslationOverlayInteractionPolicy.swift in Sources */,
+				A00000000000000000000073 /* NativeTranslationOverlayController.swift in Sources */,
+				A00000000000000000000079 /* NativeTranslationDomain.swift in Sources */,
+				A0000000000000000000007A /* VolcV4RequestBuilder.swift in Sources */,
+				A0000000000000000000007B /* VolcTranslationResponseParser.swift in Sources */,
+				A0000000000000000000007E /* NativeAppleTranslationAdapterModel.swift in Sources */,
+				A0000000000000000000007F /* NativeAppleTranslationAdapterHost.swift in Sources */,
+				A00000000000000000000086 /* NativeVolcDebugCredentialStore.swift in Sources */,
+				A00000000000000000000087 /* NativeVolcDebugInterlock.swift in Sources */,
+				A00000000000000000000088 /* NativeVolcDebugTransport.swift in Sources */,
+				A00000000000000000000089 /* NativeVolcDebugWorkflow.swift in Sources */,
+				A0000000000000000000008A /* NativeVolcTranslationAdapterModel.swift in Sources */,
+				A0000000000000000000008B /* NativeVolcTranslationAdapterHost.swift in Sources */,
+				A00000000000000000000090 /* NativeTranslationOverlayExternalPresentation.swift in Sources */,
+				A00000000000000000000091 /* NativeTranslationResultLabPresentation.swift in Sources */,
+				A00000000000000000000092 /* NativeTranslationResultLabModel.swift in Sources */,
+				A00000000000000000000093 /* NativeTranslationResultLabHost.swift in Sources */,
+				A00000000000000000000097 /* NativeTranslationAppleResultLabBindingPresentation.swift in Sources */,
+				A00000000000000000000098 /* NativeTranslationAppleResultLabBindingModel.swift in Sources */,
+				A00000000000000000000099 /* NativeTranslationAppleResultLabBindingHost.swift in Sources */,
+				A00000000000000000000032 /* OnboardingPolicy.swift in Sources */,
+				A00000000000000000000033 /* WindowFramePolicy.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A0000000000000000000000D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000034 /* TranslationHelper.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000017 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		A00000000000000000000018 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		A00000000000000000000019 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A0000000000000000000002A /* Debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = macos/Juyi.entitlements;
+				EXECUTABLE_NAME = Juyi;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = macos/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.Eim-aa.Juyi;
+				PRODUCT_MODULE_NAME = Juyi;
+				PRODUCT_NAME = Juyi;
+				SKIP_INSTALL = NO;
+			};
+			name = Debug;
+		};
+		A0000000000000000000001A /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A0000000000000000000002B /* Release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = macos/Juyi.entitlements;
+				EXECUTABLE_NAME = Juyi;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = macos/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.Eim-aa.Juyi;
+				PRODUCT_MODULE_NAME = Juyi;
+				PRODUCT_NAME = Juyi;
+				SKIP_INSTALL = NO;
+			};
+			name = Release;
+		};
+		A0000000000000000000001B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A0000000000000000000002A /* Debug.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = macos/Juyi.entitlements;
+				EXECUTABLE_NAME = "apple-translation-helper";
+				MACH_O_TYPE = mh_execute;
+				PRODUCT_NAME = "apple-translation-helper";
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		A0000000000000000000001C /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A0000000000000000000002B /* Release.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = macos/Juyi.entitlements;
+				EXECUTABLE_NAME = "apple-translation-helper";
+				MACH_O_TYPE = mh_execute;
+				PRODUCT_NAME = "apple-translation-helper";
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A00000000000000000000014 /* Build configuration list for PBXProject "Juyi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000017 /* Debug */,
+				A00000000000000000000018 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A00000000000000000000015 /* Build configuration list for PBXNativeTarget "Juyi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000019 /* Debug */,
+				A0000000000000000000001A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A00000000000000000000016 /* Build configuration list for PBXNativeTarget "AppleTranslationHelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A0000000000000000000001B /* Debug */,
+				A0000000000000000000001C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A00000000000000000000001 /* Project object */;
+}

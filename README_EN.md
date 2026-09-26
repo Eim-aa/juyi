@@ -1,48 +1,56 @@
-# juyi 句译
+# Juyi 句译
+
+<img src="macos/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" width="80" height="80" alt="Juyi icon" />
 
 **Understand the sentence. Keep reading.**
 
-Select English in a supported Mac app, double-tap **Option (⌥⌥)**, and read Simplified Chinese beside the selection.
+Select English on your Mac, double-tap **Option (⌥⌥)**, and read Simplified Chinese beside your selection. No window switching or manual copy-paste.
 
-[Download the Mac DMG · build 15](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.15/Juyi-0.4.0-build15-universal.dmg) · [Release notes and checksums](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15) · [中文](README.md)
+**[Download for macOS — Preview](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.15/Juyi-0.4.0-build15-universal.dmg)** · [Release notes](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15) · [中文](README.md)
 
-Build 15 is a signed, notarized **public preview, not a stable release**. CI and anonymous-download verification passed. No GitHub account is needed to download. Use the DMG, not the repository ZIP or unsigned CI artifacts.
+macOS 15+ · English → Simplified Chinese · Free & open source · MIT
 
-![Actual PDF selection and translated popup](https://raw.githubusercontent.com/Eim-aa/juyi/v0.4.0-preview.12/docs/media/selection-demo.gif)
+![Actual PDF selection and translated popup in Preview](docs/media/selection-demo.gif)
 
-This build 10 recording illustrates the workflow, not acceptance of the latest build or a performance guarantee. [Watch the MP4](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.12/docs/media/selection-demo.mp4).
+[Watch the full-resolution clip](docs/media/selection-demo.mp4) · Recorded with build 10 to show the workflow, not current-version performance or acceptance results.
 
-## Three steps
+## Less switching. More reading.
 
-1. Use **macOS 15+**. Open the DMG, drag **句译.app** to **Applications**, then open it from Applications.
-2. Enable double Option, grant Accessibility permission to **Juyi**, and approve Apple's English–Simplified Chinese language resources if prompted.
-3. Select English in TextEdit or a supported text-PDF reader and tap Option twice in succession. Do not hold both Option keys together.
+- **Translation beside the text** — read webpages, documents and text-based PDFs in supported apps.
+- **Local by default** — Apple Translation processes text on your Mac. Once the language pack is ready, it works offline.
+- **A standalone Mac app** — local mode needs no API key, Hammerspoon, Python or Homebrew.
 
-**Local translation needs only Juyi: no Hammerspoon, Python, Homebrew, or API key.** Existing development components use the safe handoff. Quit an older version normally before updating. Do not bypass Gatekeeper or alter the system permission database.
+## Get started in three steps
 
-Closing the main window keeps Juyi running; pausing stops translation; reopening after quitting requires Resume translation. System permission, language downloads, and the real global gesture must be completed by the person using the Mac.
+1. **Download and install.** Open the DMG, drag Juyi to Applications (`/Applications/句译.app`), then open it. No GitHub login needed.
+2. **Finish setup.** Grant Juyi Accessibility permission when prompted. First use may need an internet connection to download Apple's English–Chinese language pack.
+3. **Select → ⌥⌥ → read.** Select English in a supported app, such as TextEdit or Preview, and tap Option twice in quick succession.
 
-## Scope and privacy
+Tap **the same Option key twice**, not both Option keys at once. Closing the main window keeps translation running. After quitting and reopening, click **Resume translation (恢复翻译)**. The app interface is currently in Chinese.
 
-- **English → Simplified Chinese only.** Selection support depends on each app's interfaces. Not all apps or PDFs are supported; no OCR, scanned pages, secure fields, or protected content.
-- **Local · Apple (default):** translation content stays on the Mac. Initial language resources may need a network connection. Local failure never automatically sends text to the cloud.
-- **WPS PDF:** a compatibility path may temporarily copy text and attempt to restore the clipboard. Clipboard managers can retain text; avoid this path for sensitive content.
-- **Cloud · Volcengine (optional):** currently only Volcengine, not arbitrary APIs. It requires separately installed cloud components and credentials entered by the user in the newer app's secure form. Only explicit cloud selection sends text to Volcengine. Credentials are stored in macOS Keychain.
+<details>
+<summary>See the interface</summary>
 
-**Never give keys to an agent or place them in chat, shell history, source code, or plaintext configuration files.** Existing legacy plaintext credentials should only be handled by the newer app's migration flow. Local translation needs no key.
+<img src="docs/media/home-ready.jpg" width="440" alt="Juyi's home screen, ready for local Apple translation" />
 
-## Verification status
+An actual app screenshot; the downloaded version may look different.
 
-Build 15 improves initial feedback after double Option: it shows a selection-reading state before continuing translation in the same popup. The user confirmed working WPS PDF translation and responsive feedback on the local candidate. Both Copy confirmations and their safety waits remain unchanged; this does not establish that the intermittent unsupported-selection cause is fixed. See the [build 15 verification record](docs/RELEASE_0.4.0_BUILD15.md). Including both architectures is not proof of Intel hardware testing.
+</details>
 
-Clean-account first permission/language setup, permission revocation and reauthorization, macOS 15, and Intel hardware still need acceptance. Preview, no triggering while paused, and closing during capture also need separate final-package results. Testing the local candidate is not byte-for-byte acceptance of the final DMG. See the [version-specific release notes](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15). Distribution is through GitHub, not the App Store.
+## Before you download
 
-## Source and feedback
+- **A public preview, not a stable release.** Build 15 is signed and Apple-notarized, not an App Store release. The Universal 2 package includes Apple Silicon and Intel binaries; [device coverage and acceptance checks](docs/RELEASE_0.4.0_BUILD15.md) are still being completed.
+- **Not every app exposes its selection.** Compatibility depends on the source app. Scanned PDFs, text in images, secure fields and protected content are unsupported. No OCR.
+- **WPS PDFs usually take longer than Preview.** The compatibility path performs extra copy checks, temporarily uses the clipboard and attempts to restore it. Clipboard managers may retain the source text; avoid this path for sensitive content.
 
-The early scripts in the default branch are not the installer for this native preview. Use the [release-tag source](https://github.com/Eim-aa/juyi/tree/v0.4.0-preview.15); later development is in the [existing PR](https://github.com/Eim-aa/juyi/pull/1). Read the [version-specific instructions](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.15/AGENTS.md) before source builds or optional cloud setup. Do not mix old-branch instructions with the preview.
+## Local and cloud translation
 
-For optional source installation, use the pinned `v0.4.0-preview.15` checkout (tag commit `892e4d8`; App build source `4bf42ad`, differing only in documentation and test synchronization) and that tag's instructions. Installation, verification, and diagnostics must all use that checkout (the guide uses `~/.local/share/juyi-build15`), not an older installation. Do not substitute the early default-branch bootstrap or overwrite an existing working directory.
+Start with **Local · Apple**: no key required. Juyi does not send translation text to the cloud or automatically switch to cloud when local translation fails.
 
-[Report issues](https://github.com/Eim-aa/juyi/issues) with the app/system/reader versions and non-sensitive reproduction steps. Never include keys or complete private documents.
+**Cloud currently supports Volcengine only.** It requires separately installed backend components and your own Volcengine AK/SK. When enabled, selected text is sent to Volcengine; credentials are stored in macOS Keychain. Other providers' keys and custom API endpoints are not supported. See the [configuration guide](docs/MENU_BAR_APP.md#翻译方式) (Chinese).
 
-MIT; see [LICENSE](LICENSE).
+## Help improve Juyi
+
+Found a problem or have an idea? [Open an issue](https://github.com/Eim-aa/juyi/issues) with your macOS version, Juyi version, source app and reproduction steps. Do not include credentials, private selected text or clipboard contents. Pull requests are welcome.
+
+[Usage & troubleshooting](docs/MENU_BAR_APP.md) · [Source installation / Agent guide](AGENTS.md) · [Build & release](docs/RELEASE_BASELINE.md) · [MIT license](LICENSE)

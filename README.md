@@ -1,48 +1,56 @@
-# 句译 juyi
+# 句译 Juyi
+
+<img src="macos/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" width="80" height="80" alt="句译图标" />
 
 **读懂这一句，继续读下去。**
 
-在支持的 Mac App 中选中英文，连按两次 **Option（⌥⌥）**，在选区旁查看中文译文。
+在 Mac 上选中英文，连按两次 **Option（⌥⌥）**，中文译文就在旁边。不必切换窗口，也不用来回复制粘贴。
 
-[直接下载 Mac 安装包 · build 15](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.15/Juyi-0.4.0-build15-universal.dmg) · [发布说明与校验文件](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15) · [English](README_EN.md)
+**[下载 macOS 测试版](https://github.com/Eim-aa/juyi/releases/download/v0.4.0-preview.15/Juyi-0.4.0-build15-universal.dmg)** · [更新说明](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15) · [English](README_EN.md)
 
-build 15 已完成签名、公证、CI 和匿名下载验证，是**公开测试版，不是稳定版**。下载不需要 GitHub 账户。请下载 DMG，不是仓库 ZIP 或 CI 构建产物。
+macOS 15+ · 英语 → 简体中文 · 免费开源 · MIT
 
-![句译真实 PDF 操作演示](https://raw.githubusercontent.com/Eim-aa/juyi/v0.4.0-preview.12/docs/media/selection-demo.gif)
+![句译实际操作：在预览中选中 PDF 英文，中文译文出现在浮窗中](docs/media/selection-demo.gif)
 
-这段实录来自 build 10，用于展示操作，不是最新版本验收或性能保证。[观看 MP4](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.12/docs/media/selection-demo.mp4)。
+[观看清晰版实录](docs/media/selection-demo.mp4) · 这段录像来自 build 10，展示基本操作，不代表当前版本的速度或验收结果。
+
+## 少一点打断，多一点阅读
+
+- **译文就在旁边**：读网页、文档和文字型 PDF 时，在支持的 App 中划词翻译。
+- **默认本地翻译**：使用 Apple 翻译，在 Mac 上处理正文；语言包准备好后可离线使用。
+- **安装就能开始**：本地模式无需 API 密钥、Hammerspoon、Python 或 Homebrew。
 
 ## 三步开始
 
-1. 需要 **macOS 15+**。打开 DMG，把 **句译.app** 拖到 **Applications**，再从“应用程序”打开。
-2. 点击启用双 Option，按系统提示为**句译**授予辅助功能权限；需要时确认 Apple 中英语言资源下载。
-3. 在文本编辑或支持的文字型 PDF 阅读器中选中英文，连续按两次 Option，查看译文。不是同时按住两个 Option 键。
+1. **下载安装**：打开 DMG，把「句译」拖入「应用程序」（`/Applications/句译.app`），然后打开。下载无需登录 GitHub。
+2. **完成设置**：按提示为句译开启「辅助功能」权限；首次使用可能需要联网下载 Apple 中英语言包。
+3. **选中 → ⌥⌥ → 看译文**：在文本编辑、预览等支持的 App 中选中英文，再快速连按两次 Option。
 
-**本地翻译只需安装句译，不需要 Hammerspoon、Python、Homebrew 或 API 密钥。** 已有早期开发组件时，App 会通过既有协议安全交接。更新前请正常退出旧版。不要绕过 Gatekeeper 或修改系统权限数据库。
+是**连按两次同一个 Option 键**，不是同时按住两个 Option。关闭主窗口后仍可翻译；退出再打开时，点击「恢复翻译」。
 
-关闭主窗口后仍在菜单栏运行；暂停会停止翻译；退出再打开后点击“恢复翻译”。系统授权、语言包确认和实际全局快捷键须由本人完成。
+<details>
+<summary>看看句译的界面</summary>
 
-## 支持范围与隐私
+<img src="docs/media/home-ready.jpg" width="440" alt="句译首页：本地 Apple 翻译已就绪" />
 
-- 当前仅 **英语 → 简体中文**。其他 App 和文字型 PDF 能否读取，取决于它们的选区接口；不支持所有 App、OCR、扫描件、安全输入框或受保护内容。
-- **本地 · Apple（默认）**：翻译正文在本机处理，首次语言资源可能需要联网；本地失败不会自动上传云端。
-- **WPS PDF**：兼容取词可能临时复制并尽力恢复剪贴板。剪贴板管理器可能保留正文，敏感内容请避免此路径。
-- **云端 · 火山（可选）**：目前仅支持火山，不支持任意 API。需要另行安装云端后台并由本人在新版 App 的安全表单输入 AK/SK；只有主动选择后才向火山发送选中文字。密钥保存在 macOS 钥匙串。
+实机截图，具体界面以下载版本为准。
 
-**不要把密钥交给 Agent，也不要贴进聊天、终端历史、源码或明文配置文件。** 旧版明文凭据只能由新版的既有迁移流程处理；本地翻译不需要任何密钥。
+</details>
 
-## 验证状态
+## 下载前了解这几点
 
-build 15 改善双 Option 后的首次反馈：先显示“正在读取选中文字…”，取词成功后在同一浮窗继续翻译。本机候选的 WPS PDF 翻译和弹窗反馈已由用户确认；本次未缩短两次复制确认或安全等待，也不能据此声称间歇性“不支持”的根因已彻底修复。详情见 [build 15 验证记录](docs/RELEASE_0.4.0_BUILD15.md)。Universal 2 包含 Apple Silicon 与 Intel，但不代表两类硬件均已实测。
+- **当前是公开测试版**：build 15 已签名并通过 Apple 公证，不是稳定版，也不是 App Store 版本。安装包包含 Apple Silicon 和 Intel 两种架构；[实测范围与待验收项](docs/RELEASE_0.4.0_BUILD15.md)仍在逐步补齐。
+- **不是所有 App 都能取词**：兼容性取决于 App 提供的选区接口。不支持扫描 PDF、图片文字、安全输入框或受保护内容；没有 OCR。
+- **WPS PDF 通常比预览慢**：兼容取词需要额外复制校验，可能临时使用剪贴板并尽力恢复。剪贴板管理器可能保留原文，敏感内容请避免这条路径。
 
-干净账户首次授权与语言包、系统权限撤回再授权、macOS 15 与 Intel 真机仍有待验证；最终发布包上的 Preview、暂停时不触发和读取中关闭也需分别记录。本机候选的实测不等于最终 DMG 的逐字节验收。具体状态以[该版本发布说明](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15)为准。目前通过 GitHub 分发，未上架 App Store。
+## 本地与云端
 
-## 源码与反馈
+推荐直接用 **本地 · Apple**：不需要密钥，句译不会将翻译正文发送到云端，也不会在本地失败后自动改用云端。
 
-默认分支中的早期脚本不是上述原生测试版的安装入口。新版源码在[发布标签](https://github.com/Eim-aa/juyi/tree/v0.4.0-preview.15)，后续改动见[现有开发 PR](https://github.com/Eim-aa/juyi/pull/1)。源码开发或可选云端安装请先阅读[对应版本的说明](https://github.com/Eim-aa/juyi/blob/v0.4.0-preview.15/AGENTS.md)，不要混用旧分支安装步骤。
+**云端目前仅支持火山翻译**，需要另装后台组件并自行配置火山 AK/SK。开启后，选中文字会发送至火山；密钥保存在 macOS 钥匙串。不支持任意厂商的密钥或自定义 API。详见[配置说明](docs/MENU_BAR_APP.md#翻译方式)。
 
-可选源码安装使用 `v0.4.0-preview.15`（标签提交 `892e4d8`；App 构建源码 `4bf42ad`，仅文档和测试同步修正不同）的固定 checkout，安装、验证和诊断都使用同一目录（说明默认为 `~/.local/share/juyi-build15`），不要误验旧安装。不要改用默认分支的早期 bootstrap，也不要覆盖已有工作目录。
+## 帮句译变得更好
 
-[提交问题](https://github.com/Eim-aa/juyi/issues)时请附版本、macOS、阅读器和不含隐私的复现步骤；不要附密钥或完整私人文档。
+遇到问题或有想法？[提交 Issue](https://github.com/Eim-aa/juyi/issues)。请附上 macOS 版本、句译版本、使用的 App 和复现步骤；不要上传密钥、私人选文或剪贴板内容。欢迎提交 PR。
 
-MIT，见 [LICENSE](LICENSE)。
+[使用与排查](docs/MENU_BAR_APP.md) · [源码安装 / Agent 指引](AGENTS.md) · [构建与发布](docs/RELEASE_BASELINE.md) · [MIT 许可](LICENSE)

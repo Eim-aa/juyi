@@ -4,16 +4,29 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 URL = "http://127.0.0.1:54321"
+TOKEN_PATH = Path.home() / ".config" / "argos-translator" / "auth-token"
+
+
+def _auth_headers() -> dict[str, str]:
+    try:
+        token = TOKEN_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return {}
+    return {"Authorization": f"Bearer {token}"} if token else {}
 
 
 def _request(method: str, path: str, body=None, timeout: float = 30,
-             content_type: str = "application/json"):
+             content_type: str = "application/json", authenticated: bool = True):
     data = json.dumps(body).encode("utf-8") if body is not None else None
+    headers = _auth_headers() if authenticated else {}
+    if data:
+        headers["Content-Type"] = content_type
     req = urllib.request.Request(
         URL + path, data=data, method=method,
-        headers={"Content-Type": content_type} if data else {},
+        headers=headers,
     )
     t0 = time.perf_counter()
     try:
@@ -58,13 +71,16 @@ def main() -> int:
     if code != 200:
         print("HEALTH FAILED")
         return 1
+    health = json.loads(body)
 
     print("\n=== /translate cases ===")
     failed = []
 
     cases = [
         # name, body, expectations
-        ("short", {"text": "The quick brown fox jumps over the lazy dog."}, dict(cached=False)),
+        # The service may already be warm from earlier diagnostics; only the
+        # repeat is required to prove the cache contract.
+        ("short", {"text": "The quick brown fox jumps over the lazy dog."}, {}),
         ("short_cached", {"text": "The quick brown fox jumps over the lazy dog."}, dict(cached=True)),
         ("empty", {"text": ""}, dict(_status=400, error="empty_input")),
         ("cjk", {"text": "你好世界，这是一段中文。"}, dict(error="src_lang_mismatch")),
@@ -105,6 +121,23 @@ def main() -> int:
     except Exception as e:
         print(f"[FAIL] [---]   ----ms  {name:18s}  EXC: {e}")
         failed.append(name)
+
+    # Deployed installs require the owner-only local token. Verify that an
+    # unauthenticated local client cannot spend cloud quota or submit text.
+    if health.get("auth_required"):
+        name = "local_auth_guard"
+        try:
+            code, raw, rtt = _request(
+                "POST", "/translate", {"text": "hi"}, authenticated=False
+            )
+            ok = code == 401
+            mark = "PASS" if ok else "FAIL"
+            print(f"[{mark}] [{code}] {rtt:6.1f}ms  {name:18s}  {short(raw.decode('utf-8', 'replace'))}")
+            if not ok:
+                failed.append(name)
+        except Exception as e:
+            print(f"[FAIL] [---]   ----ms  {name:18s}  EXC: {e}")
+            failed.append(name)
 
     # Non-JSON content types must be rejected (blocks no-preflight cross-site
     # posts from web pages).

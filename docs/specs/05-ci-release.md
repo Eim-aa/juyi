@@ -1,6 +1,6 @@
 # Spec 5：CI 与发布流水线
 
-状态：待评审 · 工作量：~2 人日 · 依赖：无（Spec 2 依赖本 spec 的产物）
+状态：**正式 Xcode/CI 构建基线已实现；Release 发布未完成**。当前 workflow 覆盖 Python 测试/静态检查、Xcode Debug/Release Universal 2 构建与产物契约、Swift 策略测试、Lua/Bash 语法；Developer ID、Apple 公证和单一安装包仍是发布阻断。当前实现细节以 [`../RELEASE_BASELINE.md`](../RELEASE_BASELINE.md) 为准，以下内容保留为最初设计背景。
 
 ## 问题陈述
 

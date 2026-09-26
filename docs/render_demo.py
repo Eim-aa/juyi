@@ -26,6 +26,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 SERVICE_URL = "http://127.0.0.1:54321/translate"
 OUTPUT = Path(__file__).resolve().parent / "demo.gif"
+TOKEN_PATH = Path.home() / ".config" / "argos-translator" / "auth-token"
 
 W, H = 800, 320
 DESKTOP_RGB = (40, 56, 48)
@@ -37,10 +38,17 @@ FONT_ZH = "/System/Library/Fonts/Hiragino Sans GB.ttc"
 
 
 def translate(text: str) -> tuple[str, int]:
+    headers = {"Content-Type": "application/json"}
+    try:
+        token = TOKEN_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        token = ""
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(
         SERVICE_URL,
         data=json.dumps({"text": text}).encode(),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=10) as r:

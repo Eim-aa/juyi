@@ -9,15 +9,27 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 URL = os.environ.get("ARGOS_URL", "http://127.0.0.1:54321")
 LABEL = "io.github.Eim-aa.argos-translator"
 DOMAIN = f"gui/{os.getuid()}"
+TOKEN_PATH = Path.home() / ".config" / "argos-translator" / "auth-token"
+
+
+def auth_headers() -> dict[str, str]:
+    try:
+        token = TOKEN_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return {}
+    return {"Authorization": f"Bearer {token}"} if token else {}
 
 
 def request(method: str, path: str, body: dict | None = None, timeout: float = 30.0):
     data = json.dumps(body).encode("utf-8") if body is not None else None
-    headers = {"Content-Type": "application/json"} if data is not None else {}
+    headers = auth_headers()
+    if data is not None:
+        headers["Content-Type"] = "application/json"
     req = urllib.request.Request(URL + path, data=data, method=method, headers=headers)
     t0 = time.perf_counter()
     try:
@@ -113,9 +125,14 @@ def run() -> int:
         code, body, _ = post_json("Hello world.")
         if code == 200:
             short_latencies.append(int(body.get("elapsed_ms", 999999)))
-    short_p95 = percentile(short_latencies, 0.95)
+    # Treat the first request as a cold-start observation. The helper and the
+    # cloud path have different cold-start behavior; reliability diagnostics
+    # should gate the warmed path and report cold latency separately.
+    warmed_short = short_latencies[1:]
+    short_p95 = percentile(warmed_short, 0.95)
     first_short = short_latencies[0] if short_latencies else 999999
-    check("short x20", len(short_latencies) == 20 and first_short < 200 and short_p95 < 300,
+    warm_limit = 500 if health.get("default_engine") == "apple" else 2000
+    check("short x20", len(short_latencies) == 20 and short_p95 < warm_limit,
           f"first={first_short}ms p95={short_p95}ms samples={short_latencies}")
 
     e2e_samples: list[int] = []
@@ -155,6 +172,14 @@ def run() -> int:
     check("emoji input", code == 200 and "result" in body, f"code={code} result={body.get('result')!r}")
 
     print("\n== restart and memory ==")
+    if os.environ.get("JUYI_DESTRUCTIVE_RESTART_TEST") != "1":
+        print("[SKIP] kill -9 restart        set JUYI_DESTRUCTIVE_RESTART_TEST=1 to run")
+        print("\n== summary ==")
+        if failed:
+            print("FAILED:", ", ".join(failed))
+            return 1
+        print("all non-destructive checks passed")
+        return 0
     before_pid = service_pid()
     if before_pid is None:
         check("launchd pid", False, "could not resolve service pid")

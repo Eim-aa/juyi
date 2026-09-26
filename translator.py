@@ -8,8 +8,8 @@ per request:
   volc  - Volcengine cloud API, AK/SK V4 signed (see volc_engine.py).
 
 The legacy offline Argos engine (Argos Translate / CTranslate2 / Stanza) was
-removed after the apple engine beat it on quality at equal latency with zero
-model footprint; requests still asking for "argos" are served by apple.
+removed after the project switched to the system-managed Apple engine; requests
+still asking for "argos" are served by apple.
 
 Each engine sits behind a functools.lru_cache keyed on the preprocessed text,
 so exact repeats are free.
@@ -68,9 +68,9 @@ def resolve_engine(
     """Pick the engine for one request; returns (engine, warnings).
 
     Clients may override the process default per call. Legacy "argos" maps
-    to apple, unknown names fall back to apple, and each engine falls back
-    to the other when it cannot run (volc without creds -> apple; apple
-    without a helper -> volc, but only if volc could run).
+    to apple and unknown names map to apple. Cloud requests may safely fall
+    back to local Apple translation, but an explicit offline request never
+    falls back to cloud: uploading text always requires prior user consent.
     """
     warnings: list[str] = []
     eng = requested or default
@@ -82,9 +82,6 @@ def resolve_engine(
     if eng == "volc" and not volc_ok:
         eng = "apple"
         warnings.append("volc_unavailable_fallback_apple")
-    if eng == "apple" and not apple_ok and volc_ok:
-        eng = "volc"
-        warnings.append("apple_unavailable_fallback_volc")
     return eng, warnings
 
 
@@ -125,6 +122,44 @@ _ENGINE_FNS = {
 }
 
 
+def classify_engine_error(engine: str, error: Exception) -> str:
+    """Return a stable diagnostic code without exposing upstream text."""
+    message = str(error).lower()
+    if engine == "volc":
+        if any(
+            marker in message
+            for marker in (
+                "credential",
+                "signature",
+                "access denied",
+                "unauthorized",
+                "forbidden",
+                "permission",
+            )
+        ):
+            return "volc_credentials_or_permission"
+        if "timeout" in message or "timed out" in message:
+            return "volc_timeout"
+        if any(
+            marker in message
+            for marker in ("network", "connection", "url error", "name resolution")
+        ):
+            return "volc_network"
+        if "volc http" in message:
+            return "volc_http_error"
+        if "volc api" in message:
+            return "volc_api_error"
+        return "volc_service_error"
+
+    if "timeout" in message or "timed out" in message:
+        return "apple_timeout_or_language_pack"
+    if any(marker in message for marker in ("unavailable", "not found", "no such file")):
+        return "apple_helper_unavailable"
+    if any(marker in message for marker in ("died", "exited", "write failed")):
+        return "apple_helper_error"
+    return "apple_translation_error"
+
+
 class Translator:
     _instance: Optional["Translator"] = None
 
@@ -162,7 +197,7 @@ class Translator:
             r.result = await loop.run_in_executor(None, fn, text)
         except Exception as e:  # noqa: BLE001
             r.error = f"{eng}_error"
-            r.warnings.append(str(e)[:200])
+            r.warnings.append(classify_engine_error(eng, e))
             r.result = text
         info_after = fn.cache_info()
         r.cached = (
@@ -173,6 +208,17 @@ class Translator:
     async def translate(self, text: str, engine: Optional[str] = None) -> Result:
         t0 = time.perf_counter()
         r = Result()
+
+        requested_engine = engine or config.ENGINE
+        if requested_engine == "volc" and config.cloud_removal_blocks_volc():
+            # The native app writes this durable marker before changing any
+            # credential state.  Check it for every request so an already
+            # running service cannot upload text in a native-app crash window.
+            r.engine = "volc"
+            r.error = "cloud_removal_pending"
+            r.warnings.append("cloud_removal_pending")
+            r.elapsed_ms = int((time.perf_counter() - t0) * 1000)
+            return r
 
         volc_ok = bool(config.VOLC_ACCESS_KEY and config.VOLC_SECRET_KEY)
         apple_ok = apple_engine.available()
@@ -206,7 +252,7 @@ class Translator:
         # Neither engine can run (no helper on this OS and no cloud keys).
         if eng == "apple" and not apple_ok:
             r.error = "no_engine_available"
-            r.warnings.append("needs macOS 15+ helper or volc.env credentials")
+            r.warnings.append("engine_setup_required")
             r.result = text
             r.elapsed_ms = int((time.perf_counter() - t0) * 1000)
             return r

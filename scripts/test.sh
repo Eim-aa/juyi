@@ -2,7 +2,7 @@
 # Full automated diagnostic matrix for argos-translator.
 set -euo pipefail
 
-ROOT="$HOME/.local/share/argos-translator"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 PY="$ROOT/venv/bin/python"
 TEST="$ROOT/scripts/test_matrix.py"
 
