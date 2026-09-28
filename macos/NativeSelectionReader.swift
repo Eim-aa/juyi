@@ -247,6 +247,8 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
     // to answer the first focused-element query. Keep every AX message bounded,
     // but allow enough time for a real foreground control to respond.
     private static let messagingTimeout: Float = 0.50
+    private static let pointerReadAttempts = 3
+    private static let pointerReadRetryDelay: TimeInterval = 0.03
     private static let wpsBundleIdentifier = "com.kingsoft.wpsoffice.mac"
     private static let clipboardCopyTimeout: TimeInterval = 1.20
     private static let clipboardStableInterval: TimeInterval = 0.08
@@ -616,6 +618,35 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
         guard let point = target.selectionPoint else {
             return .noFocusedElement
         }
+        // Chrome can replace its AX nodes between the read and the
+        // revalidating hit-test, which reports a spurious cancellation. Each
+        // retry repeats hit-test, read and revalidation, so text is still only
+        // returned when two consecutive hit-tests agree on the same element.
+        for attempt in 1...Self.pointerReadAttempts {
+            let result = copySelectedTextAtSelectionPointOnce(
+                at: point,
+                from: target,
+                application: application
+            )
+            guard result == .cancelled,
+                  !cancellationCheck(),
+                  frontmostApplication?.hasSameProcess(as: target) == true else {
+                return result
+            }
+            if attempt < Self.pointerReadAttempts {
+                Thread.sleep(forTimeInterval: Self.pointerReadRetryDelay)
+            }
+        }
+        // Still the current request in the same App: say so rather than hide
+        // the panel as if the user had cancelled.
+        return .temporarilyUnavailable
+    }
+
+    private func copySelectedTextAtSelectionPointOnce(
+        at point: NativeSelectionPoint,
+        from target: NativeSelectionTarget,
+        application: AXUIElement
+    ) -> NativeSelectionAXRead {
         let elements: [AXUIElement]
         switch pointerChain(at: point, in: application, against: target) {
         case let .elements(value):
