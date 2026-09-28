@@ -1,20 +1,19 @@
 import Foundation
 
-/// Pure recognition policy for the native double-Option experiment.
+/// Pure recognition policy for native double-Option.
 ///
-/// Normal timing matches the existing Hammerspoon gesture: each press must be
-/// released within 350 ms and the two release timestamps must be no more than
-/// 350 ms apart. The native experiment is intentionally stricter about an
+/// Each press must be released within one second and the two release timestamps
+/// must be no more than one second apart. Recognition is strict about an
 /// intervening key or modifier so it cannot create surprise translations.
 struct DoubleOptionStateMachine {
     struct Configuration: Equatable {
-        var maximumHoldDuration: TimeInterval = 0.35
-        var maximumReleaseInterval: TimeInterval = 0.35
+        var maximumHoldDuration: TimeInterval = 1.0
+        var maximumReleaseInterval: TimeInterval = 1.0
         var deliveryDelay: TimeInterval = 0.01
 
         init(
-            maximumHoldDuration: TimeInterval = 0.35,
-            maximumReleaseInterval: TimeInterval = 0.35,
+            maximumHoldDuration: TimeInterval = 1.0,
+            maximumReleaseInterval: TimeInterval = 1.0,
             deliveryDelay: TimeInterval = 0.01
         ) {
             precondition(maximumHoldDuration >= 0)
