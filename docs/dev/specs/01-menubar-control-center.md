@@ -1,6 +1,6 @@
 # Spec 1：菜单栏控制中心与首次运行向导
 
-状态：**历史方案，已由原生 App 路线取代**。当前实现见 [`docs/MENU_BAR_APP.md`](../MENU_BAR_APP.md)；以下保留早期 Hammerspoon 对话框方案作为决策记录。
+状态：**历史方案，已由原生 App 路线取代**。当前实现见 [`docs/MENU_BAR_APP.md`](../../MENU_BAR_APP.md)；以下保留早期 Hammerspoon 对话框方案作为决策记录。
 
 ## 问题陈述
 

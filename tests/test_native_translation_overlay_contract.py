@@ -22,7 +22,7 @@ LEGACY = (ROOT / "scripts" / "build_macos_app.sh").read_text(encoding="utf-8")
 CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 DEBUG_CONFIG = (ROOT / "Config" / "Debug.xcconfig").read_text(encoding="utf-8")
 RELEASE_CONFIG = (ROOT / "Config" / "Release.xcconfig").read_text(encoding="utf-8")
-DOC = (ROOT / "docs" / "NATIVE_TRANSLATION_OVERLAY.md").read_text(
+DOC = (ROOT / "docs" / "dev" / "NATIVE_TRANSLATION_OVERLAY.md").read_text(
     encoding="utf-8"
 )
 

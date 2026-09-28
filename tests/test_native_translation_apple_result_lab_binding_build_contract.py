@@ -8,7 +8,7 @@ PROJECT = (ROOT / "Juyi.xcodeproj/project.pbxproj").read_text(encoding="utf-8")
 LEGACY = (ROOT / "scripts/build_macos_app.sh").read_text(encoding="utf-8")
 CI = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 DOC = (
-    ROOT / "docs/NATIVE_TRANSLATION_APPLE_RESULT_LAB_BINDING.md"
+    ROOT / "docs/dev/NATIVE_TRANSLATION_APPLE_RESULT_LAB_BINDING.md"
 ).read_text(encoding="utf-8")
 
 BINDING_FLAG = "JUYI_NATIVE_APPLE_RESULT_LAB_BINDING"

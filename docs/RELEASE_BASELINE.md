@@ -1,6 +1,6 @@
 # macOS 构建基线与正式发行边界
 
-当前版本定位为**公开测试版，不是稳定版**。build 16 新增原生译文浮窗的本机朗读，用户已确认本机试用可用；保留 build 15 的取词反馈改进。最终包的签名、公证、CI、公开下载与真人验收范围以 [build 16 发布记录](RELEASE_0.4.0_BUILD16.md)及对应 GitHub Release 为准。间歇性“不支持”的根因未确证，干净账户首次安装、macOS 15 / Intel 真机未完成。build 12 起已移除全新本地安装的 Hammerspoon 前提。Apple 主链由原生 App 负责双 Option、AX 取词、端上翻译和浮窗；已有早期开发组件继续通过既有 owner 协议交接。Python 后端只服务可选云端和兼容路径。
+当前版本定位为**公开测试版，不是稳定版**。build 16 新增原生译文浮窗的本机朗读，用户已确认本机试用可用；保留 build 15 的取词反馈改进。最终包的签名、公证、CI、公开下载与真人验收范围以 [build 16 发布记录](releases/RELEASE_0.4.0_BUILD16.md)及对应 GitHub Release 为准。间歇性“不支持”的根因未确证，干净账户首次安装、macOS 15 / Intel 真机未完成。build 12 起已移除全新本地安装的 Hammerspoon 前提。Apple 主链由原生 App 负责双 Option、AX 取词、端上翻译和浮窗；已有早期开发组件继续通过既有 owner 协议交接。Python 后端只服务可选云端和兼容路径。
 
 ## 工程与兼容性
 
@@ -74,4 +74,4 @@ macOS CI 同时构建 Debug 与 Release Xcode 配置，并验证：
 
 公开测试包和稳定版应明确区分。每个下载包分别披露签名、公证及真实安装验证状态；不把源码构建或旧版本测试作为新版本的验收证据。
 
-本轮用户路径改进及待实测项见 [PRODUCT_REVIEW_2026-09-22.md](PRODUCT_REVIEW_2026-09-22.md)。CI 编译和策略测试可提供实现证据，不能替代真实 TCC 授权、语言包下载、App/PDF 取词或 Gatekeeper 安装验收。
+本轮用户路径改进及待实测项见 [PRODUCT_REVIEW_2026-09-22.md](dev/PRODUCT_REVIEW_2026-09-22.md)。CI 编译和策略测试可提供实现证据，不能替代真实 TCC 授权、语言包下载、App/PDF 取词或 Gatekeeper 安装验收。

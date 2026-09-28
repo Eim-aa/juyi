@@ -9,8 +9,8 @@ DOMAIN = (ROOT / "macos/NativeTranslationDomain.swift").read_text()
 PROJECT = (ROOT / "Juyi.xcodeproj/project.pbxproj").read_text()
 LEGACY = (ROOT / "scripts/build_macos_app.sh").read_text()
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
-DOC = (ROOT / "docs/NATIVE_APPLE_TRANSLATION_ADAPTER.md").read_text() if (
-    ROOT / "docs/NATIVE_APPLE_TRANSLATION_ADAPTER.md"
+DOC = (ROOT / "docs/dev/NATIVE_APPLE_TRANSLATION_ADAPTER.md").read_text() if (
+    ROOT / "docs/dev/NATIVE_APPLE_TRANSLATION_ADAPTER.md"
 ).exists() else ""
 
 GATE = "#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER"

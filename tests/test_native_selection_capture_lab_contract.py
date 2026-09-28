@@ -17,7 +17,7 @@ APP = (ROOT / "macos/JuyiMenuBar.swift").read_text(encoding="utf-8")
 PROJECT = (ROOT / "Juyi.xcodeproj/project.pbxproj").read_text(encoding="utf-8")
 LEGACY = (ROOT / "scripts/build_macos_app.sh").read_text(encoding="utf-8")
 CI = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-DOC = (ROOT / "docs/NATIVE_SELECTION_CAPTURE_LAB.md").read_text(encoding="utf-8")
+DOC = (ROOT / "docs/dev/NATIVE_SELECTION_CAPTURE_LAB.md").read_text(encoding="utf-8")
 SWIFT_TESTS = (ROOT / "tests/NativeSelectionCaptureLabModelTests.swift").read_text(
     encoding="utf-8"
 )

@@ -32,7 +32,7 @@ legacy status must not be treated as proof of absence.
 Record the exact build and environment. An already-configured Mac is not a clean
 installation test; an engine self-test does not establish end-to-end acceptance.
 Never bypass Gatekeeper. Outstanding device checks are recorded in
-[the build 16 release scope](docs/RELEASE_0.4.0_BUILD16.md).
+[the build 16 release scope](docs/releases/RELEASE_0.4.0_BUILD16.md).
 
 The remaining full source-installation steps are for optional cloud/legacy
 components, not prerequisites for the standalone native app. Do not run them

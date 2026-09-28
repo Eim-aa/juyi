@@ -52,6 +52,6 @@
 
 ## 正式发行门槛与暂缓范围
 
-Developer ID、timestamp、公证、staple、Gatekeeper 验证、可信下载产物，以及干净账户的完整安装体验仍是正式发布门槛，详见 [RELEASE_BASELINE.md](RELEASE_BASELINE.md)。源码构建成功或现有用户机器能运行，不足以替代这些证据。
+Developer ID、timestamp、公证、staple、Gatekeeper 验证、可信下载产物，以及干净账户的完整安装体验仍是正式发布门槛，详见 [RELEASE_BASELINE.md](../RELEASE_BASELINE.md)。源码构建成功或现有用户机器能运行，不足以替代这些证据。
 
 暂缓新供应商、多语言、OCR、翻译历史、额外 Labs/flags、owner 大规模重构和纯视觉精修。优先把现有 Apple-only 用户路径及失败恢复做到一致、可理解、可验证。

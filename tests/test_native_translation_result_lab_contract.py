@@ -32,7 +32,7 @@ HOST = (ROOT / "macos/NativeTranslationResultLabHost.swift").read_text(
 PROJECT = (ROOT / "Juyi.xcodeproj/project.pbxproj").read_text(encoding="utf-8")
 LEGACY = (ROOT / "scripts/build_macos_app.sh").read_text(encoding="utf-8")
 CI = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-DOC = (ROOT / "docs/NATIVE_TRANSLATION_RESULT_LAB.md").read_text(encoding="utf-8")
+DOC = (ROOT / "docs/dev/NATIVE_TRANSLATION_RESULT_LAB.md").read_text(encoding="utf-8")
 PARITY = (ROOT / "tests/check_native_translation_parity.py").read_text(
     encoding="utf-8"
 )

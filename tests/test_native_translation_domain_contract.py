@@ -19,7 +19,7 @@ DEBUG_CONFIG = (ROOT / "Config" / "Debug.xcconfig").read_text(encoding="utf-8")
 RELEASE_CONFIG = (ROOT / "Config" / "Release.xcconfig").read_text(encoding="utf-8")
 SHARED_CONFIG = (ROOT / "Config" / "Shared.xcconfig").read_text(encoding="utf-8")
 APP = (ROOT / "macos" / "JuyiMenuBar.swift").read_text(encoding="utf-8")
-DOC = (ROOT / "docs" / "NATIVE_TRANSLATION_DOMAIN.md").read_text(encoding="utf-8")
+DOC = (ROOT / "docs" / "dev" / "NATIVE_TRANSLATION_DOMAIN.md").read_text(encoding="utf-8")
 
 
 def test_every_domain_file_has_one_exact_outer_debug_gate():
