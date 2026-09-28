@@ -2325,7 +2325,7 @@ final class AppModel: ObservableObject {
 
     func openAccessibility() { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!) }
     func openInstallationGuide() {
-        NSWorkspace.shared.open(URL(string: "https://github.com/Eim-aa/juyi#%E5%AE%89%E8%A3%85%E6%89%8B%E5%8A%A8")!)
+        NSWorkspace.shared.open(URL(string: "https://github.com/Eim-aa/juyi/blob/main/docs/MENU_BAR_APP.md#%E5%AE%89%E8%A3%85")!)
     }
     func openHammerspoon() {
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "org.hammerspoon.Hammerspoon") { NSWorkspace.shared.openApplication(at: url, configuration: .init()) }
@@ -2738,7 +2738,7 @@ private struct OnboardingView: View {
     }
     private var shortcutStatus: (symbol: String, color: Color, title: String, detail: String) {
         if model.userPaused {
-            return ("pause.circle.fill", Color(nsColor: .systemOrange), "句译目前已暂停", "恢复句译后即可继续设置或练习双击 Option。")
+            return ("pause.circle.fill", Color(nsColor: .systemOrange), "句译目前已暂停", "恢复翻译后即可继续设置或练习双击 Option。")
         }
         if nativeTranslation.isEnabled {
             return ("checkmark.circle.fill", Color(nsColor: .systemGreen), "双 Option 已启用", "现在可以到文本编辑中选中英文，试一次翻译。")
@@ -2773,14 +2773,14 @@ private struct OnboardingView: View {
         case .needsUpdate: return ("arrow.down.circle.fill", Color(nsColor: .systemOrange), "快捷键组件需要更新", "点击继续，句译会自动更新兼容配置。")
         case .notAuthorized: return ("hand.raised.fill", Color(nsColor: .systemOrange), "继续设置双 Option", "句译会先检查兼容组件，再请求自己的辅助功能权限。")
         case .notLoaded: return ("arrow.clockwise.circle.fill", Color(nsColor: .systemOrange), "快捷键配置尚未载入", "请打开 Hammerspoon，并选择 Reload Config。")
-        case .paused: return ("pause.circle.fill", Color(nsColor: .systemOrange), "句译目前已暂停", "恢复句译后即可练习双击 Option。")
+        case .paused: return ("pause.circle.fill", Color(nsColor: .systemOrange), "句译目前已暂停", "恢复翻译后即可练习双击 Option。")
         case .ready: return ("hand.tap.fill", Color(nsColor: .systemOrange), "可以启用双 Option", "点击启用，让句译准备原生离线翻译。")
         }
     }
 
     @ViewBuilder private var shortcutFooter: some View {
         if model.userPaused {
-            footer(primary: "恢复句译", primaryEnabled: true) { model.togglePause() }
+            footer(primary: "恢复翻译", primaryEnabled: true) { model.togglePause() }
         } else if nativeTranslation.isEnabled {
             footer(primary: "继续", primaryEnabled: true) { model.advanceOnboarding() }
         } else if model.shortcutRepairBusy {
@@ -2811,7 +2811,7 @@ private struct OnboardingView: View {
                     case .notInstalled: footer(primary: "前往下载 Hammerspoon", primaryEnabled: true) { model.openHammerspoon() }
                     case .notRunning: footer(primary: "准备并启用双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
                     case .notAuthorized: footer(primary: "继续启用双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
-                    case .paused: footer(primary: "恢复句译", primaryEnabled: true) { model.togglePause() }
+                    case .paused: footer(primary: "恢复翻译", primaryEnabled: true) { model.togglePause() }
                     case .heartbeatExpired, .needsUpdate, .notLoaded:
                         footer(primary: "更新并启用双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
                     case .ready:
@@ -2993,10 +2993,10 @@ private struct DiagnosticsView: View {
                 }
                 DisclosureGroup("支持范围与隐私") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("当前仅支持英语到简体中文。文本编辑和 WPS 文本 PDF 已在本机验证；其他 App 的取词能力取决于其辅助功能接口。扫描图片型 PDF、安全输入框和受保护内容暂不支持。")
+                        Text("当前仅支持英语到简体中文。文本编辑、预览、WPS 文本 PDF 和 Chrome 网页已在本机验证；其他 App 的取词能力取决于其辅助功能接口。扫描图片型 PDF、安全输入框和受保护内容暂不支持。")
                         Text("WPS PDF 兼容取词会临时执行系统复制，并尽力恢复原剪贴板。剪贴板管理器可能保留原文或干扰取词；敏感内容请避免使用这条兼容路径。")
                         Text("本地翻译由句译独立完成，不需要额外安装快捷键工具。检测到已有的早期开发组件时，才会处理兼容交接。Apple 离线失败时不会自动上传云端。")
-                        Text("关闭窗口后继续运行；暂停或退出会停止翻译。退出后重新打开，需要点击“恢复句译”。")
+                        Text("关闭窗口后继续运行；暂停或退出会停止翻译。退出后重新打开，需要点击“恢复翻译”。")
                         if model.nativeNeedsLegacyHandoff || model.selectedEngine != "apple" {
                             Button("检查已有 Hammerspoon 组件") { model.openHammerspoon() }
                         }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render docs/demo.gif from scratch.
+"""Render docs/archive/demo.gif from scratch.
 
 Draws a 3-frame illustration of the double-tap-Option workflow:
   1. TextEdit-style window with an English sentence (idle)
@@ -12,7 +12,7 @@ demo always shows real numbers from the current model. Everything else
 
 Run via the project venv so Pillow and the running service are both available:
 
-    ~/.local/share/argos-translator/venv/bin/python docs/render_demo.py
+    ~/.local/share/argos-translator/venv/bin/python docs/archive/render_demo.py
 """
 from __future__ import annotations
 

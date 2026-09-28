@@ -18,3 +18,8 @@
 本版不改变 WPS PDF 取词策略：其复制确认比预览直接 AX 读取慢，不能宣称总译文提速或间歇性“不支持”的根因已解决。仍不支持扫描 PDF、图片、安全输入框等不提供可读选区的内容。
 
 下载安装包、拖入 Applications、打开句译；按提示完成辅助功能授权和必要的 Apple 语言资源准备。仅本地翻译不需要 Hammerspoon、Python、Homebrew 或密钥。下载无需 GitHub 登录；保留 [build 15](https://github.com/Eim-aa/juyi/releases/tag/v0.4.0-preview.15) 供回退。
+
+## 发布后补充（2026-09-28）
+
+- Chrome 网页：在 macOS 26.5.1 / Apple Silicon 本机，用 build 16 源码加诊断日志的本地构建实测。多数情况可以取词翻译；偶尔第一次双击没有反应，再按一次才出现。日志确认原因是 Chrome 在取词复核期间替换了辅助功能节点，请求被当作取消，浮窗被静默隐藏。
+- 修复见 [PR #6](https://github.com/Eim-aa/juyi/pull/6)：复核不一致时最多重读 3 次。修复后的本地构建在 Chrome 中使用约一天，4 次复核不一致都在第 2 次尝试时成功。该修复不在 build 16 中，将随下一版发布。

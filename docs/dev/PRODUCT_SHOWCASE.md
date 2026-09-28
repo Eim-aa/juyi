@@ -2,14 +2,14 @@
 
 ## 当前交付
 
-- `media/selection-demo.mp4`：8 秒、1280 × 896、无音轨的真实 PDF 标题翻译实录。
-- `media/selection-demo.gif`：同片段的 12 fps 首页预览；`media/selection-demo-poster.jpg` 为实录帧。
+- `docs/media/selection-demo.mp4`：8 秒、1280 × 896、无音轨的真实 PDF 标题翻译实录。
+- `docs/media/selection-demo.gif`：同片段的 12 fps 首页预览；`docs/media/selection-demo-poster.jpg` 为实录帧。
 - 实录来源：用户 2026-09-25 18:24:51 的整屏录像，取第 1–9 秒。原始视频保留不动；裁切区域为 1600 × 1120，左上角 (900, 370)，移除桌面、Dock、菜单栏和语音悬浮工具条。没有加速、替换译文或拼接伪造操作。视频来自 build 10，不冒充 build 11 修复后的端到端验收；单次耗时不是速度承诺。
 
-- `media/overview.svg`：1200 × 700 的可编辑操作示意图；明确标注“非实机录屏”，未捏造译文、性能数字或兼容性结果。
-- `media/overview.png`：由 SVG 渲染的 2400 × 1400 展示图，供 README 使用以保持文字排版一致；已检查完整画布与三张步骤卡，无裁切。
-- `media/home-ready.jpg`：已安装本地候选的真实首页截图。
-- `media/settings-local-cloud.jpg`：同一候选的真实翻译方式展开截图。
+- `docs/media/overview.svg`：1200 × 700 的可编辑操作示意图；明确标注“非实机录屏”，未捏造译文、性能数字或兼容性结果。
+- `docs/media/overview.png`：由 SVG 渲染的 2400 × 1400 展示图，供 README 使用以保持文字排版一致；已检查完整画布与三张步骤卡，无裁切。
+- `docs/media/home-ready.jpg`：已安装本地候选的真实首页截图。
+- `docs/media/settings-local-cloud.jpg`：同一候选的真实翻译方式展开截图。
 - 中英文 README：价值介绍、获取入口、安装前提、首次翻译步骤、真实界面和支持范围。
 
 截图采集于 2026-09-25，本地版本 0.4.0 build 10。截图来自安装到 Applications 的应用，未修改界面像素，不含用户文稿或密钥。该本地候选尚未公开发布。用户已在本次会话确认更新后选区翻译正常；该口头验收不是录屏证据。应用仍为 ad-hoc 本地签名，不宣称已完成 Developer ID、公证或 App Store 上架。

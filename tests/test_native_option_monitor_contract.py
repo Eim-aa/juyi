@@ -39,7 +39,7 @@ DEBUG_CONFIG = (ROOT / "Config" / "Debug.xcconfig").read_text(encoding="utf-8")
 RELEASE_CONFIG = (ROOT / "Config" / "Release.xcconfig").read_text(
     encoding="utf-8"
 )
-DOC = (ROOT / "docs" / "NATIVE_OPTION_MONITOR.md").read_text(encoding="utf-8")
+DOC = (ROOT / "docs" / "dev" / "NATIVE_OPTION_MONITOR.md").read_text(encoding="utf-8")
 
 
 def test_native_production_chain_is_explicitly_user_enabled():
