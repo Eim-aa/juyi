@@ -2325,7 +2325,7 @@ final class AppModel: ObservableObject {
 
     func openAccessibility() { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!) }
     func openInstallationGuide() {
-        NSWorkspace.shared.open(URL(string: "https://github.com/Eim-aa/juyi#%E5%AE%89%E8%A3%85%E6%89%8B%E5%8A%A8")!)
+        NSWorkspace.shared.open(URL(string: "https://github.com/Eim-aa/juyi/blob/main/docs/MENU_BAR_APP.md#%E5%AE%89%E8%A3%85")!)
     }
     func openHammerspoon() {
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "org.hammerspoon.Hammerspoon") { NSWorkspace.shared.openApplication(at: url, configuration: .init()) }
@@ -2993,7 +2993,7 @@ private struct DiagnosticsView: View {
                 }
                 DisclosureGroup("支持范围与隐私") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("当前仅支持英语到简体中文。文本编辑和 WPS 文本 PDF 已在本机验证；其他 App 的取词能力取决于其辅助功能接口。扫描图片型 PDF、安全输入框和受保护内容暂不支持。")
+                        Text("当前仅支持英语到简体中文。文本编辑、预览、WPS 文本 PDF 和 Chrome 网页已在本机验证；其他 App 的取词能力取决于其辅助功能接口。扫描图片型 PDF、安全输入框和受保护内容暂不支持。")
                         Text("WPS PDF 兼容取词会临时执行系统复制，并尽力恢复原剪贴板。剪贴板管理器可能保留原文或干扰取词；敏感内容请避免使用这条兼容路径。")
                         Text("本地翻译由句译独立完成，不需要额外安装快捷键工具。检测到已有的早期开发组件时，才会处理兼容交接。Apple 离线失败时不会自动上传云端。")
                         Text("关闭窗口后继续运行；暂停或退出会停止翻译。退出后重新打开，需要点击“恢复翻译”。")

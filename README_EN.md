@@ -42,7 +42,7 @@ Tap **Option twice in a row** (either Option key works), not both Option keys at
 - **Tested apps.** TextEdit, Preview (text-based PDFs), WPS PDFs and webpages in Chrome. Other apps work only if they expose their selection. Build 16 occasionally needs a second double-tap in Chrome; this is fixed in the source and will ship in the next build.
 - **Unsupported content.** Scanned PDFs, text in images, secure fields and protected content. No OCR.
 - **WPS PDFs usually take longer than Preview.** The compatibility path performs extra copy checks, temporarily uses the clipboard and attempts to restore it. Clipboard managers may retain the source text; avoid this path for sensitive content.
-- **Uninstall.** In **Diagnostics & Help (诊断与帮助)**, turn off **Open at login (登录时自动打开句译)**, quit Juyi, move it from Applications to the Trash, then remove Juyi under System Settings → Privacy & Security → Accessibility. If you installed the cloud backend, run `scripts/uninstall.sh`.
+- **Uninstall.** In **Diagnostics & Help (诊断与帮助)**, turn off **Open at login (登录时自动打开句译)**, quit Juyi, move it from Applications to the Trash, then remove Juyi under System Settings → Privacy & Security → Accessibility. If you installed the cloud backend, do not delete the app by hand; run the uninstaller from your source checkout (for example `~/.local/share/juyi-build16/scripts/uninstall.sh`). It removes the login item and backend, moves Juyi to the Trash, and asks before deleting the Volcengine credentials from Keychain.
 
 ## Local and cloud translation
 
@@ -54,4 +54,4 @@ Start with **Local · Apple**: no key required. Juyi does not send translation t
 
 Found a problem or have an idea? [Open an issue](https://github.com/Eim-aa/juyi/issues) with your macOS version, Juyi version, source app and reproduction steps. Do not include credentials, private selected text or clipboard contents. Pull requests are welcome.
 
-[Usage & troubleshooting](docs/MENU_BAR_APP.md) (Chinese) · [Build from source & repository layout](docs/BUILD.md) (Chinese) · [Optional: cloud backend installation](docs/MENU_BAR_APP.md#安装) (Chinese) · [All docs](docs/README.md) · [MIT license](LICENSE)
+[Usage & troubleshooting](docs/MENU_BAR_APP.md) (Chinese) · [Build from source & repository layout](docs/BUILD.md) (Chinese) · [Optional: cloud backend installation](docs/MENU_BAR_APP.md#安装) (Chinese) · [All docs](docs/README.md) (Chinese) · [MIT license](LICENSE)

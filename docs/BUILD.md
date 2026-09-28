@@ -39,7 +39,8 @@ scripts/install_macos_app.sh
 
 | 路径 | 用途 |
 |---|---|
-| `macos/`、`apple/`、`Juyi.xcodeproj`、`Config/` | 句译原生 App：双 Option 识别、取词、Apple 翻译与浮窗 |
+| `macos/`、`Juyi.xcodeproj`、`Config/` | 句译原生 App：双 Option 识别、取词、Apple 翻译与浮窗 |
+| `apple/` | Apple 翻译命令行 helper（编译为 `bin/apple-translation-helper`），供可选后台和早期安装使用 |
 | `tests/` | Python 契约测试与 Swift 单元测试 |
 | `docs/` | 使用说明、发布记录（`releases/`）、开发记录（`dev/`） |
 | 根目录 `*.py`、`requirements.txt`、`launchd/` | 可选的火山云端后台服务，本地 Apple 翻译不需要 |
