@@ -25,22 +25,6 @@ enum NativeTranslationOverlayCopyPresentation: Equatable {
     }
 }
 
-/// One-shot fixture feedback consumed by the next visible state. Keeping this
-/// separate from rendering prevents a preview-specific failure state from
-/// being reset before it reaches the reusable panel.
-struct NativeTranslationOverlayFixtureCopyPresentationLifecycle: Equatable {
-    private var pending: NativeTranslationOverlayCopyPresentation?
-
-    mutating func queue(_ presentation: NativeTranslationOverlayCopyPresentation) {
-        pending = presentation
-    }
-
-    mutating func consumeForVisibleState() -> NativeTranslationOverlayCopyPresentation {
-        defer { pending = nil }
-        return pending ?? .idle
-    }
-}
-
 enum NativeTranslationOverlayInteractionEvent: Equatable {
     case mouseDown(globalPoint: CGPoint)
     case keyDown(keyCode: UInt16, modifiers: NativeTranslationOverlayInteractionModifiers)

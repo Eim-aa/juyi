@@ -268,6 +268,10 @@ private final class NativeTranslationOverlayContentView: NSVisualEffectView {
         speechInfoField.isHidden = speechMessage == nil
     }
 
+    /// Only the info line changes the popup height; a speaking/idle toggle
+    /// only retitles the buttons.
+    var showsSpeechMessage: Bool { speechMessage != nil }
+
     private var speechHeight: CGFloat {
         canReadAloud ? (36 + (speechMessage == nil ? 0 : 32)) * accessibilityFontScale : 0
     }
@@ -685,6 +689,9 @@ final class NativeTranslationOverlayController: NSObject, AVSpeechSynthesizerDel
     private var speechSynthesizer: AVSpeechSynthesizer?
     private var speechUtterance: AVSpeechUtterance?
     private var speakingTarget: NativeTranslationSpeechTarget?
+    /// Installed voices chosen per target; cleared when the system voice set
+    /// changes, so a click does not re-enumerate and sort every voice.
+    private var cachedSpeechVoices: [NativeTranslationSpeechTarget: AVSpeechSynthesisVoice] = [:]
     private var anchorMousePoint = CGPoint.zero
     private var anchorVisibleFrame: CGRect?
     private var anchorDirection: NativeTranslationOverlayAnchorDirection?
@@ -694,8 +701,6 @@ final class NativeTranslationOverlayController: NSObject, AVSpeechSynthesizerDel
     private var isPaused = false
     private var copyPresentation: NativeTranslationOverlayCopyPresentation = .idle
     private var pendingPresentationLifecycle = NativeTranslationOverlayPendingLifecycle()
-    private var fixtureCopyPresentationLifecycle =
-        NativeTranslationOverlayFixtureCopyPresentationLifecycle()
     private var copyResetTask: NativeTranslationOverlayScheduledTask?
     private var announcedTerminalGeneration: Int?
     private var presentationLifecycle = NativeTranslationOverlayPresentationLifecycle()
@@ -743,7 +748,6 @@ final class NativeTranslationOverlayController: NSObject, AVSpeechSynthesizerDel
         self.sourceApplication = sourceApplication
         anchorMousePoint = anchorPoint ?? NSEvent.mouseLocation
         guard prepareAnchor() else { return nil }
-        fixtureCopyPresentationLifecycle.queue(.idle)
         pendingPresentationLifecycle.cancel()
         preservesVisibleContentForNextSessionBegin =
             NativeTranslationOverlayVisibleReplacementPolicy.preservesCurrentContent(
@@ -780,7 +784,6 @@ final class NativeTranslationOverlayController: NSObject, AVSpeechSynthesizerDel
     }
 
     func stop() { dismiss(.stop) }
-    func accessibilityWasRevoked() { dismiss(.revoke) }
     func close() { dismiss(.close) }
 
     func shutdown() {
@@ -842,6 +845,10 @@ final class NativeTranslationOverlayController: NSObject, AVSpeechSynthesizerDel
             self?.overlayView.applyAccessibilityAppearance()
             self?.relayoutForCurrentScreen()
         }
+        observe(
+            center: .default,
+            name: AVSpeechSynthesizer.availableVoicesDidChangeNotification
+        ) { [weak self] in self?.cachedSpeechVoices.removeAll() }
     }
 
     private func observe(
@@ -889,12 +896,10 @@ final class NativeTranslationOverlayController: NSObject, AVSpeechSynthesizerDel
             hidePanel(reason: pendingDismissReason)
             return
         }
-        let targetCopyPresentation =
-            fixtureCopyPresentationLifecycle.consumeForVisibleState()
         renderVisibleState(
             state: state,
             generation: generation,
-            targetCopyPresentation: targetCopyPresentation,
+            targetCopyPresentation: .idle,
             announceTerminal: true,
             animateLayout: true
         )
@@ -1170,12 +1175,46 @@ final class NativeTranslationOverlayController: NSObject, AVSpeechSynthesizerDel
     private func readAloud(_ target: NativeTranslationSpeechTarget) {
         guard statefulActionsArePermitted,
               let text = session.speechText(for: target, generation: currentGeneration) else { return }
+        let hadSpeechMessage = overlayView.showsSpeechMessage
         if speakingTarget == target {
             stopSpeech()
-            relayoutForCurrentScreen()
+            relayoutIfSpeechMessageChanged(from: hadSpeechMessage)
             return
         }
         stopSpeech()
+        guard let voice = speechVoice(for: target) else {
+            let language = target == .original ? "英语" : "中文"
+            let message = "缺少\(language)系统语音，请在系统设置的辅助功能中下载朗读语音。"
+            overlayView.renderSpeech(target: nil, message: message)
+            relayoutIfSpeechMessageChanged(from: hadSpeechMessage)
+            postAnnouncement(message)
+            return
+        }
+        if speechSynthesizer == nil {
+            speechSynthesizer = AVSpeechSynthesizer()
+            speechSynthesizer?.delegate = self
+        }
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = voice
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        speechUtterance = utterance
+        speakingTarget = target
+        overlayView.renderSpeech(target: target)
+        relayoutIfSpeechMessageChanged(from: hadSpeechMessage)
+        speechSynthesizer?.speak(utterance)
+    }
+
+    /// A speaking/idle toggle keeps the popup size; relayout only when the
+    /// missing-voice line appears or disappears.
+    private func relayoutIfSpeechMessageChanged(from hadSpeechMessage: Bool) {
+        guard overlayView.showsSpeechMessage != hadSpeechMessage else { return }
+        relayoutForCurrentScreen()
+    }
+
+    private func speechVoice(
+        for target: NativeTranslationSpeechTarget
+    ) -> AVSpeechSynthesisVoice? {
+        if let cached = cachedSpeechVoices[target] { return cached }
         // Select installed Apple voices only, not Personal Voice or third-party
         // speech extensions. Never request permissions, downloads or a cloud API.
         let voices = AVSpeechSynthesisVoice.speechVoices().filter {
@@ -1196,26 +1235,9 @@ final class NativeTranslationOverlayController: NSObject, AVSpeechSynthesizerDel
             }
             return $0.identifier < $1.identifier
         }
-        guard let voice = voices.first else {
-            let language = target == .original ? "英语" : "中文"
-            let message = "缺少\(language)系统语音，请在系统设置的辅助功能中下载朗读语音。"
-            overlayView.renderSpeech(target: nil, message: message)
-            relayoutForCurrentScreen()
-            postAnnouncement(message)
-            return
-        }
-        if speechSynthesizer == nil {
-            speechSynthesizer = AVSpeechSynthesizer()
-            speechSynthesizer?.delegate = self
-        }
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = voice
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-        speechUtterance = utterance
-        speakingTarget = target
-        overlayView.renderSpeech(target: target)
-        relayoutForCurrentScreen()
-        speechSynthesizer?.speak(utterance)
+        // A missing voice is not cached: the next click re-checks it.
+        if let voice = voices.first { cachedSpeechVoices[target] = voice }
+        return voices.first
     }
 
     private func stopSpeech() {
@@ -1238,10 +1260,11 @@ final class NativeTranslationOverlayController: NSObject, AVSpeechSynthesizerDel
 
     private func speechEnded(_ identity: ObjectIdentifier) {
         guard let utterance = speechUtterance, ObjectIdentifier(utterance) == identity else { return }
+        let hadSpeechMessage = overlayView.showsSpeechMessage
         speechUtterance = nil
         speakingTarget = nil
         overlayView.renderSpeech(target: nil)
-        relayoutForCurrentScreen()
+        relayoutIfSpeechMessageChanged(from: hadSpeechMessage)
     }
 
     private func copyCurrentTranslation() {

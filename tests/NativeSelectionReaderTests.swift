@@ -473,12 +473,111 @@ enum NativeSelectionReaderTests {
             "ordinary editor text is not subjected to PDF repairs")
     }
 
+    private struct SettlementRun {
+        let endedAt: TimeInterval
+        let contextChecks: Int
+        let polls: Int
+        let settlement: NativeWPSClipboardSettlement
+    }
+
+    /// Drives the settlement exactly as the production WPS loop does: poll
+    /// every 20 ms until the deadline, check the document context only when
+    /// due, and stop once a stable candidate has been observed.
+    private static func runSettlement(
+        deadline: TimeInterval = 1.20,
+        changeCount: (TimeInterval) -> Int
+    ) -> SettlementRun {
+        var settlement = NativeWPSClipboardSettlement(
+            markerChangeCount: 10,
+            stableInterval: 0.08,
+            startedAt: 0
+        )
+        var now: TimeInterval = 0
+        var contextChecks = 0
+        var polls = 0
+        while now < deadline {
+            now += 0.02
+            polls += 1
+            settlement.observe(changeCount: changeCount(now), at: now)
+            if settlement.contextCheckIsDue(at: now) { contextChecks += 1 }
+            if settlement.hasStableCandidate(at: now) { break }
+        }
+        return SettlementRun(
+            endedAt: now,
+            contextChecks: contextChecks,
+            polls: polls,
+            settlement: settlement
+        )
+    }
+
+    private static func testWPSClipboardSettlementReturnsEarlyOnceStable() {
+        // WPS answers Copy after ~100 ms with a single pasteboard write.
+        let answered = runSettlement { $0 < 0.1 ? 10 : 11 }
+        expect(answered.endedAt < 0.25, "a settled Copy returns long before the 1.2 s deadline")
+        expect(answered.settlement.observedChangeCount == 11, "the WPS write is the candidate")
+        expect(
+            answered.settlement.consecutiveUnchangedReads >= 1,
+            "the candidate is confirmed by consecutive identical reads"
+        )
+        expect(
+            answered.endedAt - answered.settlement.stableSince >= 0.08,
+            "early exit still satisfies the post-loop stability requirement"
+        )
+
+        // A second write restarts stability; the latest write wins.
+        let rewritten = runSettlement { $0 < 0.1 ? 10 : ($0 < 0.15 ? 11 : 12) }
+        expect(rewritten.settlement.observedChangeCount == 12, "a later write resets stability")
+        expect(rewritten.endedAt >= 0.15 + 0.08, "the rewrite must itself settle")
+        expect(rewritten.endedAt < 1.2, "a settled rewrite also returns early")
+    }
+
+    private static func testWPSClipboardSettlementKeepsTheTimeout() {
+        // WPS never answers: the marker stays, and the full window elapses.
+        let unanswered = runSettlement { _ in 10 }
+        expect(unanswered.endedAt >= 1.2, "an unanswered Copy still waits for the full deadline")
+        expect(
+            unanswered.settlement.observedChangeCount == 10,
+            "an unanswered Copy has no candidate"
+        )
+        expect(
+            unanswered.contextChecks <= 6,
+            "the AX context check runs at most every 200 ms, not on every poll"
+        )
+        expect(unanswered.polls >= 50, "cancellation and focus are still polled every 20 ms")
+
+        // A pasteboard that never stops changing never counts as settled.
+        var tick = 10
+        let churning = runSettlement { _ in tick += 1; return tick }
+        expect(churning.endedAt >= 1.2, "a churning pasteboard runs to the unchanged deadline")
+        expect(
+            !churning.settlement.hasStableCandidate(at: churning.endedAt),
+            "a churning pasteboard is never stable"
+        )
+
+        var settlement = NativeWPSClipboardSettlement(
+            markerChangeCount: 3,
+            stableInterval: 0.08,
+            startedAt: 5
+        )
+        expect(!settlement.contextCheckIsDue(at: 5.1), "no AX recheck right after posting Copy")
+        expect(settlement.contextCheckIsDue(at: 5.2), "the first recheck is due after 200 ms")
+        expect(!settlement.contextCheckIsDue(at: 5.3), "rechecks are rate limited")
+        expect(settlement.contextCheckIsDue(at: 5.41), "the next recheck follows 200 ms later")
+        settlement.observe(changeCount: 4, at: 5.5)
+        expect(
+            !settlement.hasStableCandidate(at: 5.7),
+            "a single read is not enough to accept a candidate"
+        )
+    }
+
     static func main() {
         testTargetAndPermissionGuards()
         testNormalizationAndLengthPolicy()
         testStableAXOutcomes()
         testPureAXErrorAndSecurityPolicy()
         testPDFLineBreakRepair()
+        testWPSClipboardSettlementReturnsEarlyOnceStable()
+        testWPSClipboardSettlementKeepsTheTimeout()
         print("NativeSelectionReaderTests: \(passed) passed")
     }
 }

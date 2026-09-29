@@ -1313,36 +1313,46 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
             ProcessInfo.processInfo.systemUptime + Self.clipboardCopyTimeout
         )
 
-        var observedChangeCount = markerChangeCount
-        var stableSince = ProcessInfo.processInfo.systemUptime
+        // The document context was validated immediately before Copy was
+        // posted; inside the loop the AX-heavy check runs at most every
+        // `contextRecheckInterval`. Cancellation and focus are still checked
+        // on every poll, and the deadline above is unchanged.
+        var settlement = NativeWPSClipboardSettlement(
+            markerChangeCount: markerChangeCount,
+            stableInterval: Self.clipboardStableInterval,
+            startedAt: ProcessInfo.processInfo.systemUptime
+        )
         var drainOnly = false
         while ProcessInfo.processInfo.systemUptime < postedCopyDrainDeadline {
             Thread.sleep(forTimeInterval: 0.02)
             let now = ProcessInfo.processInfo.systemUptime
-            let changeCount = pasteboard.changeCount
-            if changeCount != observedChangeCount {
-                observedChangeCount = changeCount
-                stableSince = now
-            }
+            settlement.observe(changeCount: pasteboard.changeCount, at: now)
             guard !drainOnly else { continue }
             guard !cancellationCheck(),
                   frontmostApplication?.hasSameProcess(as: target) == true else {
                 drainOnly = true
                 continue
             }
-            let contextIsCurrent = isCurrentWPSPDFContext(
+            if settlement.contextCheckIsDue(at: now) {
+                let contextIsCurrent = isCurrentWPSPDFContext(
                     context,
                     application: application,
                     target: target
                 )
-            guard contextIsCurrent,
-                  !cancellationCheck(),
-                  frontmostApplication?.hasSameProcess(as: target) == true else {
-                drainOnly = true
-                continue
+                guard contextIsCurrent,
+                      !cancellationCheck(),
+                      frontmostApplication?.hasSameProcess(as: target) == true else {
+                    drainOnly = true
+                    continue
+                }
             }
+            // WPS has answered Copy and the pasteboard has settled. A
+            // cancelled or unanswered Copy still waits for the full window.
+            if settlement.hasStableCandidate(at: now) { break }
         }
 
+        let observedChangeCount = settlement.observedChangeCount
+        let stableSince = settlement.stableSince
         let finalChangeCount = pasteboard.changeCount
         if drainOnly || cancellationCheck() ||
             frontmostApplication?.hasSameProcess(as: target) != true {
@@ -1560,6 +1570,56 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
             return result
         }
         return nil
+    }
+}
+
+/// Settlement of one posted WPS Copy, polled every 20 ms. The poll ends early
+/// once WPS has replaced the marker and the new pasteboard state has been read
+/// unchanged on consecutive polls for the stability interval; otherwise it
+/// runs to the caller's unchanged deadline. The AX document-context check is
+/// due at most once per `contextRecheckInterval`.
+struct NativeWPSClipboardSettlement: Equatable {
+    static let contextRecheckInterval: TimeInterval = 0.2
+
+    let markerChangeCount: Int
+    let stableInterval: TimeInterval
+    private(set) var observedChangeCount: Int
+    private(set) var stableSince: TimeInterval
+    private(set) var consecutiveUnchangedReads = 0
+    private var nextContextCheck: TimeInterval
+
+    init(
+        markerChangeCount: Int,
+        stableInterval: TimeInterval,
+        startedAt: TimeInterval
+    ) {
+        self.markerChangeCount = markerChangeCount
+        self.stableInterval = stableInterval
+        observedChangeCount = markerChangeCount
+        stableSince = startedAt
+        nextContextCheck = startedAt + Self.contextRecheckInterval
+    }
+
+    mutating func observe(changeCount: Int, at now: TimeInterval) {
+        if changeCount != observedChangeCount {
+            observedChangeCount = changeCount
+            stableSince = now
+            consecutiveUnchangedReads = 0
+        } else {
+            consecutiveUnchangedReads += 1
+        }
+    }
+
+    func hasStableCandidate(at now: TimeInterval) -> Bool {
+        observedChangeCount != markerChangeCount
+            && consecutiveUnchangedReads >= 1
+            && now - stableSince >= stableInterval
+    }
+
+    mutating func contextCheckIsDue(at now: TimeInterval) -> Bool {
+        guard now >= nextContextCheck else { return false }
+        nextContextCheck = now + Self.contextRecheckInterval
+        return true
     }
 }
 

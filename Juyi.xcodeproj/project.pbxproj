@@ -41,6 +41,8 @@
 		A000000000000000000000A3 /* NativeOwnerHandoffWorkflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */; };
 		A000000000000000000000A5 /* NativeOwnerHandoffStatusReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */; };
 		A000000000000000000000AB /* NativeOwnerActivationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */; };
+		A000000000000000000000B1 /* AppRefreshPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000B0 /* AppRefreshPolicy.swift */; };
+		A000000000000000000000B3 /* NativeTriggerPreflight.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000B2 /* NativeTriggerPreflight.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -49,6 +51,8 @@
 		A00000000000000000000021 /* JuyiMenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JuyiMenuBar.swift; sourceTree = "<group>"; };
 		A00000000000000000000022 /* OnboardingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPolicy.swift; sourceTree = "<group>"; };
 		A00000000000000000000023 /* WindowFramePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowFramePolicy.swift; sourceTree = "<group>"; };
+		A000000000000000000000B0 /* AppRefreshPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRefreshPolicy.swift; sourceTree = "<group>"; };
+		A000000000000000000000B2 /* NativeTriggerPreflight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTriggerPreflight.swift; sourceTree = "<group>"; };
 		A00000000000000000000024 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A00000000000000000000025 /* AppIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon.png; sourceTree = "<group>"; };
 		A00000000000000000000026 /* Juyi.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Juyi.entitlements; sourceTree = "<group>"; };
@@ -143,6 +147,7 @@
 				A00000000000000000000021 /* JuyiMenuBar.swift */,
 				A00000000000000000000022 /* OnboardingPolicy.swift */,
 				A00000000000000000000023 /* WindowFramePolicy.swift */,
+				A000000000000000000000B0 /* AppRefreshPolicy.swift */,
 				A0000000000000000000002D /* AccessibilityController.swift */,
 				A0000000000000000000002E /* DoubleOptionStateMachine.swift */,
 				A00000000000000000000060 /* NativeOptionEventAdapter.swift */,
@@ -154,6 +159,7 @@
 				A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */,
 				A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */,
 				A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */,
+				A000000000000000000000B2 /* NativeTriggerPreflight.swift */,
 				A00000000000000000000030 /* NativeOptionFeature.swift */,
 				A00000000000000000000066 /* NativeTranslationOverlayModel.swift */,
 				A00000000000000000000067 /* NativeTranslationOverlayAnchorPolicy.swift */,
@@ -294,11 +300,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				A00000000000000000000036 /* AccessibilityController.swift in Sources */,
+				A000000000000000000000B1 /* AppRefreshPolicy.swift in Sources */,
 				A00000000000000000000037 /* DoubleOptionStateMachine.swift in Sources */,
 				A00000000000000000000031 /* JuyiMenuBar.swift in Sources */,
 				A00000000000000000000062 /* NativeOptionEventAdapter.swift in Sources */,
 				A00000000000000000000039 /* NativeOptionFeature.swift in Sources */,
 				A00000000000000000000038 /* NativeOptionMonitor.swift in Sources */,
+				A000000000000000000000B3 /* NativeTriggerPreflight.swift in Sources */,
 				A00000000000000000000063 /* NativeSelectionReader.swift in Sources */,
 				A00000000000000000000065 /* NativeSelectionCaptureCoordinator.swift in Sources */,
 				A0000000000000000000009F /* NativeOwnerHandoffProtocol.swift in Sources */,

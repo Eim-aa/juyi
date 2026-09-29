@@ -69,10 +69,22 @@ def test_overlay_has_no_live_selection_network_or_hotkey_owner():
         ".characters",
     ):
         assert forbidden not in joined
-    assert "fixtureCopyPresentationLifecycle.consumeForVisibleState()" in CONTROLLER
+    assert "FixtureCopyPresentationLifecycle" not in joined
+    assert "func accessibilityWasRevoked" not in CONTROLLER
+    # P7: voices are cached per target and invalidated by the system; a
+    # speaking toggle does not re-lay out the popup.
+    assert "AVSpeechSynthesizer.availableVoicesDidChangeNotification" in CONTROLLER
+    assert "cachedSpeechVoices.removeAll()" in CONTROLLER
+    assert CONTROLLER.count("AVSpeechSynthesisVoice.speechVoices()") == 1
+    read_aloud = CONTROLLER.split("private func readAloud(", 1)[1].split(
+        "private func relayoutIfSpeechMessageChanged", 1
+    )[0]
+    assert "speechVoices()" not in read_aloud
+    assert "relayoutForCurrentScreen()" not in read_aloud
     apply_state = CONTROLLER.split("private func apply(", 1)[1].split(
         "private func renderVisibleState", 1
     )[0]
+    assert "targetCopyPresentation: .idle" in apply_state
     assert "preservesVisibleContentForNextSessionBegin" in apply_state
     assert "overlayView.setStatefulActionsEnabled(false)" in apply_state
     assert "pendingPresentationLifecycle.cancel()" in apply_state

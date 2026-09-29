@@ -430,6 +430,33 @@ def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
     assert "performIfActive(captureGeneration, action)" in COORDINATOR
     assert "cancelAll(onQuiesced:" in COORDINATOR
     assert "capture.cancelAll {" in FEATURE
+    # P4: a trigger consults only cached readiness and legacy answers.
+    pipeline = FEATURE.split("private func beginPipeline(target:", 1)[1].split(
+        "private func suspendForAppleFailure", 1
+    )[0]
+    assert "preflight.decision(" in pipeline
+    assert "if needsReadinessCheck {" in pipeline
+    assert pipeline.index("if needsReadinessCheck {") < pipeline.index("capture.capture(")
+    assert "requiresLegacyHandoff" not in pipeline
+    environment = FEATURE.split(
+        "@discardableResult private func nativeOnlyEnvironmentIsCurrent", 1
+    )[1].split("private func syncOwnerFailure", 1)[0]
+    assert "requiresLegacyHandoff" not in environment
+    assert "didTerminateApplicationNotification" in FEATURE
+    assert "preflight.recordLegacyEnvironment(handoffRequired: legacyHandoffRequired)" in FEATURE
+    disable = FEATURE.split("private func disable(", 1)[1].split(
+        "private func stopOwnerPolling", 1
+    )[0]
+    assert "preflight.reset()" in disable
+    assert FEATURE.count("preflight.invalidateAppleReadiness()") == 2
+    # P5: settle early once stable; keep the deadline and rate-limit AX checks.
+    assert "private static let clipboardCopyTimeout: TimeInterval = 1.20" in SELECTION
+    assert "static let contextRecheckInterval: TimeInterval = 0.2" in SELECTION
+    settle = SELECTION.split("let postedCopyDrainDeadline = max(", 1)[1].split(
+        "let finalChangeCount = pasteboard.changeCount", 1
+    )[0]
+    assert "if settlement.contextCheckIsDue(at: now) {" in settle
+    assert "if settlement.hasStableCandidate(at: now) { break }" in settle
     assert "retryRevocation()" in FEATURE
     assert "cancellationCheck()" in SELECTION
 

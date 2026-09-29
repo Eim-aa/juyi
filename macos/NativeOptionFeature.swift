@@ -56,7 +56,9 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     private var appleEngineSelected = true
     private var shortcutDeploymentReady = false
     private var nativeOnlySession = false
+    private var preflight = NativeTriggerPreflight()
     private var legacyLaunchObservation: NSObjectProtocol?
+    private var legacyTerminateObservation: NSObjectProtocol?
 
     static var requiresLegacyHandoff: Bool {
         !NSRunningApplication.runningApplications(
@@ -90,11 +92,18 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
 
         effect.startHandler = { [weak self] in self?.startNativeEffect() ?? .notStarted }
         effect.stopHandler = { [weak self] in self?.stopNativeEffect() ?? .stopped }
-        legacyLaunchObservation = NSWorkspace.shared.notificationCenter.addObserver(
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        legacyLaunchObservation = workspaceCenter.addObserver(
             forName: NSWorkspace.didLaunchApplicationNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in _ = self?.nativeOnlyEnvironmentIsCurrent() }
+            Task { @MainActor in self?.legacyEnvironmentMayHaveChanged() }
+        }
+        legacyTerminateObservation = workspaceCenter.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.legacyEnvironmentMayHaveChanged() }
         }
     }
 
@@ -427,7 +436,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
               nativeActivationReady, lifecycleActivationAllowed else { return }
         switch readiness {
         case .installed:
-            break
+            preflight.recordAppleReadiness(installed: true)
         case .needsPreparation:
             guard holdLegacyPauseForRecovery() else { return }
             appleReadinessIssue = .needsPreparation
@@ -457,7 +466,11 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         if activation.phase == .recoveryRequired {
             activation.recoverAndReturnToLegacy()
         }
-        nativeOnlySession = !Self.requiresLegacyHandoff
+        // Cache the legacy-environment answer for the trigger path; workspace
+        // launch/terminate notifications refresh it while this session lasts.
+        let legacyHandoffRequired = Self.requiresLegacyHandoff
+        preflight.recordLegacyEnvironment(handoffRequired: legacyHandoffRequired)
+        nativeOnlySession = !legacyHandoffRequired
         activation.beginHandoff(requiresLegacyAcknowledgement: !nativeOnlySession)
         if activation.phase == .recoveryRequired {
             activation.recoverAndReturnToLegacy()
@@ -536,8 +549,21 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         detail = "已启用：选中英文后连按两次 Option。"
     }
 
+    private func legacyEnvironmentMayHaveChanged() {
+        guard NativeTriggerPreflight.shouldProbeLegacyEnvironment(
+            nativeOnlySession: nativeOnlySession
+        ) else { return }
+        preflight.recordLegacyEnvironment(
+            handoffRequired: Self.requiresLegacyHandoff
+        )
+        nativeOnlyEnvironmentIsCurrent()
+    }
+
+    /// Reads only the cached answer, so a trigger never probes the file
+    /// system or the running-application list.
     @discardableResult private func nativeOnlyEnvironmentIsCurrent() -> Bool {
-        guard nativeOnlySession, Self.requiresLegacyHandoff else { return true }
+        guard preflight.decision(nativeOnlySession: nativeOnlySession)
+            == .legacyHandoffRequired else { return true }
         disable(reason: .stop, preservePreference: true)
         phase = .unavailable
         detail = "检测到早期快捷键组件。请点击重新启用，句译会先处理快捷键交接。"
@@ -637,6 +663,9 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         stopOwnerPolling()
         activation?.deactivate(reason)
         nativeOnlySession = false
+        // Pause, sleep, session changes, permission loss, language
+        // preparation and failures all pass through here.
+        preflight.reset()
         // A terminal error panel may outlive an already-stopped owner. Close
         // it before a new preparation/retry so its dismissal cannot cancel
         // the replacement Apple request.
@@ -674,14 +703,23 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         cancelPipeline(dismissOverlay: true)
         pipelineGeneration &+= 1
         let generation = pipelineGeneration
+        // After a successful check, go straight to capture: no system API is
+        // awaited between recognition and `capture.capture`.
+        let needsReadinessCheck = preflight.decision(
+            nativeOnlySession: nativeOnlySession
+        ) == .checkAppleReadiness
         translationTask = Task { [weak self] in
             guard let self else { return }
-            let readiness = await apple.readiness()
-            guard generation == pipelineGeneration else { return }
-            guard readiness == .installed else {
-                self.suspendForAppleFailure(target: target, readiness: readiness)
-                return
+            if needsReadinessCheck {
+                let readiness = await apple.readiness()
+                guard generation == pipelineGeneration else { return }
+                guard readiness == .installed else {
+                    self.suspendForAppleFailure(target: target, readiness: readiness)
+                    return
+                }
+                preflight.recordAppleReadiness(installed: true)
             }
+            guard generation == pipelineGeneration else { return }
             guard let app = NSRunningApplication(processIdentifier: target.processIdentifier),
                   NativeSelectionTarget(application: app)?.hasSameProcess(as: target) == true,
                   let panelGeneration = overlay.beginNativeTranslation(
@@ -806,6 +844,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
                 case .cancelled:
                     return
                 default:
+                    preflight.invalidateAppleReadiness()
                     response = .init(
                         requestedEngine: .apple,
                         actualEngine: nil,
@@ -843,6 +882,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             capture.cancelAll()
             apple.cancelCurrent()
             translationTask?.cancel()
+            preflight.invalidateAppleReadiness()
             overlay.resolveNativeTranslation(
                 .response(.init(
                     requestedEngine: .apple,

@@ -17,7 +17,7 @@ private let volcPendingKeychainService = "io.github.Eim-aa.juyi.volc.pending"
 private let volcPendingKeychainAccount = "pending"
 private let shortcutDeploymentFingerprintDefaultsKey = "bundledShortcutDeploymentFingerprint"
 
-struct Health: Decodable {
+struct Health: Decodable, Equatable {
     let ok: Bool
     let engines: [String: Bool]
 }
@@ -51,7 +51,7 @@ private enum CloudRemovalMarkerRead: Equatable {
     case unavailable
 }
 
-struct HotkeyStatus: Decodable {
+struct HotkeyStatus: Decodable, Equatable {
     let module_loaded: Bool
     let accessibility: Bool
     let watcher_active: Bool
@@ -115,8 +115,18 @@ final class AppModel: ObservableObject {
     @Published var testResult = ""
     @Published var testDetail = ""
     @Published var notice = ""
-    @Published var showCloudSetup = false
-    @Published var showDiagnostics = false
+    @Published var showCloudSetup = false {
+        didSet { if showCloudSetup != oldValue { refreshContextChanged(sheetOpened: showCloudSetup) } }
+    }
+    @Published var showDiagnostics = false {
+        didSet {
+            guard showDiagnostics != oldValue else { return }
+            // The login-item toggle lives in this sheet; query ServiceManagement
+            // only while it can be seen.
+            if showDiagnostics { refreshLoginItemState() }
+            refreshContextChanged(sheetOpened: showDiagnostics)
+        }
+    }
     @Published var showSupportInfo = false
     @Published var cloudBusy = false
     @Published var cloudError = ""
@@ -131,6 +141,9 @@ final class AppModel: ObservableObject {
 
     var onChange: (() -> Void)?
     private var timer: Timer?
+    private var timerInterval: TimeInterval?
+    private var applicationActive = false
+    private var activationLoginItemMigrationChecked = false
     private var nativeStateObservation: AnyCancellable?
     private var onboardingPreservesCompletion = false
     private var loginItemMigrationInProgress = false
@@ -219,6 +232,7 @@ final class AppModel: ObservableObject {
         // waiting to finish. Keychain commands are deliberately deferred so
         // the Apple-only startup path never waits on `security` on MainActor.
         let shouldMigrateLegacyCloud = readCloudRemovalMarker() == .notFound
+        hammerspoonInstalled = Self.queryHammerspoonInstalled()
         migrateOnboardingState()
         let explicitEngine = readExplicitEngineChoice()
         readLocalState()
@@ -251,9 +265,7 @@ final class AppModel: ObservableObject {
                 onboardingScreen = firstIncompleteScreen()
             }
         }
-        timer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.refresh() }
-        }
+        scheduleRefreshTimer()
         nativeStateObservation = NativeProductionTranslationCoordinator.shared
             .objectWillChange.sink { [weak self] _ in
                 Task { @MainActor in
@@ -263,9 +275,47 @@ final class AppModel: ObservableObject {
             }
     }
 
-    var hammerspoonInstalled: Bool {
+    /// Updated once per refresh; derived status properties read this value
+    /// instead of querying LaunchServices on every evaluation.
+    @Published private(set) var hammerspoonInstalled = false
+
+    private static func queryHammerspoonInstalled() -> Bool {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: "org.hammerspoon.Hammerspoon") != nil
     }
+
+    private var refreshContext: AppRefreshContext {
+        AppRefreshContext(
+            selectedEngine: selectedEngine,
+            cloudSetupVisible: showCloudSetup,
+            diagnosticsVisible: showDiagnostics,
+            launchAgentInstalled: serviceInstalled,
+            applicationActive: applicationActive
+        )
+    }
+
+    /// Reschedules the periodic refresh only when its cadence changes.
+    private func scheduleRefreshTimer() {
+        let interval = AppRefreshPolicy.interval(refreshContext)
+        guard timer == nil || timerInterval != interval else { return }
+        timer?.invalidate()
+        timerInterval = interval
+        let next = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.refresh() }
+        }
+        next.tolerance = interval / 10
+        timer = next
+    }
+
+    private func refreshContextChanged(sheetOpened: Bool) {
+        scheduleRefreshTimer()
+        if sheetOpened { Task { await refresh() } }
+    }
+
+    func applicationResignedActive() {
+        applicationActive = false
+        scheduleRefreshTimer()
+    }
+
     var hammerspoonRunning: Bool {
         !NSRunningApplication.runningApplications(withBundleIdentifier: "org.hammerspoon.Hammerspoon").isEmpty
     }
@@ -615,6 +665,7 @@ final class AppModel: ObservableObject {
 
     private func installBundledShortcut(enableNativeAfterInstall: Bool) {
         guard !shortcutRepairBusy else { return }
+        hammerspoonInstalled = Self.queryHammerspoonInstalled()
         guard hammerspoonInstalled else {
             notice = "请先安装 Hammerspoon；安装后句译会自动部署当前快捷键模块。"
             return
@@ -769,8 +820,15 @@ final class AppModel: ObservableObject {
     }
 
     func applicationBecameActive() {
-        refreshLoginItemState()
-        migrateFallbackToServiceManagementIfNeeded()
+        applicationActive = true
+        scheduleRefreshTimer()
+        // SMAppService.status is only shown in Diagnostics. The fallback
+        // migration runs once per process on the first activation.
+        if showDiagnostics { refreshLoginItemState() }
+        if !activationLoginItemMigrationChecked {
+            activationLoginItemMigrationChecked = true
+            migrateFallbackToServiceManagementIfNeeded()
+        }
         Task {
             await refresh()
             try? await Task.sleep(for: .milliseconds(700))
@@ -1122,14 +1180,8 @@ final class AppModel: ObservableObject {
         return CloudCredentials(accessKey: access, secretKey: secret)
     }
 
-    private func readCloudCredentials() -> CloudCredentials? {
-        switch AppModel.readKeychainCloudCredentials() {
-        case .found(let credentials): return credentials
-        case .notFound: return readLegacyCloudCredentials()
-        case .invalid, .unavailable: return nil
-        }
-    }
-
+    /// `security` runs as a bounded child process; never wait for it on the
+    /// main actor.
     private func readCloudCredentialsOffMainActor() async -> CloudCredentials? {
         let keychainState = await Task.detached {
             AppModel.readKeychainCloudCredentials()
@@ -1349,15 +1401,23 @@ final class AppModel: ObservableObject {
         return request
     }
 
-    func refresh() async {
+    /// Reads local state and, only when the optional loopback service is
+    /// relevant (or a service operation requires it), probes `/health`.
+    func refresh(probeService forced: Bool = false) async {
         readLocalState()
-        var request = authenticatedRequest(url: serviceURL.appendingPathComponent("health")); request.timeoutInterval = 1.4
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if (response as? HTTPURLResponse)?.statusCode == 200 { health = try JSONDecoder().decode(Health.self, from: data) }
-            else { health = nil }
-        } catch { health = nil }
-        hasChecked = true
+        let installed = Self.queryHammerspoonInstalled()
+        if hammerspoonInstalled != installed { hammerspoonInstalled = installed }
+        var latestHealth: Health?
+        if forced || AppRefreshPolicy.shouldProbeService(refreshContext) {
+            var request = authenticatedRequest(url: serviceURL.appendingPathComponent("health")); request.timeoutInterval = 1.4
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if (response as? HTTPURLResponse)?.statusCode == 200 { latestHealth = try JSONDecoder().decode(Health.self, from: data) }
+            } catch { latestHealth = nil }
+        }
+        if health != latestHealth { health = latestHealth }
+        if !hasChecked { hasChecked = true }
+        scheduleRefreshTimer()
         onChange?()
     }
 
@@ -1616,7 +1676,7 @@ final class AppModel: ObservableObject {
                 let retry = AppModel.launchctl(["kickstart", "-k", serviceTarget])
                 return retry.0 == 0 ? retry : bootstrap
             }.value
-            try? await Task.sleep(for: .seconds(1.2)); await refresh(); serviceBusy = false
+            try? await Task.sleep(for: .seconds(1.2)); await refresh(probeService: true); serviceBusy = false
             if !serviceReady { notice = "自动修复没有完成，请打开“诊断与帮助”查看下一步。" }
         }
     }
@@ -1754,7 +1814,7 @@ final class AppModel: ObservableObject {
             notice = cleaned
                 ? "已恢复上次中断的云端设置。"
                 : "云端已恢复；安全清理会在下次启动时继续。"
-            await refresh()
+            await refresh(probeService: true)
         }
     }
 
@@ -1768,7 +1828,7 @@ final class AppModel: ObservableObject {
                 testing = false
                 cloudBusy = false
             }
-            guard let credentials = readCloudCredentials() else {
+            guard let credentials = await readCloudCredentialsOffMainActor() else {
                 notice = "云端设置不完整，请重新配置。"
                 showCloudSetup = true
                 return
@@ -1777,7 +1837,7 @@ final class AppModel: ObservableObject {
             // running service with an ordinary translation request, so AK/SK
             // never cross the unauthenticated loopback transport.
             let response = await translate("Good tools should feel effortless.", engine: "volc")
-            guard credentialFingerprint(readCloudCredentials()) == credentialFingerprint(credentials) else {
+            guard credentialFingerprint(await readCloudCredentialsOffMainActor()) == credentialFingerprint(credentials) else {
                 cloudVerified = false
                 notice = "验证期间云端配置已变化，请重新运行验证。"
                 announce(notice)
@@ -1806,14 +1866,18 @@ final class AppModel: ObservableObject {
             cloudError = "暂时无法读取旧的云端设置文件，原配置未更改。"
             return
         }
-        let keychainBackup = AppModel.readKeychainCloudCredentials()
-        guard keychainBackup != .invalid, keychainBackup != .unavailable else {
-            cloudBusy = false
-            cloudError = "暂时无法读取 macOS 钥匙串，原有云端配置未更改。请解锁钥匙串后重试。"
-            return
-        }
-        let verifiedFingerprintBackup = UserDefaults.standard.string(forKey: "cloudVerifiedFingerprint")
         Task {
+            // cloudBusy already holds the operation lock; read the backup off
+            // the main actor before any write, exactly as before.
+            let keychainBackup = await Task.detached {
+                AppModel.readKeychainCloudCredentials()
+            }.value
+            guard keychainBackup != .invalid, keychainBackup != .unavailable else {
+                cloudBusy = false
+                cloudError = "暂时无法读取 macOS 钥匙串，原有云端配置未更改。请解锁钥匙串后重试。"
+                return
+            }
+            let verifiedFingerprintBackup = UserDefaults.standard.string(forKey: "cloudVerifiedFingerprint")
             var pendingWriteAttempted = false
             var activeWriteAttempted = false
             var environmentWriteAttempted = false
@@ -1894,7 +1958,7 @@ final class AppModel: ObservableObject {
                         AppModel.deletePendingCloudCredentials(matching: candidate)
                     }.value
                 }
-                localCloudCredentialFingerprint = credentialFingerprint(readCloudCredentials())
+                localCloudCredentialFingerprint = credentialFingerprint(await readCloudCredentialsOffMainActor())
                 if let verifiedFingerprintBackup { UserDefaults.standard.set(verifiedFingerprintBackup, forKey: "cloudVerifiedFingerprint") }
                 else { UserDefaults.standard.removeObject(forKey: "cloudVerifiedFingerprint") }
                 cloudBusy = false
@@ -1904,7 +1968,7 @@ final class AppModel: ObservableObject {
                     cloudError = "连接验证失败，且无法自动恢复原配置。请先不要继续修改，打开“诊断与帮助”。"
                 }
                 announce(cloudError)
-                await refresh()
+                await refresh(probeService: true)
             }
         }
     }
@@ -1933,7 +1997,7 @@ final class AppModel: ObservableObject {
         }
         let engineRestored = runtimeRestored && setEngine(selectedEngineBackup)
         if keychainsRestored && environmentRestored && runtimeRestored && engineRestored {
-            localCloudCredentialFingerprint = credentialFingerprint(readCloudCredentials())
+            localCloudCredentialFingerprint = credentialFingerprint(await readCloudCredentialsOffMainActor())
             if let verifiedFingerprintBackup {
                 UserDefaults.standard.set(verifiedFingerprintBackup, forKey: "cloudVerifiedFingerprint")
             } else {
@@ -2061,40 +2125,50 @@ final class AppModel: ObservableObject {
             announce(cloudError)
             return
         }
-        let keychainBackup = AppModel.readKeychainCloudCredentials()
-        guard keychainBackup != .invalid, keychainBackup != .unavailable else {
-            cloudError = "暂时无法读取 macOS 钥匙串，云端配置未更改。"
-            announce(cloudError)
-            return
-        }
-        let pendingBackup = AppModel.readKeychainCloudCredentials(
-            service: volcPendingKeychainService,
-            account: volcPendingKeychainAccount
-        )
-        guard pendingBackup != .invalid, pendingBackup != .unavailable else {
-            cloudError = "暂时无法确认待处理的云端设置，云端配置未更改。"
-            announce(cloudError)
-            return
-        }
-        let verifiedFingerprintBackup = UserDefaults.standard.string(forKey: "cloudVerifiedFingerprint")
-        let selectedEngineBackup = selectedEngine
-        let expectedCloudBackup = readCloudCredentials() != nil
-        guard createCloudRemovalMarker() else {
-            cloudError = "暂时无法创建安全的云端移除事务，原配置未更改。"
-            announce(cloudError)
-            return
-        }
-        guard setEngine("apple") else {
-            let markerCleared = deleteCloudRemovalMarker()
-            cloudError = markerCleared
-                ? "暂时无法先切换到离线翻译，云端配置未更改。"
-                : "无法切换到离线翻译，安全事务会在下次启动时继续。"
-            announce(cloudError)
-            return
-        }
+        // Hold the operation lock while the Keychain backups are read off the
+        // main actor. The transaction order below is unchanged.
         cloudBusy = true
         cloudError = ""
         Task {
+            let keychainBackup = await Task.detached {
+                AppModel.readKeychainCloudCredentials()
+            }.value
+            guard keychainBackup != .invalid, keychainBackup != .unavailable else {
+                cloudBusy = false
+                cloudError = "暂时无法读取 macOS 钥匙串，云端配置未更改。"
+                announce(cloudError)
+                return
+            }
+            let pendingBackup = await Task.detached {
+                AppModel.readKeychainCloudCredentials(
+                    service: volcPendingKeychainService,
+                    account: volcPendingKeychainAccount
+                )
+            }.value
+            guard pendingBackup != .invalid, pendingBackup != .unavailable else {
+                cloudBusy = false
+                cloudError = "暂时无法确认待处理的云端设置，云端配置未更改。"
+                announce(cloudError)
+                return
+            }
+            let verifiedFingerprintBackup = UserDefaults.standard.string(forKey: "cloudVerifiedFingerprint")
+            let expectedCloudBackup = await readCloudCredentialsOffMainActor() != nil
+            let selectedEngineBackup = selectedEngine
+            guard createCloudRemovalMarker() else {
+                cloudBusy = false
+                cloudError = "暂时无法创建安全的云端移除事务，原配置未更改。"
+                announce(cloudError)
+                return
+            }
+            guard setEngine("apple") else {
+                let markerCleared = deleteCloudRemovalMarker()
+                cloudBusy = false
+                cloudError = markerCleared
+                    ? "暂时无法先切换到离线翻译，云端配置未更改。"
+                    : "无法切换到离线翻译，安全事务会在下次启动时继续。"
+                announce(cloudError)
+                return
+            }
             let removedFromRuntime = await completeCloudRemoval(allowAlreadyStopped: false)
             if removedFromRuntime {
                 localCloudCredentialFingerprint = nil
@@ -2122,7 +2196,7 @@ final class AppModel: ObservableObject {
                     : "原配置已恢复，但安全事务标记未能清理；下次启动会继续处理。"
             } else {
                 let stopped = await stopServiceAndConfirm(allowAlreadyStopped: true)
-                await refresh()
+                await refresh(probeService: true)
                 cloudError = stopped
                     ? "移除和自动恢复都未完成；后台服务已安全停止，请打开“诊断与帮助”。"
                     : "无法确认云端凭据已从运行内存清除。请退出句译并立即打开“诊断与帮助”。"
@@ -2182,7 +2256,7 @@ final class AppModel: ObservableObject {
     private func waitForService(expectCloud: Bool? = nil) async -> Bool {
         for _ in 0..<16 {
             try? await Task.sleep(for: .milliseconds(400))
-            await refresh()
+            await refresh(probeService: true)
             if serviceReady {
                 guard let expectCloud else { return true }
                 if cloudConfigured == expectCloud { return true }
@@ -2297,7 +2371,7 @@ final class AppModel: ObservableObject {
     func stopService() {
         guard serviceReady && !serviceBusy && !cloudBusy else { return }; serviceBusy = true
         NativeProductionTranslationCoordinator.shared.invalidate(.stop)
-        Task { _ = await Task.detached { AppModel.launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"]) }.value; try? await Task.sleep(for: .milliseconds(600)); await refresh(); serviceBusy = false; notice = "后台翻译组件已停止。需要时可点“自动修复”重新启动。" }
+        Task { _ = await Task.detached { AppModel.launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"]) }.value; try? await Task.sleep(for: .milliseconds(600)); await refresh(probeService: true); serviceBusy = false; notice = "后台翻译组件已停止。需要时可点“自动修复”重新启动。" }
     }
     func openLogs() {
         let log = home.appendingPathComponent("Library/Logs/argos-translator.err.log")
@@ -3040,7 +3114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private var window: NSWindow!
     private var lastOnboardingMode: Bool?
-    private var nativeTranslationObservation: AnyCancellable?
+    private var chromeGate = AppChromeRenderGate()
     private var nativeProductionIsAwake = true
     private var nativeProductionSessionIsActive = true
 
@@ -3055,11 +3129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             [weak self] cta in self?.handleNativeOverlayCTA(cta)
         }
         NativeTranslationOverlayController.shared.setPaused(model.paused)
-        nativeTranslationObservation = NativeProductionTranslationCoordinator.shared
-            .objectWillChange
-            .sink { [weak self] _ in
-                Task { @MainActor in self?.updateChrome() }
-            }
+        // Coordinator changes reach the chrome once, through AppModel.onChange.
         NativeProductionTranslationCoordinator.shared.setPaused(model.paused)
         NativeProductionTranslationCoordinator.shared
             .setAppleEngineSelected(model.selectedEngine == "apple")
@@ -3094,6 +3164,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.applicationBecameActive()
         nativeProductionSessionIsActive = Self.currentSessionAllowsNativeActivation
         resumeNativeProductionIfEligible()
+    }
+    func applicationDidResignActive(_ notification: Notification) {
+        model.applicationResignedActive()
     }
     func applicationWillTerminate(_ notification: Notification) {
         NativeProductionTranslationCoordinator.shared.invalidate(.terminate)
@@ -3133,16 +3206,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         app.submenu = submenu; main.addItem(app); NSApp.mainMenu = main
     }
     private func item(_ title: String, action: Selector? = nil, enabled: Bool = true) -> NSMenuItem { let i = NSMenuItem(title: title, action: action, keyEquivalent: ""); i.target = self; i.isEnabled = enabled; return i }
-    private func updateMenu() {
-        let symbol = model.ready ? "character.bubble.fill" : model.summarySymbol
-        statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "句译 · \(model.summaryStatus)")
+    private var chromeSnapshot: AppChromeSnapshot {
+        AppChromeSnapshot(
+            summaryStatus: model.summaryStatus,
+            statusSymbol: model.ready ? "character.bubble.fill" : model.summarySymbol,
+            primaryActionTitle: model.primaryActionTitle,
+            primaryActionEnabled: model.primaryActionEnabled,
+            showsPauseItem: !model.ready && model.canPauseTranslation,
+            selectedEngine: model.selectedEngine,
+            engineMenuEnabled: !model.translationSetupInProgress && !model.cloudBusy,
+            onboardingCompleted: model.onboardingCompleted
+        )
+    }
+    private func updateMenu(_ snapshot: AppChromeSnapshot) {
+        statusItem.button?.image = NSImage(systemSymbolName: snapshot.statusSymbol, accessibilityDescription: "句译 · \(snapshot.summaryStatus)")
         statusItem.button?.image?.isTemplate = true
-        statusItem.button?.toolTip = "句译 · \(model.summaryStatus)"
+        statusItem.button?.toolTip = "句译 · \(snapshot.summaryStatus)"
         let menu = NSMenu()
         menu.autoenablesItems = false
-        menu.addItem(item("句译 · \(model.summaryStatus)", enabled: false))
-        menu.addItem(item(model.primaryActionTitle, action: #selector(primaryAction), enabled: model.primaryActionEnabled))
-        if !model.ready && model.canPauseTranslation {
+        menu.addItem(item("句译 · \(snapshot.summaryStatus)", enabled: false))
+        menu.addItem(item(snapshot.primaryActionTitle, action: #selector(primaryAction), enabled: snapshot.primaryActionEnabled))
+        if snapshot.showsPauseItem {
             menu.addItem(item("暂停所有翻译", action: #selector(pause)))
         }
         menu.addItem(.separator())
@@ -3151,13 +3235,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let sub = NSMenu()
         sub.autoenablesItems = false
         let apple = item("本地翻译（Apple）", action: #selector(apple))
-        apple.state = model.selectedEngine == "apple" ? .on : .off
+        apple.state = snapshot.selectedEngine == "apple" ? .on : .off
         let cloud = item("云端翻译（仅火山）…", action: #selector(cloud))
-        cloud.state = model.selectedEngine == "volc" ? .on : .off
+        cloud.state = snapshot.selectedEngine == "volc" ? .on : .off
         sub.addItem(apple); sub.addItem(cloud); engine.submenu = sub
-        engine.isEnabled = !model.translationSetupInProgress && !model.cloudBusy
+        engine.isEnabled = snapshot.engineMenuEnabled
         menu.addItem(engine)
-        menu.addItem(item(model.onboardingCompleted ? "重新练习双 Option…" : "继续设置…", action: #selector(onboarding)))
+        menu.addItem(item(snapshot.onboardingCompleted ? "重新练习双 Option…" : "继续设置…", action: #selector(onboarding)))
         menu.addItem(item("支持范围与隐私…", action: #selector(supportInfo)))
         menu.addItem(item("诊断与帮助…", action: #selector(diagnostics)))
         menu.addItem(.separator())
@@ -3168,7 +3252,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func updateChrome() {
         NativeTranslationOverlayController.shared.setPaused(model.userPaused)
-        updateMenu()
+        let snapshot = chromeSnapshot
+        if chromeGate.needsRender(snapshot) { updateMenu(snapshot) }
         guard window != nil else { return }
         let mode = model.onboardingPresented
         guard lastOnboardingMode != mode else { return }

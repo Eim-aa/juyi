@@ -1,4 +1,5 @@
 """Static contracts for native API authentication and Keychain handling."""
+import re
 from pathlib import Path
 
 
@@ -13,7 +14,7 @@ def _body(after, before):
 
 def test_every_service_request_reads_install_token_and_uses_bearer_header():
     helper = _body(
-        "private func authenticatedRequest", "func refresh() async"
+        "private func authenticatedRequest", "func refresh(probeService"
     )
     assert 'appendingPathComponent("auth-token")' in SWIFT
     assert 'String(contentsOf: authTokenFile' in helper
@@ -77,11 +78,15 @@ def test_keychain_item_is_single_json_payload_written_via_stdin():
 
 def test_keychain_is_preferred_and_legacy_credentials_are_migrated_safely():
     read = _body(
-        "private func readCloudCredentials", "private func credentialFingerprint"
+        "private func readCloudCredentialsOffMainActor", "private func credentialFingerprint"
     )
-    assert "switch AppModel.readKeychainCloudCredentials()" in read
+    assert "await Task.detached {" in read
+    assert "AppModel.readKeychainCloudCredentials()" in read
     assert "case .notFound: return readLegacyCloudCredentials()" in read
     assert "case .invalid, .unavailable: return nil" in read
+    # The synchronous (MainActor) Keychain reader no longer exists.
+    assert "private func readCloudCredentials()" not in SWIFT
+    assert "readCloudCredentials()" not in SWIFT
 
     migration = _body(
         "private func migrateLegacyCloudCredentialsIfNeeded",
@@ -113,6 +118,54 @@ def test_new_cloud_save_never_writes_keys_to_env_and_has_rollback():
     ) < configure.index("saveKeychainCloudCredentials(candidate)")
     assert "activeWriteAttempted" in configure
     assert "runtimeRestored" in configure
+
+
+def test_cloud_operations_never_wait_for_security_on_the_main_actor():
+    """`security` and launchctl run in bounded child processes that block on a
+    DispatchSemaphore; that wait must never happen on the main actor."""
+    blocking = (
+        "readKeychainCloudCredentials(",
+        "saveKeychainCloudCredentials(",
+        "deleteKeychainCloudCredentials(",
+        "restoreKeychainCloudCredentials(",
+        "savePendingCloudCredentials(",
+        "deletePendingCloudCredentials(",
+        "runSecurity(",
+        "runBoundedProcess(",
+        "AppModel.launchctl(",
+    )
+    for start, end in (
+        ("func validateExistingCloud", "func configureCloud"),
+        ("func configureCloud", "private func restoreCloudRemoval"),
+        ("private func restoreCloudRemoval", "private func startServiceAndWait"),
+        ("private func startServiceAndWait", "private func stopServiceAndConfirm"),
+        ("private func stopServiceAndConfirm", "private func completeCloudRemoval"),
+        ("private func completeCloudRemoval", "private func finishInterruptedCloudRemoval"),
+        ("func removeCloud", "func testTranslation"),
+        ("private func recoverInterruptedCloudConfiguration", "func validateExistingCloud"),
+        ("private func migrateLegacyCloudCredentialsIfNeeded", "private func authenticatedRequest"),
+    ):
+        body = _body(start, end)
+        off_main = re.sub(r"Task\.detached \{.*?\}\.value", "", body, flags=re.DOTALL)
+        for call in blocking:
+            assert call not in off_main, f"{start} calls {call} on the main actor"
+    process = _body(
+        "nonisolated private static func runBoundedProcess",
+        "nonisolated private static func launchctl",
+    )
+    assert SWIFT.count("DispatchSemaphore") == process.count("DispatchSemaphore") == 2
+
+    # The transaction order is unchanged: lock, backups, then the writes.
+    remove = _body("func removeCloud", "func testTranslation")
+    assert remove.index("cloudBusy = true") < remove.index("readKeychainCloudCredentials()")
+    assert remove.index("readKeychainCloudCredentials()") < remove.index(
+        "createCloudRemovalMarker()"
+    )
+    configure = _body("func configureCloud", "private func restoreCloudRemoval")
+    assert configure.index("cloudBusy = true") < configure.index("let keychainBackup")
+    assert configure.index("let keychainBackup") < configure.index(
+        "savePendingCloudCredentials(candidate)"
+    )
 
 
 def test_keychain_read_distinguishes_absent_invalid_and_unavailable():

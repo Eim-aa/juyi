@@ -35,6 +35,8 @@ STRICT=("${STRICT_FLAGS[@]}")
 
 run_suite OnboardingPolicyTests PLAIN macos/OnboardingPolicy.swift
 run_suite WindowFramePolicyTests PLAIN macos/WindowFramePolicy.swift
+run_suite AppRefreshPolicyTests PLAIN macos/AppRefreshPolicy.swift
+run_suite NativeTriggerPreflightTests PLAIN macos/NativeTriggerPreflight.swift
 run_suite DoubleOptionStateMachineTests PLAIN macos/DoubleOptionStateMachine.swift
 run_suite NativeOptionEventAdapterTests PLAIN \
     macos/DoubleOptionStateMachine.swift macos/NativeOptionEventAdapter.swift

@@ -55,6 +55,7 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/NativeOwnerHandoffStatusReader.swift" \
         "$ROOT/macos/NativeOwnerActivationCoordinator.swift" \
         "$ROOT/macos/NativeOptionMonitor.swift" \
+        "$ROOT/macos/NativeTriggerPreflight.swift" \
         "$ROOT/macos/NativeOptionFeature.swift" \
         "$ROOT/macos/NativeAppleTranslationService.swift" \
         "$ROOT/macos/NativeTranslationOverlayModel.swift" \
@@ -63,6 +64,7 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/NativeTranslationOverlayController.swift" \
         "$ROOT/macos/OnboardingPolicy.swift" \
         "$ROOT/macos/WindowFramePolicy.swift" \
+        "$ROOT/macos/AppRefreshPolicy.swift" \
         "$ROOT/macos/JuyiMenuBar.swift"
 done
 lipo -create "$ROOT/build/Juyi-arm64" "$ROOT/build/Juyi-x86_64" -output "$BUILD/Contents/MacOS/Juyi"
