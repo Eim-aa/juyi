@@ -19,7 +19,7 @@ require_macos_15() {
     product_version="$(/usr/bin/sw_vers -productVersion 2>/dev/null || true)"
     major="${product_version%%.*}"
     if [[ ! "$major" =~ ^[0-9]+$ || "$major" -lt 15 ]]; then
-        echo "ERROR: 句译公开版需要 macOS 15.0 或更高版本（当前：${product_version:-未知}）。未构建、退出或替换任何 App；现有 App 与服务已保留。" >&2
+        echo "ERROR: 句译公开版需要 macOS 15.0 或更高版本（当前：${product_version:-未知}）。未构建、退出或替换任何 App；现有 App 已保留。" >&2
         exit 1
     fi
 }

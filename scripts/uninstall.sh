@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
-# Uninstall the launchd service, runtime, logs, and the Hammerspoon hook.
-# Local settings and Juyi's Volcengine Keychain items are removed only after
-# explicit confirmation. Safe to re-run.
+# Uninstall 句译: quit the app, remove its login item, optionally delete its
+# Volcengine Keychain credential, clean up components left by pre-native
+# (build <= 17) installations, and move the app to the Trash. Safe to re-run.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-LABEL="io.github.Eim-aa.argos-translator"
 DOMAIN="gui/$(id -u)"
-PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 CONFIG_DIR="$HOME/.config/argos-translator"
-LOGS="$HOME/Library/Logs"
+LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
+HS_DIR="$HOME/.hammerspoon"
+HS_MODULE="$HS_DIR/argos-translator.lua"
+HS_INIT="$HS_DIR/init.lua"
+BEGIN_MARKER="-- BEGIN argos-translator managed block"
+END_MARKER="-- END argos-translator managed block"
+REQUIRE_LINE='require("argos-translator")'
 APP_BUNDLE_ID="io.github.Eim-aa.Juyi"
 APP_PATH="/Applications/句译.app"
 LEGACY_APP_PATH="$HOME/Applications/句译.app"
 LOGIN_LABEL="io.github.Eim-aa.Juyi.login-item"
-LOGIN_PLIST="$HOME/Library/LaunchAgents/$LOGIN_LABEL.plist"
+LOGIN_PLIST="$LAUNCH_AGENTS/$LOGIN_LABEL.plist"
 LOGIN_EXECUTABLE="$APP_PATH/Contents/MacOS/Juyi"
 KEYCHAIN_SERVICE="io.github.Eim-aa.juyi.volc"
 KEYCHAIN_ACCOUNT="volc"
+# Written only by pre-4A builds; removed together with the active item.
 PENDING_KEYCHAIN_SERVICE="io.github.Eim-aa.juyi.volc.pending"
 PENDING_KEYCHAIN_ACCOUNT="pending"
 credential_cleanup_failed=0
@@ -36,28 +40,29 @@ fallback_login_item_is_owned() {
     fi
 }
 
+# bootout_label <label>: stop a loaded LaunchAgent and confirm it is gone.
+bootout_label() {
+    local target="$DOMAIN/$1"
+    launchctl print "$target" >/dev/null 2>&1 || return 0
+    launchctl bootout "$target" || return 1
+    for _ in $(seq 1 20); do
+        launchctl print "$target" >/dev/null 2>&1 || return 0
+        sleep 0.2
+    done
+    return 1
+}
+
 remove_fallback_login_item() {
-    local target="$DOMAIN/$LOGIN_LABEL"
     if fallback_login_item_is_owned; then
-        if launchctl print "$target" >/dev/null 2>&1; then
-            if ! launchctl bootout "$target"; then
-                warn "could not stop the Juyi fallback login item; kept $LOGIN_PLIST"
-                return 1
-            fi
-            for _ in $(seq 1 20); do
-                launchctl print "$target" >/dev/null 2>&1 || break
-                sleep 0.2
-            done
-            if launchctl print "$target" >/dev/null 2>&1; then
-                warn "the Juyi fallback login item is still loaded; kept $LOGIN_PLIST"
-                return 1
-            fi
+        if ! bootout_label "$LOGIN_LABEL"; then
+            warn "could not stop the Juyi fallback login item; kept $LOGIN_PLIST"
+            return 1
         fi
         rm -f "$LOGIN_PLIST"
         echo "removed owned fallback login item $LOGIN_PLIST"
     elif [[ -L "$LOGIN_PLIST" || -e "$LOGIN_PLIST" ]]; then
         warn "kept $LOGIN_PLIST because its contents do not match Juyi's login item"
-    elif launchctl print "$target" >/dev/null 2>&1; then
+    elif launchctl print "$DOMAIN/$LOGIN_LABEL" >/dev/null 2>&1; then
         warn "a login item named $LOGIN_LABEL is loaded without an owned plist; it was left unchanged"
         return 1
     fi
@@ -205,6 +210,85 @@ delete_keychain_item() {
     echo "removed $description Juyi Volcengine credential from Keychain"
 }
 
+# The early service LaunchAgent (io.github.<user>.argos-translator).
+remove_legacy_launch_agents() {
+    local plist label
+    shopt -s nullglob
+    for plist in "$LAUNCH_AGENTS"/io.github.*.argos-translator.plist; do
+        label="$(basename "$plist" .plist)"
+        if ! bootout_label "$label"; then
+            warn "could not stop $DOMAIN/$label; kept $plist"
+            continue
+        fi
+        rm -f "$plist"
+        echo "removed early service LaunchAgent $plist"
+    done
+    shopt -u nullglob
+}
+
+# Only a symlink whose target is named argos-translator.lua is Juyi's; any
+# other module file or link is left for the user.
+remove_owned_hammerspoon_module() {
+    if [[ -L "$HS_MODULE" ]]; then
+        if [[ "$(basename "$(readlink "$HS_MODULE")")" == "argos-translator.lua" ]]; then
+            rm -f "$HS_MODULE"
+            echo "removed early Hammerspoon module symlink $HS_MODULE"
+            return 0
+        fi
+        warn "kept $HS_MODULE because it does not point to Juyi's early module"
+    elif [[ -e "$HS_MODULE" ]]; then
+        warn "kept $HS_MODULE because it is not a symlink created by Juyi"
+    fi
+    return 1
+}
+
+# Removes exactly one well-formed managed block. A bare legacy require is
+# removed only together with the owned module and only when no block exists;
+# the user's other Hammerspoon configuration is never changed.
+remove_hammerspoon_managed_block() {
+    local remove_bare_require="$1"
+    local file="$HS_INIT"
+    if [[ -L "$HS_INIT" ]]; then
+        # Like the old hook, a symlinked init.lua is edited at its target.
+        file="$(readlink "$HS_INIT")"
+        [[ "$file" = /* ]] || file="$HS_DIR/$file"
+        if [[ -L "$file" ]]; then
+            warn "kept $HS_INIT because it is a chain of symlinks; remove Juyi's block manually"
+            return 0
+        fi
+    fi
+    [[ -f "$file" ]] || return 0
+
+    local begin_count end_count
+    begin_count="$(awk -v m="$BEGIN_MARKER" '$0 == m { n++ } END { print n + 0 }' "$file")"
+    end_count="$(awk -v m="$END_MARKER" '$0 == m { n++ } END { print n + 0 }' "$file")"
+    if [[ "$begin_count" -eq 0 && "$end_count" -eq 0 ]]; then
+        [[ "$remove_bare_require" -eq 1 ]] || return 0
+        grep -qxF "$REQUIRE_LINE" "$file" || return 0
+    elif [[ "$begin_count" -ne 1 || "$end_count" -ne 1 ]] || ! awk -v b="$BEGIN_MARKER" -v e="$END_MARKER" '
+            $0 == b { begin = NR } $0 == e { end = NR } END { exit !(begin < end) }' "$file"; then
+        warn "kept the malformed managed block in $HS_INIT; remove it manually after inspection"
+        return 0
+    else
+        remove_bare_require=0
+    fi
+
+    local tmp
+    tmp="$(mktemp "$(dirname "$file")/.juyi-init.XXXXXX")"
+    if ! cp -p "$file" "$tmp" || ! awk -v b="$BEGIN_MARKER" -v e="$END_MARKER" \
+            -v r="$REQUIRE_LINE" -v bare="$remove_bare_require" '
+            $0 == b { inside = 1; next }
+            $0 == e { inside = 0; next }
+            inside { next }
+            bare == 1 && $0 == r && !done { done = 1; next }
+            { print }' "$file" > "$tmp" || ! mv "$tmp" "$file"; then
+        rm -f "$tmp"
+        warn "could not update $HS_INIT; it was left unchanged"
+        return 0
+    fi
+    echo "removed Juyi's early Hammerspoon configuration from $HS_INIT"
+}
+
 unique_trash_path() {
     local stamp candidate suffix
     stamp="$(date +%Y%m%d-%H%M%S)"
@@ -247,64 +331,17 @@ APPLESCRIPT
     fi
 }
 
-echo "== native login item preflight =="
+echo "== app and login item =="
 quit_running_app
 unregister_service_management_login_item
 remove_fallback_login_item
 
-echo "== launchd =="
-if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
-    if ! launchctl bootout "$DOMAIN/$LABEL"; then
-        warn "could not stop $DOMAIN/$LABEL; nothing was removed"
-        exit 1
-    fi
-    for i in $(seq 1 20); do
-        launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 || break
-        sleep 0.2
-    done
-    if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
-        warn "$DOMAIN/$LABEL is still loaded; nothing was removed"
-        exit 1
-    fi
-    echo "booted out $DOMAIN/$LABEL"
-else
-    echo "service not loaded"
-fi
-
-if [[ -f "$PLIST" ]]; then
-    rm -f "$PLIST"
-    echo "removed $PLIST"
-fi
-
 echo
-echo "== hammerspoon hook =="
-"$ROOT/scripts/hammerspoon_hook.sh" uninstall
-
-echo
-echo "== runtime =="
-rm -rf "$ROOT/venv" "$ROOT/bin" "$ROOT/packages"
-if [[ -L "$ROOT/logs" ]]; then
-    rm -f "$ROOT/logs"
-fi
-echo "removed venv, helper binary, legacy packages dir, logs symlink"
-
-echo
-echo "== logs =="
-rm -f "$LOGS/argos-translator.out.log" \
-      "$LOGS/argos-translator.err.log" \
-      "$LOGS/argos-translator.log" \
-      "$LOGS/argos-translator.log".* \
-      "$LOGS/argos-translator-hs.log" \
-      "$LOGS/argos-translator-hs.log".* \
-      "$LOGS/argos-translator-helper.log"
-echo "removed argos-translator logs"
-
-echo
-echo "== local settings and cloud credentials =="
+echo "== Volcengine credential =="
 active_keychain_state="$(keychain_item_state "$KEYCHAIN_SERVICE" "$KEYCHAIN_ACCOUNT")"
 pending_keychain_state="$(keychain_item_state "$PENDING_KEYCHAIN_SERVICE" "$PENDING_KEYCHAIN_ACCOUNT")"
-if [[ -d "$CONFIG_DIR" || "$active_keychain_state" != "absent" || "$pending_keychain_state" != "absent" ]]; then
-    read -r -p "Delete local settings and Juyi's active/pending Volcengine credentials from Keychain? [y/N] " answer || answer="N"
+if [[ "$active_keychain_state" != "absent" || "$pending_keychain_state" != "absent" ]]; then
+    read -r -p "Delete Juyi's Volcengine access key from Keychain? [y/N] " answer || answer="N"
     case "${answer:-N}" in
         y|Y|yes|YES)
             if [[ "$active_keychain_state" != "absent" ]] && \
@@ -315,15 +352,27 @@ if [[ -d "$CONFIG_DIR" || "$active_keychain_state" != "absent" || "$pending_keyc
                     ! delete_keychain_item "$PENDING_KEYCHAIN_SERVICE" "$PENDING_KEYCHAIN_ACCOUNT" "pending"; then
                 credential_cleanup_failed=1
             fi
-            if [[ -d "$CONFIG_DIR" ]]; then
-                rm -rf "$CONFIG_DIR"
-                echo "removed $CONFIG_DIR"
-            fi
             ;;
         *)
-            echo "kept local settings and Juyi's Keychain credentials"
+            echo "kept Juyi's Volcengine credential in Keychain"
             ;;
     esac
+else
+    echo "no Juyi Volcengine credential in Keychain"
+fi
+
+echo
+echo "== early components =="
+remove_legacy_launch_agents
+owned_module=0
+if remove_owned_hammerspoon_module; then owned_module=1; fi
+remove_hammerspoon_managed_block "$owned_module"
+if [[ -d "$CONFIG_DIR" && ! -L "$CONFIG_DIR" ]]; then
+    rm -rf "$CONFIG_DIR"
+    echo "removed $CONFIG_DIR"
+fi
+if [[ "$owned_module" -eq 1 ]] && /usr/bin/pgrep -x Hammerspoon >/dev/null 2>&1; then
+    echo "Hammerspoon is running: quit and reopen it so it forgets the removed module."
 fi
 
 echo
@@ -332,10 +381,9 @@ move_owned_app_to_trash "$APP_PATH"
 move_owned_app_to_trash "$LEGACY_APP_PATH"
 
 echo
-echo "done. Remaining manual steps for a full wipe:"
-echo "  rm -rf \"$ROOT\"                      # this checkout"
-echo "  brew uninstall --cask hammerspoon    # only if nothing else uses it"
+echo "done. App preferences (UserDefaults domain $APP_BUNDLE_ID) can be removed with:"
+echo "  defaults delete $APP_BUNDLE_ID"
 if [[ "$credential_cleanup_failed" -ne 0 ]]; then
-    warn "uninstall finished, but one or more requested Keychain credentials could not be confirmed removed"
+    warn "uninstall finished, but the requested Keychain credential could not be confirmed removed"
     exit 1
 fi

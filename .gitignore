@@ -6,13 +6,9 @@ __pycache__/
 venv/
 .venv/
 
-# Legacy Argos model packages from pre-apple-engine installs
+# Leftovers of pre-native source checkouts (removed service, helper, logs)
 packages/
-
-# Compiled Swift helper for the apple engine (source: apple/TranslationHelper.swift)
 bin/
-
-# Local symlink to ~/Library/Logs
 logs
 
 # macOS
