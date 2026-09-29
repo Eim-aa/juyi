@@ -15,36 +15,8 @@ enum AppRefreshPolicyTests {
     private static let appleOnlyIdle = AppRefreshContext(
         cloudSetupVisible: false,
         diagnosticsVisible: false,
-        launchAgentInstalled: false,
         applicationActive: false
     )
-
-    private static func testServiceProbeIsLimitedToTheCloudPath() {
-        expect(
-            !AppRefreshPolicy.shouldProbeService(appleOnlyIdle),
-            "an Apple-only installation never probes the absent loopback service"
-        )
-        var active = appleOnlyIdle
-        active.applicationActive = true
-        expect(
-            !AppRefreshPolicy.shouldProbeService(active),
-            "bringing the app forward alone does not start HTTP probes"
-        )
-        // The native cloud engine needs no loopback service: the idle context
-        // is identical for both engines and never probes.
-        var setup = appleOnlyIdle
-        setup.cloudSetupVisible = true
-        expect(AppRefreshPolicy.shouldProbeService(setup), "cloud setup needs /health")
-        var diagnostics = appleOnlyIdle
-        diagnostics.diagnosticsVisible = true
-        expect(AppRefreshPolicy.shouldProbeService(diagnostics), "diagnostics show service state")
-        var legacy = appleOnlyIdle
-        legacy.launchAgentInstalled = true
-        expect(
-            AppRefreshPolicy.shouldProbeService(legacy),
-            "an installed LaunchAgent keeps service monitoring"
-        )
-    }
 
     private static func testIdleCadenceAndRecovery() {
         expect(
@@ -60,12 +32,6 @@ enum AppRefreshPolicyTests {
         var cloudSheet = appleOnlyIdle
         cloudSheet.cloudSetupVisible = true
         expect(AppRefreshPolicy.interval(cloudSheet) == 2.5, "cloud setup restores 2.5 s")
-        var legacyOnly = appleOnlyIdle
-        legacyOnly.launchAgentInstalled = true
-        expect(
-            AppRefreshPolicy.interval(legacyOnly) == 10,
-            "an installed service alone does not force the active cadence"
-        )
     }
 
     private static func snapshot(
@@ -118,7 +84,6 @@ enum AppRefreshPolicyTests {
     }
 
     static func main() {
-        testServiceProbeIsLimitedToTheCloudPath()
         testIdleCadenceAndRecovery()
         testMenuRebuildsOnlyWhenTheSnapshotChanges()
         testSingleChangeCountsOneRebuild()

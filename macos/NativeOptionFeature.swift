@@ -18,19 +18,29 @@ enum NativeTranslationEngineChoice: String, Equatable, Sendable {
 }
 
 /// The single production owner for native selection translation (Apple
-/// on-device or Volcengine cloud). Clean installations use the native chain
-/// without a companion app. Existing legacy installations must still complete
-/// the unchanged owner handshake.
+/// on-device or Volcengine cloud). Components left by pre-native installations
+/// keep the chain disabled until the user removes them (fail-closed), so one
+/// double-Option press can never be translated by two paths.
 @MainActor
 final class NativeProductionTranslationCoordinator: ObservableObject {
     enum Phase: Equatable {
         case disabled
         case requestingAccessibility
-        case waitingForHammerspoon
+        case legacyComponentsDetected
         case active
         case languagePackRequired
         case unsupported
         case unavailable
+    }
+
+    enum DeactivationReason: Equatable {
+        case user
+        case pause
+        case stop
+        case sleep
+        case sessionResigned
+        case terminate
+        case authorizationRevoked
     }
 
     static let shared = NativeProductionTranslationCoordinator()
@@ -38,32 +48,27 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     @Published private(set) var phase: Phase = .disabled
     @Published private(set) var detail = "原生双 Option 尚未启用。"
     @Published private(set) var isPreparingLanguages = false
-    @Published private(set) var recoveryPauseHeld = false
     @Published private(set) var engine: NativeTranslationEngineChoice = .apple
     /// Volcengine is selected but no credential could be read from Keychain.
     @Published private(set) var cloudCredentialRequired = false
-
-    /// Writes the existing hs-paused switch through AppModel, which owns its
-    /// user-visible state. No new owner file or protocol is introduced.
-    var legacyRecoveryPauseHandler: ((Bool) -> Bool)?
+    /// Early components were detected; the chain stays off until removal.
+    @Published private(set) var legacyComponentsBlocking = false
 
     private static let enabledKey = "nativeAppleDoubleOptionEnabled"
-    private static let ownerPollInterval: TimeInterval = 0.2
     private static let translationTimeout: Duration = .seconds(12)
+    static let legacyComponentsDetail = "检测到早期版本留下的组件；移除前不会启用原生双 Option。"
 
-    private let effect = NativeProductionOwnerEffect()
-    private let statusReader: NativeOwnerHandoffStatusReader?
-    private let activation: NativeOwnerActivationCoordinator?
     private let capture = NativeSelectionCaptureCoordinator()
     private let apple = NativeAppleProductionTranslationService.shared
     private let volc = VolcTranslationEngine.shared
     private let overlay = NativeTranslationOverlayController.shared
 
     private var monitor: NativeOptionMonitor?
-    private var ownerTimer: Timer?
-    private var ownerStartedAt: TimeInterval?
     private var enableInProgress = false
     private var pendingUserEnable = false
+    /// A stop found a selection capture still running (it may be restoring
+    /// the WPS clipboard). Nothing restarts until it has quiesced.
+    private var awaitingCaptureStop = false
     private var resumeRequestedAfterRevocation = false
     private var appleReadinessIssue: NativeAppleProductionReadiness?
     private var pendingLanguagePreparation = false
@@ -73,57 +78,18 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     )?
     private var lifecycleGeneration: UInt64 = 0
     private var isPaused = false
-    private var shortcutDeploymentReady = false
-    private var nativeOnlySession = false
     private var preflight = NativeTriggerPreflight()
-    private var legacyLaunchObservation: NSObjectProtocol?
-    private var legacyTerminateObservation: NSObjectProtocol?
-
-    static var requiresLegacyHandoff: Bool {
-        !NSRunningApplication.runningApplications(
-            withBundleIdentifier: "org.hammerspoon.Hammerspoon"
-        ).isEmpty || NativeOwnerHandoffStatusReader.legacyArtifactsMayExist(
-            homePath: FileManager.default.homeDirectoryForCurrentUser.path
-        )
-    }
-
-    private var nativeActivationReady: Bool {
-        shortcutDeploymentReady || !Self.requiresLegacyHandoff
-    }
     private var lifecycleActivationAllowed = false
     private var pipelineGeneration: UInt64 = 0
     private var overlayGeneration: Int?
     private var translationTask: Task<Void, Never>?
     private var timeoutTask: Task<Void, Never>?
 
-    private init() {
-        if let store = NativeOwnerHandoffStore.live(),
-           let reader = NativeOwnerHandoffStatusReader.live() {
-            activation = NativeOwnerActivationCoordinator(
-                workflow: NativeOwnerHandoffWorkflow(store: store),
-                effect: effect
-            )
-            statusReader = reader
-        } else {
-            activation = nil
-            statusReader = nil
-        }
+    private init() {}
 
-        effect.startHandler = { [weak self] in self?.startNativeEffect() ?? .notStarted }
-        effect.stopHandler = { [weak self] in self?.stopNativeEffect() ?? .stopped }
-        let workspaceCenter = NSWorkspace.shared.notificationCenter
-        legacyLaunchObservation = workspaceCenter.addObserver(
-            forName: NSWorkspace.didLaunchApplicationNotification,
-            object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.legacyEnvironmentMayHaveChanged() }
-        }
-        legacyTerminateObservation = workspaceCenter.addObserver(
-            forName: NSWorkspace.didTerminateApplicationNotification,
-            object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.legacyEnvironmentMayHaveChanged() }
-        }
+    /// Activation needs a live session and no early components.
+    private var activationAllowed: Bool {
+        lifecycleActivationAllowed && !legacyComponentsBlocking
     }
 
     var isEnabled: Bool { phase == .active }
@@ -131,7 +97,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     var actionTitle: String {
         switch phase {
         case .active: return "停用原生双 Option"
-        case .requestingAccessibility, .waitingForHammerspoon: return "正在启用…"
+        case .requestingAccessibility: return "正在启用…"
         default: return "启用原生双 Option"
         }
     }
@@ -139,18 +105,17 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     var actionIsEnabled: Bool {
         !enableInProgress
             && !isPreparingLanguages
+            && !legacyComponentsBlocking
             && phase != .requestingAccessibility
-            && phase != .waitingForHammerspoon
     }
 
     func enableByUser() {
-        guard nativeActivationReady else {
-            phase = .unavailable
-            detail = "请先部署并重新载入当前快捷键模块。"
+        guard !legacyComponentsBlocking else {
+            showLegacyComponentsState()
             return
         }
         guard actionIsEnabled, !isPaused else { return }
-        if phase != .active, activation?.phase == .nativeActive {
+        if phase != .active, monitor != nil {
             retryByUser()
             return
         }
@@ -170,16 +135,10 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     }
 
     /// A diagnostic retry is an explicit request to restart, never the
-    /// enable/disable toggle. An uncertain capture stop retains the owner
-    /// lease until `finishDeferredRevocation` can safely resume this request.
+    /// enable/disable toggle. An uncertain capture stop defers the restart
+    /// until `finishDeferredRevocation` confirms the capture has quiesced.
     func retryByUser() {
         guard actionIsEnabled, !isPaused else { return }
-        guard nativeActivationReady else {
-            phase = .unavailable
-            detail = "请先部署并重新载入当前快捷键模块。"
-            return
-        }
-        guard holdLegacyPauseForRecovery() else { return }
         pendingUserEnable = true
         UserDefaults.standard.set(true, forKey: Self.enabledKey)
         disable(reason: .stop, preservePreference: true)
@@ -187,69 +146,59 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         resumeIfEnabled()
     }
 
-    /// Transfer an existing user pause to Apple recovery without opening a
-    /// 1→0→1 legacy-watcher window. AppModel keeps hs-paused at 1 until the
-    /// normal fresh owner acknowledgement has activated native translation.
-    func resumeAppleRecoveryByUser() -> Bool {
-        guard isPaused, engine == .apple,
-              appleReadinessIssue != nil, actionIsEnabled else { return false }
-        recoveryPauseHeld = true
-        isPaused = false
-        overlay.setPaused(false)
-        retryByUser()
-        return true
-    }
-
     func resumeIfEnabled() {
         guard !isPreparingLanguages, appleReadinessIssue == nil else { return }
-        if activation?.phase == .idle || activation?.phase == .recoveryRequired {
-            activation?.recoverAndReturnToLegacy()
-        }
-        guard nativeActivationReady else {
-            if phase != .disabled {
-                phase = .disabled
-                detail = "快捷键模块需要更新后才能恢复原生双 Option。"
-            }
-            return
-        }
-        guard lifecycleActivationAllowed else { return }
-        guard UserDefaults.standard.bool(forKey: Self.enabledKey) else {
-            if activation?.phase == .returnedToLegacy {
-                phase = .disabled
-                detail = "原生双 Option 已停用。"
-            }
-            return
-        }
+        guard activationAllowed else { return }
+        guard UserDefaults.standard.bool(forKey: Self.enabledKey) else { return }
         guard !isPaused else { return }
-        if activation?.phase == .revocationRequired {
+        if awaitingCaptureStop {
             resumeRequestedAfterRevocation = true
             return
         }
         guard !enableInProgress,
               phase != .active,
-              phase != .requestingAccessibility,
-              phase != .waitingForHammerspoon else { return }
+              phase != .requestingAccessibility else { return }
         resumeRequestedAfterRevocation = false
         Task { await enable(promptForAccessibility: false) }
     }
 
-    func setShortcutDeploymentReady(_ ready: Bool) {
-        guard shortcutDeploymentReady != ready else { return }
-        shortcutDeploymentReady = ready
-        if !ready && Self.requiresLegacyHandoff {
-            pendingUserEnable = false
-            disable(reason: .stop, preservePreference: true)
-        }
-    }
-
     func setLifecycleActivationAllowed(
         _ allowed: Bool,
-        reason: NativeOwnerActivationCoordinator.DeactivationReason? = nil
+        reason: DeactivationReason? = nil
     ) {
         lifecycleActivationAllowed = allowed
         if !allowed, let reason {
             invalidate(reason)
         }
+    }
+
+    /// Fail-closed gate fed by AppModel's legacy detection at launch, before
+    /// every explicit enable and on each refresh. Detection stops a running
+    /// chain; after removal the saved or pending enable continues.
+    func setLegacyComponentsDetected(_ detected: Bool) {
+        guard legacyComponentsBlocking != detected else { return }
+        legacyComponentsBlocking = detected
+        if detected {
+            disable(reason: .stop, preservePreference: true)
+            showLegacyComponentsState()
+            return
+        }
+        if phase == .legacyComponentsDetected {
+            phase = .disabled
+            detail = "早期组件已移除；可以启用原生双 Option。"
+        }
+        if pendingUserEnable, lifecycleActivationAllowed, !enableInProgress,
+           !isPaused, !awaitingCaptureStop {
+            Task { await enable(promptForAccessibility: false) }
+        } else {
+            resumeIfEnabled()
+        }
+    }
+
+    private func showLegacyComponentsState() {
+        guard !awaitingCaptureStop else { return }
+        phase = .legacyComponentsDetected
+        detail = Self.legacyComponentsDetail
     }
 
     static let cloudCredentialDetail = "请先配置火山密钥：在句译的“翻译方式”中打开火山云端设置并保存访问密钥。"
@@ -276,7 +225,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         case .volc:
             clearAppleOnlyState()
         }
-        if phase == .active || phase == .waitingForHammerspoon {
+        if phase == .active {
             if choice == .volc { verifyCloudCredentialWhileRunning() }
         } else {
             resumeIfEnabled()
@@ -325,7 +274,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         Task {
             let available = await volc.hasCredentials()
             guard !available, generation == lifecycleGeneration, engine == .volc,
-                  phase == .active || phase == .waitingForHammerspoon else { return }
+                  phase == .active else { return }
             requireCloudCredential()
         }
     }
@@ -341,10 +290,9 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     func prepareLanguages() {
         guard !isPreparingLanguages, !enableInProgress,
               !isPaused, engine == .apple,
-              lifecycleActivationAllowed else { return }
+              activationAllowed else { return }
         let shouldResume = pendingUserEnable || isEnabled
             || UserDefaults.standard.bool(forKey: Self.enabledKey)
-        guard holdLegacyPauseForRecovery() else { return }
         disable(reason: .stop, preservePreference: true)
         if shouldResume {
             pendingUserEnable = true
@@ -361,13 +309,11 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         guard pendingLanguagePreparation, isPreparingLanguages,
               !isPaused, engine == .apple,
               lifecycleActivationAllowed else { return }
-        guard activation?.phase != .revocationRequired else {
+        guard !awaitingCaptureStop else {
             detail = "正在安全停止取词，随后准备中英语言包…"
             return
         }
-        guard activation?.phase != .recoveryRequired,
-              activation?.holdsOwnerLease != true,
-              monitor == nil else {
+        guard monitor == nil else {
             pendingLanguagePreparation = false
             isPreparingLanguages = false
             phase = .unavailable
@@ -407,24 +353,16 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
     }
 
-    func setPaused(_ paused: Bool, byUser: Bool = false) {
-        if byUser {
-            // A user's pause (including Quit) takes ownership of the existing
-            // pause file. This operation must never later clear it.
-            recoveryPauseHeld = false
-        } else if recoveryPauseHeld && paused {
-            return
-        } else if recoveryPauseHeld {
-            // An external change to the pause switch cancels this operation.
-            recoveryPauseHeld = false
-            disable(reason: .user)
-        }
+    /// The pause switch is owned by AppModel (UserDefaults); quitting writes
+    /// a pause, so a relaunch waits for an explicit "恢复翻译".
+    func setPaused(_ paused: Bool) {
         isPaused = paused
         if paused {
             disable(reason: .pause, preservePreference: true)
         } else {
-            if let issue = appleReadinessIssue {
-                guard holdLegacyPauseForRecovery() else { return }
+            if legacyComponentsBlocking {
+                showLegacyComponentsState()
+            } else if let issue = appleReadinessIssue {
                 phase = issue == .unsupported ? .unsupported
                     : (issue == .needsPreparation ? .languagePackRequired : .unavailable)
                 detail = "Apple 离线翻译尚未准备好，请重新检查或准备语言包。"
@@ -432,23 +370,6 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             resumeIfEnabled()
         }
         overlay.setPaused(paused)
-    }
-
-    private func holdLegacyPauseForRecovery() -> Bool {
-        if recoveryPauseHeld { return true }
-        guard !isPaused else { return false }
-        recoveryPauseHeld = true
-        guard legacyRecoveryPauseHandler?(true) == true else {
-            recoveryPauseHeld = false
-            // Without a durable pause, do not return the owner request: the
-            // old watcher could otherwise restart. Keep the conservative
-            // activation lease while stopping this process's effect.
-            _ = stopNativeEffect()
-            phase = .unavailable
-            detail = "无法安全暂停旧快捷键。原生取词已停止，请检查配置目录后重试。"
-            return false
-        }
-        return true
     }
 
     func applicationBecameActive() {
@@ -472,31 +393,25 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
         guard monitor?.refreshAuthorizationStatus() == true else {
             // A delayed delivery may have removed the monitor while trust was
-            // absent. Use the existing pause/owner restart even if trust was
+            // absent. Restart through the diagnostic retry even if trust was
             // restored before this activation; never keep a false ready state.
             retryByUser()
             return
         }
     }
 
-    func invalidate(_ reason: NativeOwnerActivationCoordinator.DeactivationReason) {
+    func invalidate(_ reason: DeactivationReason) {
         disable(reason: reason, preservePreference: reason != .user)
     }
 
     private func enable(promptForAccessibility: Bool) async {
         guard !enableInProgress, !isPreparingLanguages,
               appleReadinessIssue == nil, !isPaused,
-              nativeActivationReady,
-              lifecycleActivationAllowed else { return }
+              activationAllowed else { return }
         enableInProgress = true
         let generation = lifecycleGeneration
         defer { enableInProgress = false }
-        guard let activation, statusReader != nil else {
-            phase = .unavailable
-            detail = "无法建立原生快捷键的独占状态，请检查配置目录后重试。"
-            return
-        }
-        guard activation.phase != .revocationRequired else {
+        guard !awaitingCaptureStop else {
             resumeRequestedAfterRevocation = true
             UserDefaults.standard.set(true, forKey: Self.enabledKey)
             detail = "正在安全停止上一次取词，随后重新启用…"
@@ -516,42 +431,22 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
         guard generation == lifecycleGeneration,
               !isPaused,
-              nativeActivationReady,
-              lifecycleActivationAllowed else { return }
+              activationAllowed else { return }
         guard await selectedEngineIsReady(generation: generation) else { return }
 
         guard generation == lifecycleGeneration,
               !isPaused,
-              nativeActivationReady,
-              lifecycleActivationAllowed else { return }
-
-        if activation.phase == .recoveryRequired {
-            activation.recoverAndReturnToLegacy()
-        }
-        // Cache the legacy-environment answer for the trigger path; workspace
-        // launch/terminate notifications refresh it while this session lasts.
-        let legacyHandoffRequired = Self.requiresLegacyHandoff
-        preflight.recordLegacyEnvironment(handoffRequired: legacyHandoffRequired)
-        nativeOnlySession = !legacyHandoffRequired
-        activation.beginHandoff(requiresLegacyAcknowledgement: !nativeOnlySession)
-        if activation.phase == .recoveryRequired {
-            activation.recoverAndReturnToLegacy()
-            if activation.phase == .returnedToLegacy {
-                activation.beginHandoff(requiresLegacyAcknowledgement: !nativeOnlySession)
-            }
-        }
-        if activation.phase == .readyToActivate {
-            completeOwnerActivation()
+              activationAllowed,
+              !awaitingCaptureStop else { return }
+        guard startNativeEffect() else {
+            phase = .unavailable
+            detail = "原生快捷键没有启动。"
             return
         }
-        guard activation.phase == .waitingForLegacy else {
-            syncOwnerFailure()
-            return
-        }
-        phase = .waitingForHammerspoon
-        detail = "正在让 Hammerspoon 停止旧快捷键、请求和浮窗…"
-        ownerStartedAt = ProcessInfo.processInfo.systemUptime
-        pollOwner()
+        pendingUserEnable = false
+        UserDefaults.standard.set(true, forKey: Self.enabledKey)
+        phase = .active
+        detail = "已启用：选中英文后连按两次 Option。"
     }
 
     /// The enable condition of the selected engine: Apple needs its language
@@ -565,27 +460,23 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             case .apple:
                 let readiness = await apple.readiness()
                 guard generation == lifecycleGeneration,
-                      !isPaused,
-                      nativeActivationReady, lifecycleActivationAllowed else { return false }
+                      !isPaused, activationAllowed else { return false }
                 guard engine == checked else { continue }
                 switch readiness {
                 case .installed:
                     preflight.recordAppleReadiness(installed: true)
                     return true
                 case .needsPreparation:
-                    guard holdLegacyPauseForRecovery() else { return false }
                     appleReadinessIssue = .needsPreparation
                     phase = .languagePackRequired
                     detail = "需要先准备 Apple 英语到简体中文语言包。"
                     return false
                 case .unsupported:
-                    guard holdLegacyPauseForRecovery() else { return false }
                     appleReadinessIssue = .unsupported
                     phase = .unsupported
                     detail = "这台 Mac 不支持英语到简体中文的 Apple Translation。"
                     return false
                 case .unavailable:
-                    guard holdLegacyPauseForRecovery() else { return false }
                     appleReadinessIssue = .unavailable
                     phase = .unavailable
                     detail = "暂时无法检查 Apple Translation。"
@@ -594,8 +485,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             case .volc:
                 let available = await volc.hasCredentials()
                 guard generation == lifecycleGeneration,
-                      !isPaused,
-                      nativeActivationReady, lifecycleActivationAllowed else { return false }
+                      !isPaused, activationAllowed else { return false }
                 guard engine == checked else { continue }
                 guard available else {
                     cloudCredentialRequired = true
@@ -609,101 +499,8 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
     }
 
-    private func pollOwner() {
-        guard let activation, let statusReader,
-              activation.phase == .waitingForLegacy,
-              let ownerStartedAt else { return }
-        if ProcessInfo.processInfo.systemUptime - ownerStartedAt
-            >= NativeOwnerHandoffWorkflow.acknowledgementDeadline {
-            activation.handoffTimedOut()
-            stopOwnerPolling()
-            syncOwnerFailure()
-            return
-        }
-        switch statusReader.read() {
-        case .absent:
-            activation.ingestLegacyStatus(nil, now: Date().timeIntervalSince1970)
-        case let .present(data):
-            activation.ingestLegacyStatus(data, now: Date().timeIntervalSince1970)
-        case .unavailable:
-            activation.statusBecameUnavailable()
-        }
-        if activation.phase == .readyToActivate {
-            completeOwnerActivation()
-            return
-        }
-        guard activation.phase == .waitingForLegacy else {
-            stopOwnerPolling()
-            syncOwnerFailure()
-            return
-        }
-        ownerTimer?.invalidate()
-        ownerTimer = Timer.scheduledTimer(
-            withTimeInterval: Self.ownerPollInterval,
-            repeats: false
-        ) { [weak self] _ in
-            Task { @MainActor in self?.pollOwner() }
-        }
-    }
-
-    private func completeOwnerActivation() {
-        guard let activation else { return }
-        activation.activate()
-        stopOwnerPolling()
-        guard activation.phase == .nativeActive else { syncOwnerFailure(); return }
-        if recoveryPauseHeld {
-            guard legacyRecoveryPauseHandler?(false) == true else {
-                _ = stopNativeEffect()
-                phase = .unavailable
-                detail = "翻译已准备好，但无法恢复快捷键状态，请重新检查。"
-                return
-            }
-            recoveryPauseHeld = false
-        }
-        pendingUserEnable = false
-        UserDefaults.standard.set(true, forKey: Self.enabledKey)
-        phase = .active
-        detail = "已启用：选中英文后连按两次 Option。"
-    }
-
-    private func legacyEnvironmentMayHaveChanged() {
-        guard NativeTriggerPreflight.shouldProbeLegacyEnvironment(
-            nativeOnlySession: nativeOnlySession
-        ) else { return }
-        preflight.recordLegacyEnvironment(
-            handoffRequired: Self.requiresLegacyHandoff
-        )
-        nativeOnlyEnvironmentIsCurrent()
-    }
-
-    /// Reads only the cached answer, so a trigger never probes the file
-    /// system or the running-application list.
-    @discardableResult private func nativeOnlyEnvironmentIsCurrent() -> Bool {
-        guard preflight.decision(nativeOnlySession: nativeOnlySession)
-            == .legacyHandoffRequired else { return true }
-        disable(reason: .stop, preservePreference: true)
-        phase = .unavailable
-        detail = "检测到早期快捷键组件。请点击重新启用，句译会先处理快捷键交接。"
-        return false
-    }
-
-    private func syncOwnerFailure() {
-        phase = .unavailable
-        switch activation?.phase {
-        case .busy:
-            detail = "另一个句译进程正在使用原生快捷键。"
-        case .recoveryRequired:
-            detail = "发现未完成的 owner 交接；原生快捷键保持关闭。"
-        default:
-            detail = Self.requiresLegacyHandoff
-                ? "Hammerspoon 未能安全让出；原生快捷键没有启动。"
-                : "原生快捷键没有启动。"
-        }
-    }
-
-    private func startNativeEffect() -> NativeOwnerActivationCoordinator.StartResult {
-        guard !nativeOnlySession || !Self.requiresLegacyHandoff else { return .notStarted }
-        guard monitor == nil else { return .started }
+    private func startNativeEffect() -> Bool {
+        guard monitor == nil else { return true }
         let candidate = NativeOptionMonitor(
             recognitionInvalidationHandler: { [weak self] in
                 self?.cancelPipeline(dismissOverlay: true)
@@ -715,14 +512,16 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         switch candidate.start() {
         case .started, .alreadyRunning:
             monitor = candidate
-            return .started
+            return true
         case .accessibilityRequired, .monitorUnavailable:
             candidate.stop()
-            return .notStarted
+            return false
         }
     }
 
-    private func stopNativeEffect() -> NativeOwnerActivationCoordinator.StopResult {
+    /// Returns whether the selection capture has quiesced. Otherwise the
+    /// capture's completion calls `finishDeferredRevocation`.
+    private func stopNativeEffect() -> Bool {
         monitor?.stop()
         monitor = nil
         cancelPipeline(dismissOverlay: true)
@@ -731,18 +530,22 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
         apple.cancelCurrent()
         volc.cancelCurrent()
-        return captureIsQuiescent ? .stopped : .uncertain
+        return captureIsQuiescent
     }
 
     private func finishDeferredRevocation() {
-        activation?.retryRevocation()
-        guard activation?.phase == .returnedToLegacy else { return }
+        guard awaitingCaptureStop else { return }
+        awaitingCaptureStop = false
         if pendingLanguagePreparation {
             beginLanguagePreparationIfQuiescent()
             return
         }
         if appleReadinessIssue != nil {
             presentPendingAppleFailure()
+            return
+        }
+        if legacyComponentsBlocking {
+            showLegacyComponentsState()
             return
         }
         if cloudCredentialRequired {
@@ -753,8 +556,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         let shouldResume = resumeRequestedAfterRevocation
             && UserDefaults.standard.bool(forKey: Self.enabledKey)
             && !isPaused
-            && nativeActivationReady
-            && lifecycleActivationAllowed
+            && activationAllowed
         resumeRequestedAfterRevocation = false
         phase = .disabled
         if shouldResume {
@@ -763,7 +565,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             return
         }
         if isPaused {
-            detail = "原生双 Option 已暂停；恢复后会重新安全交接。"
+            detail = "原生双 Option 已暂停。"
         } else if UserDefaults.standard.bool(forKey: Self.enabledKey) {
             detail = "原生双 Option 已安全停止；系统恢复后会重新启用。"
         } else {
@@ -772,7 +574,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     }
 
     private func disable(
-        reason: NativeOwnerActivationCoordinator.DeactivationReason,
+        reason: DeactivationReason,
         preservePreference: Bool = false
     ) {
         lifecycleGeneration &+= 1
@@ -783,48 +585,31 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             isPreparingLanguages = false
             apple.cancelCurrent()
         }
-        stopOwnerPolling()
-        activation?.deactivate(reason)
-        nativeOnlySession = false
+        if !stopNativeEffect() { awaitingCaptureStop = true }
         // Pause, sleep, session changes, permission loss, language
-        // preparation and failures all pass through here.
+        // preparation, early components and failures all pass through here.
         preflight.reset()
-        // A terminal error panel may outlive an already-stopped owner. Close
-        // it before a new preparation/retry so its dismissal cannot cancel
-        // the replacement Apple request.
-        cancelPipeline(dismissOverlay: true)
-        if activation?.phase == .recoveryRequired {
-            activation?.recoverAndReturnToLegacy()
-        }
         if !preservePreference {
             UserDefaults.standard.set(false, forKey: Self.enabledKey)
             pendingUserEnable = false
             appleReadinessIssue = nil
             cloudCredentialRequired = false
         }
-        if activation?.phase == .recoveryRequired ||
-            activation?.phase == .revocationRequired {
+        if awaitingCaptureStop {
             phase = .unavailable
-            detail = Self.requiresLegacyHandoff
-                ? "原生快捷键已停止，但暂时无法确认 Hammerspoon 已恢复。请保持句译运行并重试。"
-                : "原生快捷键已停止。请保持句译运行并重试。"
+            detail = "原生快捷键已停止，正在等待上一次取词结束。请保持句译运行。"
+        } else if legacyComponentsBlocking {
+            showLegacyComponentsState()
         } else if phase != .unavailable {
             phase = .disabled
             detail = preservePreference
-                ? "原生双 Option 已暂停；恢复后会重新安全交接。"
+                ? "原生双 Option 已暂停；恢复后会重新启用。"
                 : "原生双 Option 已停用。"
         }
     }
 
-    private func stopOwnerPolling() {
-        ownerTimer?.invalidate()
-        ownerTimer = nil
-        ownerStartedAt = nil
-    }
-
     private func beginPipeline(target: NativeSelectionTarget) {
-        guard nativeOnlyEnvironmentIsCurrent() else { return }
-        guard phase == .active, !isPreparingLanguages,
+        guard phase == .active, !legacyComponentsBlocking, !isPreparingLanguages,
               appleReadinessIssue == nil else { return }
         cancelPipeline(dismissOverlay: true)
         pipelineGeneration &+= 1
@@ -833,9 +618,8 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         // After a successful check, go straight to capture: no system API is
         // awaited between recognition and `capture.capture`. The cloud engine
         // has no Apple readiness precondition.
-        let needsReadinessCheck = requestedEngine == .apple && preflight.decision(
-            nativeOnlySession: nativeOnlySession
-        ) == .checkAppleReadiness
+        let needsReadinessCheck = requestedEngine == .apple
+            && preflight.decision == .checkAppleReadiness
         translationTask = Task { [weak self] in
             guard let self else { return }
             if needsReadinessCheck {
@@ -872,7 +656,6 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         target: NativeSelectionTarget,
         readiness: NativeAppleProductionReadiness
     ) {
-        guard holdLegacyPauseForRecovery() else { return }
         disable(reason: .stop, preservePreference: true)
         appleReadinessIssue = readiness
         let error: NativeTranslationOverlayBackendError
@@ -895,8 +678,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     }
 
     private func presentPendingAppleFailure() {
-        guard activation?.phase != .revocationRequired,
-              activation?.phase != .recoveryRequired,
+        guard !awaitingCaptureStop,
               let failure = pendingAppleFailure,
               !isPaused, engine == .apple, lifecycleActivationAllowed else { return }
         pendingAppleFailure = nil
@@ -1135,19 +917,5 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             x: point.x,
             y: primaryScreen.frame.maxY - point.y
         )
-    }
-}
-
-@MainActor
-private final class NativeProductionOwnerEffect: NativeOwnerActivatingEffect {
-    var startHandler: (() -> NativeOwnerActivationCoordinator.StartResult)?
-    var stopHandler: (() -> NativeOwnerActivationCoordinator.StopResult)?
-
-    func start() -> NativeOwnerActivationCoordinator.StartResult {
-        startHandler?() ?? .notStarted
-    }
-
-    func stop() -> NativeOwnerActivationCoordinator.StopResult {
-        stopHandler?() ?? .stopped
     }
 }

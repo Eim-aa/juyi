@@ -10,10 +10,7 @@
 		A00000000000000000000031 /* JuyiMenuBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000021 /* JuyiMenuBar.swift */; };
 		A00000000000000000000032 /* OnboardingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000022 /* OnboardingPolicy.swift */; };
 		A00000000000000000000033 /* WindowFramePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000023 /* WindowFramePolicy.swift */; };
-		A00000000000000000000034 /* TranslationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000027 /* TranslationHelper.swift */; };
 		A00000000000000000000035 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002C /* Assets.xcassets */; };
-		B00000000000000000000003 /* argos-translator.lua in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000001 /* argos-translator.lua */; };
-		B00000000000000000000004 /* hammerspoon_hook.sh in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000002 /* hammerspoon_hook.sh */; };
 		A00000000000000000000036 /* AccessibilityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002D /* AccessibilityController.swift */; };
 		A00000000000000000000037 /* DoubleOptionStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002E /* DoubleOptionStateMachine.swift */; };
 		A00000000000000000000038 /* NativeOptionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002F /* NativeOptionMonitor.swift */; };
@@ -22,8 +19,6 @@
 		A00000000000000000000052 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000042 /* ServiceManagement.framework */; };
 		A00000000000000000000053 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000043 /* SwiftUI.framework */; };
 		A00000000000000000000054 /* CryptoKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000044 /* CryptoKit.framework */; };
-		A00000000000000000000055 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000041 /* AppKit.framework */; };
-		A00000000000000000000056 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000043 /* SwiftUI.framework */; };
 		A00000000000000000000057 /* Translation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000045 /* Translation.framework */; };
 		A00000000000000000000058 /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000046 /* ApplicationServices.framework */; };
 		A00000000000000000000059 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000047 /* CoreGraphics.framework */; };
@@ -36,21 +31,16 @@
 		A00000000000000000000073 /* NativeTranslationOverlayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000069 /* NativeTranslationOverlayController.swift */; };
 		A00000000000000000000075 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000074 /* QuartzCore.framework */; };
 		A0000000000000000000007F /* NativeAppleTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000007D /* NativeAppleTranslationService.swift */; };
-		A0000000000000000000009F /* NativeOwnerHandoffProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000009E /* NativeOwnerHandoffProtocol.swift */; };
-		A000000000000000000000A1 /* NativeOwnerHandoffStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A0 /* NativeOwnerHandoffStore.swift */; };
-		A000000000000000000000A3 /* NativeOwnerHandoffWorkflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */; };
-		A000000000000000000000A5 /* NativeOwnerHandoffStatusReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */; };
-		A000000000000000000000AB /* NativeOwnerActivationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */; };
 		A000000000000000000000B1 /* AppRefreshPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000B0 /* AppRefreshPolicy.swift */; };
 		A000000000000000000000B3 /* NativeTriggerPreflight.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000B2 /* NativeTriggerPreflight.swift */; };
 		A000000000000000000000B5 /* VolcV4RequestBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000B4 /* VolcV4RequestBuilder.swift */; };
 		A000000000000000000000B7 /* VolcTranslationResponseParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000B6 /* VolcTranslationResponseParser.swift */; };
 		A000000000000000000000B9 /* VolcTranslationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000B8 /* VolcTranslationEngine.swift */; };
+		A000000000000000000000BB /* LegacyComponentCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000BA /* LegacyComponentCleanup.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		A0000000000000000000000A /* Juyi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Juyi.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A0000000000000000000000B /* apple-translation-helper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "apple-translation-helper"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A00000000000000000000021 /* JuyiMenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JuyiMenuBar.swift; sourceTree = "<group>"; };
 		A00000000000000000000022 /* OnboardingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPolicy.swift; sourceTree = "<group>"; };
 		A00000000000000000000023 /* WindowFramePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowFramePolicy.swift; sourceTree = "<group>"; };
@@ -59,10 +49,10 @@
 		A000000000000000000000B4 /* VolcV4RequestBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolcV4RequestBuilder.swift; sourceTree = "<group>"; };
 		A000000000000000000000B6 /* VolcTranslationResponseParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolcTranslationResponseParser.swift; sourceTree = "<group>"; };
 		A000000000000000000000B8 /* VolcTranslationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolcTranslationEngine.swift; sourceTree = "<group>"; };
+		A000000000000000000000BA /* LegacyComponentCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyComponentCleanup.swift; sourceTree = "<group>"; };
 		A00000000000000000000024 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A00000000000000000000025 /* AppIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AppIcon.png; sourceTree = "<group>"; };
 		A00000000000000000000026 /* Juyi.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Juyi.entitlements; sourceTree = "<group>"; };
-		A00000000000000000000027 /* TranslationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationHelper.swift; sourceTree = "<group>"; };
 		A00000000000000000000028 /* Version.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Version.xcconfig; sourceTree = "<group>"; };
 		A00000000000000000000029 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
 		A0000000000000000000002A /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
@@ -88,13 +78,6 @@
 		A00000000000000000000069 /* NativeTranslationOverlayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationOverlayController.swift; sourceTree = "<group>"; };
 		A00000000000000000000074 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		A0000000000000000000007D /* NativeAppleTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAppleTranslationService.swift; sourceTree = "<group>"; };
-		A0000000000000000000009E /* NativeOwnerHandoffProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffProtocol.swift; sourceTree = "<group>"; };
-		A000000000000000000000A0 /* NativeOwnerHandoffStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffStore.swift; sourceTree = "<group>"; };
-		A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffWorkflow.swift; sourceTree = "<group>"; };
-		A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffStatusReader.swift; sourceTree = "<group>"; };
-		A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerActivationCoordinator.swift; sourceTree = "<group>"; };
-		B00000000000000000000001 /* argos-translator.lua */ = {isa = PBXFileReference; lastKnownFileType = text; path = "hammerspoon/argos-translator.lua"; sourceTree = SOURCE_ROOT; };
-		B00000000000000000000002 /* hammerspoon_hook.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = scripts/hammerspoon_hook.sh; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -109,15 +92,6 @@
 				A00000000000000000000075 /* QuartzCore.framework in Frameworks */,
 				A00000000000000000000052 /* ServiceManagement.framework in Frameworks */,
 				A00000000000000000000053 /* SwiftUI.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		A0000000000000000000000F /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				A00000000000000000000055 /* AppKit.framework in Frameworks */,
-				A00000000000000000000056 /* SwiftUI.framework in Frameworks */,
 				A00000000000000000000057 /* Translation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -129,10 +103,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000004 /* macos */,
-				A00000000000000000000005 /* apple */,
 				A00000000000000000000006 /* Config */,
-				B00000000000000000000001 /* argos-translator.lua */,
-				B00000000000000000000002 /* hammerspoon_hook.sh */,
 				A00000000000000000000007 /* Frameworks */,
 				A00000000000000000000003 /* Products */,
 			);
@@ -142,7 +113,6 @@
 			isa = PBXGroup;
 			children = (
 				A0000000000000000000000A /* Juyi.app */,
-				A0000000000000000000000B /* apple-translation-helper */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -160,11 +130,7 @@
 				A0000000000000000000002F /* NativeOptionMonitor.swift */,
 				A00000000000000000000061 /* NativeSelectionReader.swift */,
 				A00000000000000000000064 /* NativeSelectionCaptureCoordinator.swift */,
-				A0000000000000000000009E /* NativeOwnerHandoffProtocol.swift */,
-				A000000000000000000000A0 /* NativeOwnerHandoffStore.swift */,
-				A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */,
-				A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */,
-				A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */,
+				A000000000000000000000BA /* LegacyComponentCleanup.swift */,
 				A000000000000000000000B2 /* NativeTriggerPreflight.swift */,
 				A00000000000000000000030 /* NativeOptionFeature.swift */,
 				A00000000000000000000066 /* NativeTranslationOverlayModel.swift */,
@@ -181,14 +147,6 @@
 				A00000000000000000000026 /* Juyi.entitlements */,
 			);
 			path = macos;
-			sourceTree = "<group>";
-		};
-		A00000000000000000000005 /* apple */ = {
-			isa = PBXGroup;
-			children = (
-				A00000000000000000000027 /* TranslationHelper.swift */,
-			);
-			path = apple;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000006 /* Config */ = {
@@ -237,22 +195,6 @@
 			productReference = A0000000000000000000000A /* Juyi.app */;
 			productType = "com.apple.product-type.application";
 		};
-		A00000000000000000000009 /* AppleTranslationHelper */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = A00000000000000000000016 /* Build configuration list for PBXNativeTarget "AppleTranslationHelper" */;
-			buildPhases = (
-				A0000000000000000000000D /* Sources */,
-				A0000000000000000000000F /* Frameworks */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = AppleTranslationHelper;
-			productName = "apple-translation-helper";
-			productReference = A0000000000000000000000B /* apple-translation-helper */;
-			productType = "com.apple.product-type.tool";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -264,9 +206,6 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					A00000000000000000000008 = {
-						CreatedOnToolsVersion = 16.0;
-					};
-					A00000000000000000000009 = {
 						CreatedOnToolsVersion = 16.0;
 					};
 				};
@@ -285,7 +224,6 @@
 			projectRoot = "";
 			targets = (
 				A00000000000000000000008 /* Juyi */,
-				A00000000000000000000009 /* AppleTranslationHelper */,
 			);
 		};
 /* End PBXProject section */
@@ -296,8 +234,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				A00000000000000000000035 /* Assets.xcassets in Resources */,
-				B00000000000000000000003 /* argos-translator.lua in Resources */,
-				B00000000000000000000004 /* hammerspoon_hook.sh in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -312,17 +248,13 @@
 				A000000000000000000000B1 /* AppRefreshPolicy.swift in Sources */,
 				A00000000000000000000037 /* DoubleOptionStateMachine.swift in Sources */,
 				A00000000000000000000031 /* JuyiMenuBar.swift in Sources */,
+				A000000000000000000000BB /* LegacyComponentCleanup.swift in Sources */,
 				A00000000000000000000062 /* NativeOptionEventAdapter.swift in Sources */,
 				A00000000000000000000039 /* NativeOptionFeature.swift in Sources */,
 				A00000000000000000000038 /* NativeOptionMonitor.swift in Sources */,
 				A000000000000000000000B3 /* NativeTriggerPreflight.swift in Sources */,
 				A00000000000000000000063 /* NativeSelectionReader.swift in Sources */,
 				A00000000000000000000065 /* NativeSelectionCaptureCoordinator.swift in Sources */,
-				A0000000000000000000009F /* NativeOwnerHandoffProtocol.swift in Sources */,
-				A000000000000000000000A1 /* NativeOwnerHandoffStore.swift in Sources */,
-				A000000000000000000000A3 /* NativeOwnerHandoffWorkflow.swift in Sources */,
-				A000000000000000000000A5 /* NativeOwnerHandoffStatusReader.swift in Sources */,
-				A000000000000000000000AB /* NativeOwnerActivationCoordinator.swift in Sources */,
 				A00000000000000000000070 /* NativeTranslationOverlayModel.swift in Sources */,
 				A00000000000000000000071 /* NativeTranslationOverlayAnchorPolicy.swift in Sources */,
 				A00000000000000000000072 /* NativeTranslationOverlayInteractionPolicy.swift in Sources */,
@@ -333,14 +265,6 @@
 				A000000000000000000000B7 /* VolcTranslationResponseParser.swift in Sources */,
 				A000000000000000000000B9 /* VolcTranslationEngine.swift in Sources */,
 				A00000000000000000000033 /* WindowFramePolicy.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		A0000000000000000000000D /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				A00000000000000000000034 /* TranslationHelper.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -391,30 +315,6 @@
 			};
 			name = Release;
 		};
-		A0000000000000000000001B /* Debug */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = A0000000000000000000002A /* Debug.xcconfig */;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = macos/Juyi.entitlements;
-				EXECUTABLE_NAME = "apple-translation-helper";
-				MACH_O_TYPE = mh_execute;
-				PRODUCT_NAME = "apple-translation-helper";
-				SKIP_INSTALL = YES;
-			};
-			name = Debug;
-		};
-		A0000000000000000000001C /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = A0000000000000000000002B /* Release.xcconfig */;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = macos/Juyi.entitlements;
-				EXECUTABLE_NAME = "apple-translation-helper";
-				MACH_O_TYPE = mh_execute;
-				PRODUCT_NAME = "apple-translation-helper";
-				SKIP_INSTALL = YES;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -432,15 +332,6 @@
 			buildConfigurations = (
 				A00000000000000000000019 /* Debug */,
 				A0000000000000000000001A /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
-		};
-		A00000000000000000000016 /* Build configuration list for PBXNativeTarget "AppleTranslationHelper" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				A0000000000000000000001B /* Debug */,
-				A0000000000000000000001C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

@@ -49,17 +49,7 @@ run_suite NativeOptionMonitorTests AX \
     macos/AccessibilityController.swift macos/DoubleOptionStateMachine.swift \
     macos/NativeOptionEventAdapter.swift macos/NativeSelectionReader.swift \
     macos/NativeSelectionCaptureCoordinator.swift macos/NativeOptionMonitor.swift
-run_suite NativeOwnerHandoffProtocolTests PLAIN macos/NativeOwnerHandoffProtocol.swift
-run_suite NativeOwnerHandoffStoreTests STRICT \
-    macos/NativeOwnerHandoffProtocol.swift macos/NativeOwnerHandoffStore.swift
-run_suite NativeOwnerHandoffWorkflowTests STRICT \
-    macos/NativeOwnerHandoffProtocol.swift macos/NativeOwnerHandoffStore.swift \
-    macos/NativeOwnerHandoffWorkflow.swift
-run_suite NativeOwnerHandoffStatusReaderTests STRICT \
-    macos/NativeOwnerHandoffProtocol.swift macos/NativeOwnerHandoffStatusReader.swift
-run_suite NativeOwnerActivationCoordinatorTests STRICT \
-    macos/NativeOwnerHandoffProtocol.swift macos/NativeOwnerHandoffStore.swift \
-    macos/NativeOwnerHandoffWorkflow.swift macos/NativeOwnerActivationCoordinator.swift
+run_suite LegacyComponentCleanupTests STRICT macos/LegacyComponentCleanup.swift
 run_suite NativeTranslationOverlayModelTests PLAIN macos/NativeTranslationOverlayModel.swift
 run_suite NativeTranslationOverlayAnchorPolicyTests PLAIN \
     macos/NativeTranslationOverlayAnchorPolicy.swift

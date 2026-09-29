@@ -36,7 +36,6 @@ LEGACY_BUILD = (ROOT / "scripts" / "build_macos_app.sh").read_text(
 )
 CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 RUNNER = (ROOT / "scripts" / "run_swift_tests.sh").read_text(encoding="utf-8")
-CONFIG = (ROOT / "config.py").read_text(encoding="utf-8")
 DEBUG_CONFIG = (ROOT / "Config" / "Debug.xcconfig").read_text(encoding="utf-8")
 RELEASE_CONFIG = (ROOT / "Config" / "Release.xcconfig").read_text(
     encoding="utf-8"
@@ -77,7 +76,7 @@ def test_production_permission_prompt_is_reached_only_from_explicit_enable():
     assert "NativeProductionTranslationCoordinator.shared" in APP
     assert "model.enableNativeShortcut()" in APP
     explicit_enable = APP.split("func enableNativeShortcut()", 1)[1].split(
-        "private func installBundledShortcut", 1
+        "func applicationBecameActive()", 1
     )[0]
     assert "native.enableByUser()" in explicit_enable
     assert "Task { await enable(promptForAccessibility: true) }" in FEATURE
@@ -85,22 +84,12 @@ def test_production_permission_prompt_is_reached_only_from_explicit_enable():
     assert "AccessibilityController.requestAuthorization()" in FEATURE
     assert "requestAuthorization" not in APP
     assert "NativeSelectionReader" not in APP
-    assert "nativeOwnerBridgeReady && deploymentIsCurrent" in explicit_enable
-    assert "setShortcutDeploymentReady(deploymentIsCurrent)" in explicit_enable
-    assert "private var shortcutDeploymentReady = false" in FEATURE
-    assert "guard nativeActivationReady else" in FEATURE
+    assert "guard !legacyComponentsBlocking else" in FEATURE
     assert "private var lifecycleActivationAllowed = false" in FEATURE
-    assert "guard lifecycleActivationAllowed else" in FEATURE
-    assert "ownerBridgeIsFreshAfterRestart" in APP
-    fresh_owner = APP.split("private func ownerBridgeIsFreshAfterRestart", 1)[1].split(
-        "private func restartHammerspoonAfterInstall", 1
-    )[0]
-    assert "currentInstanceID != previousInstanceID" in fresh_owner
-    assert "updatedAt >= ceil(restartStartedAt)" in fresh_owner
-    assert "updatedAt <= previousUpdatedAt" in fresh_owner
-    assert "currentSequence > candidateSequence" in fresh_owner
-    assert "fallbackCandidateInstanceID = currentInstanceID" in fresh_owner
-    assert "else if deployedOwnerReady" in APP
+    assert "guard activationAllowed else" in FEATURE
+    for removed in ("setShortcutDeploymentReady", "shortcutDeploymentReady",
+                    "ownerBridgeIsFreshAfterRestart", "deployedOwnerReady"):
+        assert removed not in FEATURE + APP
 
     assert "requestAuthorization()" in ACCESSIBILITY
     assert "AXIsProcessTrustedWithOptions" in ACCESSIBILITY
@@ -148,21 +137,29 @@ def test_production_owner_resumes_after_wake_and_session_reactivation():
 
     assert "private var resumeRequestedAfterRevocation = false" in FEATURE
     resume_feature = FEATURE.split("func resumeIfEnabled()", 1)[1].split(
-        "func setEngine(_ choice", 1
+        "func setLifecycleActivationAllowed", 1
     )[0]
-    assert "activation?.phase == .revocationRequired" in resume_feature
+    assert "if awaitingCaptureStop {" in resume_feature
     assert "resumeRequestedAfterRevocation = true" in resume_feature
     deferred = FEATURE.split("private func finishDeferredRevocation()", 1)[1].split(
         "private func disable", 1
     )[0]
-    assert "activation?.retryRevocation()" in deferred
+    assert "guard awaitingCaptureStop else { return }" in deferred
+    assert "awaitingCaptureStop = false" in deferred
     assert "let shouldResume = resumeRequestedAfterRevocation" in deferred
     assert "UserDefaults.standard.bool(forKey: Self.enabledKey)" in deferred
     assert "resumeIfEnabled()" in deferred
     disable = FEATURE.split("private func disable", 1)[1].split(
-        "private func stopOwnerPolling", 1
+        "private func beginPipeline", 1
     )[0]
     assert "resumeRequestedAfterRevocation = false" in disable
+    # An uncertain capture stop defers every restart until it quiesces.
+    assert "if !stopNativeEffect() { awaitingCaptureStop = true }" in disable
+    stop = FEATURE.split("private func stopNativeEffect() -> Bool", 1)[1].split(
+        "private func finishDeferredRevocation", 1
+    )[0]
+    assert "capture.cancelAll { [weak self] in" in stop
+    assert "self?.finishDeferredRevocation()" in stop
 
 
 def test_native_language_preparation_stops_before_system_request_and_restores_intent():
@@ -174,18 +171,15 @@ def test_native_language_preparation_stops_before_system_request_and_restores_in
     )
     assert "pendingUserEnable || isEnabled" in prepare
     assert "UserDefaults.standard.set(true, forKey: Self.enabledKey)" in prepare
-    assert "activation?.phase != .revocationRequired" in prepare
-    assert "activation?.holdsOwnerLease != true" in prepare
-    assert "monitor == nil" in prepare
+    assert "guard !awaitingCaptureStop else {" in prepare
+    assert "guard monitor == nil else {" in prepare
     assert "generation == lifecycleGeneration, isPreparingLanguages" in prepare
     assert "case .prepared:" in prepare
     assert "appleReadinessIssue = nil" in prepare
     assert "resumeIfEnabled()" in prepare
     assert "lifecycleActivationAllowed" in prepare
     assert "!isPaused, engine == .apple" in prepare
-    assert prepare.index("holdLegacyPauseForRecovery()") < prepare.index(
-        "disable(reason: .stop, preservePreference: true)"
-    )
+    assert "holdLegacyPauseForRecovery" not in FEATURE
 
 
 def test_language_failures_cannot_keep_active_or_resume_without_explicit_recovery():
@@ -198,10 +192,10 @@ def test_language_failures_cannot_keep_active_or_resume_without_explicit_recover
     assert "phase = .languagePackRequired" in failure
     assert "phase = .unsupported" in failure
     assert "let generation = pipelineGeneration" in failure
-    assert "activation?.phase != .revocationRequired" in failure
+    assert "guard !awaitingCaptureStop," in failure
     assert "error: failure.error" in failure
     assert "appleReadinessIssue == nil" in FEATURE.split("func resumeIfEnabled()", 1)[1].split(
-        "func setShortcutDeploymentReady", 1
+        "func setLifecycleActivationAllowed", 1
     )[0]
     deferred = FEATURE.split("private func finishDeferredRevocation()", 1)[1].split(
         "private func disable", 1
@@ -218,7 +212,6 @@ def test_language_failures_cannot_keep_active_or_resume_without_explicit_recover
 
 def test_native_diagnostic_retry_retains_owner_stop_barrier():
     retry = FEATURE.split("func retryByUser()", 1)[1].split("func resumeIfEnabled()", 1)[0]
-    assert "guard nativeActivationReady else" in retry
     assert "guard actionIsEnabled, !isPaused else { return }" in retry
     assert "UserDefaults.standard.set(true, forKey: Self.enabledKey)" in retry
     assert retry.index("disable(reason: .stop, preservePreference: true)") < retry.index(
@@ -232,53 +225,59 @@ def test_native_diagnostic_retry_retains_owner_stop_barrier():
     assert "overlayGeneration == panelGeneration" in translation
 
 
-def test_recovery_uses_existing_pause_and_releases_only_after_native_owner_activation():
-    failure = FEATURE.split("private func suspendForAppleFailure", 1)[1].split(
-        "private func presentPendingAppleFailure", 1
+def test_pause_lives_in_user_defaults_with_one_time_migration_and_quit_semantics():
+    pause = FEATURE.split("func setPaused(_ paused: Bool)", 1)[1].split(
+        "func applicationBecameActive", 1
     )[0]
-    assert failure.index("holdLegacyPauseForRecovery()") < failure.index(
-        "disable(reason: .stop, preservePreference: true)"
-    )
-    owner_ready = FEATURE.split("private func completeOwnerActivation()", 1)[1].split(
-        "@discardableResult private func nativeOnlyEnvironmentIsCurrent", 1
-    )[0]
-    assert owner_ready.index("guard activation.phase == .nativeActive else") < owner_ready.index(
-        "legacyRecoveryPauseHandler?(false)"
-    )
-    assert "legacyRecoveryPauseHandler?(false)" in owner_ready
-    assert owner_ready.index("legacyRecoveryPauseHandler?(false)") < owner_ready.index(
-        "phase = .active"
-    )
-    pause = FEATURE.split("func setPaused(_ paused: Bool", 1)[1].split(
-        "private func holdLegacyPauseForRecovery", 1
-    )[0]
-    assert "if byUser" in pause
-    assert "recoveryPauseHeld = false" in pause
-    assert "else if recoveryPauseHeld && paused" in pause
     assert "disable(reason: .pause, preservePreference: true)" in pause
-    assert "native.setPaused(paused, byUser: true)" in APP
-    assert "setPaused(true, byUser: true)" in APP
-    assert "var userPaused: Bool" in APP
-    assert "paused && !NativeProductionTranslationCoordinator.shared.recoveryPauseHeld" in APP
+    assert "overlay.setPaused(paused)" in pause
+    for removed in ("recoveryPauseHeld", "legacyRecoveryPauseHandler", "holdLegacyPauseForRecovery",
+                    "resumeAppleRecoveryByUser", "byUser:"):
+        assert removed not in FEATURE, removed
+    for removed in ("recoveryPauseHeld", "legacyRecoveryPauseHandler", "setLegacyPauseForNativeRecovery",
+                    "pauseFile", "hs-paused\")", "byUser:"):
+        assert removed not in APP, removed
+    assert 'pausedDefaultsKey = "translationPaused"' in APP
+    init = APP.split("init() {", 1)[1].split("private var refreshContext", 1)[0]
+    migration = init.split("if defaults.object(forKey: pausedDefaultsKey) == nil {", 1)[1].split("}", 1)[0]
+    assert "LegacyComponentCleanup.legacyPauseState(home: home) ?? false" in migration
+    assert "paused = defaults.bool(forKey: pausedDefaultsKey)" in init
+    toggle = APP.split("func togglePause()", 1)[1].split("func pauseForTermination()", 1)[0]
+    assert "UserDefaults.standard.set(paused, forKey: pausedDefaultsKey)" in toggle
+    assert "NativeProductionTranslationCoordinator.shared.setPaused(paused)" in toggle
+    quit_pause = APP.split("func pauseForTermination()", 1)[1].split("\n    }\n", 1)[0]
+    assert "UserDefaults.standard.set(true, forKey: pausedDefaultsKey)" in quit_pause
+    assert "setPaused(true)" in quit_pause
+    terminate = APP.split("func applicationShouldTerminate", 1)[1].split("func windowWillClose", 1)[0]
+    assert terminate.index("model.pauseForTermination()") < terminate.index("return .terminateNow")
+    assert "var userPaused: Bool { paused }" in APP
     assert "NativeTranslationOverlayController.shared.setPaused(model.userPaused)" in APP
-    assert "try (pause ? \"1\\n\" : \"0\\n\").write(to: pauseFile" in APP
-    assert "legacyRecoveryPauseHandler =" in APP
+    assert "NativeProductionTranslationCoordinator.shared.setPaused(model.paused)" in APP
 
 
-def test_resuming_known_apple_fault_never_briefly_unpauses_legacy():
-    resume = FEATURE.split("func resumeAppleRecoveryByUser()", 1)[1].split(
-        "func resumeIfEnabled()", 1
+def test_legacy_components_fail_closed_in_the_coordinator():
+    assert "case legacyComponentsDetected" in FEATURE
+    assert "case waitingForHammerspoon" not in FEATURE
+    gate = FEATURE.split("func setLegacyComponentsDetected(_ detected: Bool)", 1)[1].split(
+        "private func showLegacyComponentsState", 1
     )[0]
-    assert "guard isPaused, engine == .apple" in resume
-    assert "appleReadinessIssue != nil" in resume
-    assert resume.index("recoveryPauseHeld = true") < resume.index("retryByUser()")
-    assert "legacyRecoveryPauseHandler?(false)" not in resume
-    toggle = APP.split("func togglePause()", 1)[1].split(
-        "func setLegacyPauseForNativeRecovery", 1
-    )[0]
-    assert toggle.index("native.resumeAppleRecoveryByUser()") < toggle.index(
-        "write(to: pauseFile"
+    assert gate.index("disable(reason: .stop, preservePreference: true)") < gate.index(
+        "showLegacyComponentsState()"
     )
+    assert "resumeIfEnabled()" in gate
+    assert "Task { await enable(promptForAccessibility: false) }" in gate
+    assert "lifecycleActivationAllowed && !legacyComponentsBlocking" in FEATURE
+    enable = FEATURE.split("private func enable(promptForAccessibility", 1)[1].split(
+        "private func selectedEngineIsReady", 1
+    )[0]
+    assert enable.count("activationAllowed") >= 3
+    assert enable.index("await selectedEngineIsReady") < enable.index("guard startNativeEffect() else")
+    pipeline = FEATURE.split("private func beginPipeline(target:", 1)[1][:200]
+    assert "!legacyComponentsBlocking" in pipeline
+    for removed in ("NativeOwner", "requiresLegacyHandoff", "nativeOnlySession", "ownerTimer",
+                    "pollOwner", "syncOwnerFailure", "NSWorkspace.didLaunchApplicationNotification",
+                    "NSWorkspace.didTerminateApplicationNotification", "org.hammerspoon"):
+        assert removed not in FEATURE, removed
 
 
 def test_monitor_is_main_actor_global_only_and_never_reads_key_text():
@@ -434,22 +433,19 @@ def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
     assert "performIfActive(captureGeneration, action)" in COORDINATOR
     assert "cancelAll(onQuiesced:" in COORDINATOR
     assert "capture.cancelAll {" in FEATURE
-    # P4: a trigger consults only cached readiness and legacy answers.
+    # P4: a trigger consults only the cached readiness answer; no file
+    # system or running-application probe happens between trigger and capture.
     pipeline = FEATURE.split("private func beginPipeline(target:", 1)[1].split(
         "private func suspendForAppleFailure", 1
     )[0]
-    assert "preflight.decision(" in pipeline
+    assert "preflight.decision == .checkAppleReadiness" in pipeline
     assert "if needsReadinessCheck {" in pipeline
     assert pipeline.index("if needsReadinessCheck {") < pipeline.index("capture.capture(")
-    assert "requiresLegacyHandoff" not in pipeline
-    environment = FEATURE.split(
-        "@discardableResult private func nativeOnlyEnvironmentIsCurrent", 1
-    )[1].split("private func syncOwnerFailure", 1)[0]
-    assert "requiresLegacyHandoff" not in environment
-    assert "didTerminateApplicationNotification" in FEATURE
-    assert "preflight.recordLegacyEnvironment(handoffRequired: legacyHandoffRequired)" in FEATURE
+    for probe in ("LegacyComponentCleanup", "FileManager", "runningApplications"):
+        assert probe not in pipeline
+    assert "recordLegacyEnvironment" not in FEATURE
     disable = FEATURE.split("private func disable(", 1)[1].split(
-        "private func stopOwnerPolling", 1
+        "private func beginPipeline", 1
     )[0]
     assert "preflight.reset()" in disable
     # Apple translation failure, Apple timeout, and an engine switch.
@@ -462,7 +458,7 @@ def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
     )[0]
     assert "if settlement.contextCheckIsDue(at: now) {" in settle
     assert "if settlement.hasStableCandidate(at: now) { break }" in settle
-    assert "retryRevocation()" in FEATURE
+    assert "retryRevocation()" not in FEATURE
     assert "cancellationCheck()" in SELECTION
 
     # Prose comments may describe the downstream translator; only executable
@@ -484,10 +480,7 @@ def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
         assert forbidden not in selection_code
 
 
-def test_selection_normalization_matches_existing_backend_limit():
-    match = re.search(r"^MAX_INPUT_CHARS\s*=\s*(\d+)$", CONFIG, re.MULTILINE)
-    assert match
-    assert int(match.group(1)) == 5_000
+def test_selection_normalization_keeps_the_5000_character_limit():
     assert "maximumInputCharacters: Int { 5_000 }" in SELECTION
     assert 'replacingOccurrences(of: "\\r\\n", with: "\\n")' in SELECTION
     assert 'replacingOccurrences(of: "\\r", with: "\\n")' in SELECTION
@@ -546,7 +539,7 @@ def test_engine_dispatch_is_native_for_both_engines_without_fallback():
         "private func suspendForAppleFailure", 1
     )[0]
     assert "let requestedEngine = engine" in begin
-    assert "requestedEngine == .apple && preflight.decision(" in begin
+    assert "requestedEngine == .apple\n            && preflight.decision == .checkAppleReadiness" in begin
     assert "engine: requestedEngine," in begin
 
     receive = FEATURE.split("private func receiveCapture", 1)[1].split(
@@ -589,7 +582,7 @@ def test_engine_dispatch_is_native_for_both_engines_without_fallback():
 
 def test_volc_enable_requires_accessibility_and_a_stored_credential_only():
     enable = FEATURE.split("private func enable(promptForAccessibility", 1)[1].split(
-        "private func pollOwner", 1
+        "private func startNativeEffect", 1
     )[0]
     assert enable.index("AccessibilityController.requestAuthorization()") < enable.index(
         "await selectedEngineIsReady(generation: generation)"

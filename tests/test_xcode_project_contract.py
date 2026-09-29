@@ -14,9 +14,6 @@ SCHEME = (
 CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 SHARED = (ROOT / "Config" / "Shared.xcconfig").read_text(encoding="utf-8")
 VERSION = (ROOT / "Config" / "Version.xcconfig").read_text(encoding="utf-8")
-HELPER_BUILD = (ROOT / "scripts" / "build_apple_helper.sh").read_text(
-    encoding="utf-8"
-)
 APP_BUILD = (ROOT / "scripts" / "build_macos_app.sh").read_text(encoding="utf-8")
 VERIFY = (ROOT / "scripts" / "verify_macos_binary.sh").read_text(encoding="utf-8")
 SIGNATURE_VERIFY = (ROOT / "scripts" / "verify_macos_signature.sh").read_text(
@@ -34,7 +31,7 @@ def test_project_is_explicit_shared_and_does_not_absorb_local_scripts():
     assert "PBXFileSystemSynchronized" not in PROJECT
     assert "isa = PBXGroup;" in PROJECT
     assert "JuyiMenuBar.swift in Sources" in PROJECT
-    assert "TranslationHelper.swift in Sources" in PROJECT
+    assert "LegacyComponentCleanup.swift in Sources" in PROJECT
     assert "Assets.xcassets in Resources" in PROJECT
     assert "start_service.command" not in PROJECT
     assert "start_service.command" not in SCHEME
@@ -50,9 +47,9 @@ def test_public_baseline_is_macos_15_universal_and_hardened():
     assert setting(SHARED, "ENABLE_HARDENED_RUNTIME") == "YES"
     assert setting(SHARED, "ENABLE_APP_SANDBOX") == "NO"
     assert setting(SHARED, "ENABLE_USER_SCRIPT_SANDBOXING") == "YES"
-    assert PROJECT.count("baseConfigurationReference") == 4
+    assert PROJECT.count("baseConfigurationReference") == 2
     assert PROJECT.count("SKIP_INSTALL = NO") == 2
-    assert PROJECT.count("SKIP_INSTALL = YES") == 2
+    assert PROJECT.count("SKIP_INSTALL = YES") == 0
 
 
 def test_version_and_minimum_system_are_expanded_from_config():
@@ -75,24 +72,40 @@ def test_empty_entitlements_are_the_non_sandboxed_release_baseline():
     assert "com.apple.security.get-task-allow" not in PROJECT
 
 
-def test_apple_helper_legacy_build_matches_xcode_release_contract():
-    helper_source = (ROOT / "apple" / "TranslationHelper.swift").read_text(
-        encoding="utf-8"
-    )
-    assert "@main" in helper_source
-    assert "for arch in arm64 x86_64" in HELPER_BUILD
-    assert '-target "$arch-apple-macos$MINIMUM_MACOS"' in HELPER_BUILD
-    assert "-parse-as-library" in HELPER_BUILD
-    assert '"$ROOT/scripts/verify_macos_binary.sh"' in HELPER_BUILD
+def test_single_app_target_without_helper_or_legacy_resources():
+    """Phase 4B removed the Apple Translation helper CLI target, the owner
+    handoff sources and the bundled Hammerspoon resources."""
+    assert PROJECT.count("isa = PBXNativeTarget;") == 1
+    assert "com.apple.product-type.tool" not in PROJECT
+    for removed in (
+        "AppleTranslationHelper",
+        "apple-translation-helper",
+        "TranslationHelper.swift",
+        "argos-translator" + ".lua",
+        "hammerspoon_hook.sh",
+        "NativeOwnerHandoff",
+        "NativeOwnerActivationCoordinator",
+    ):
+        assert removed not in PROJECT, removed
+        assert removed not in SCHEME, removed
+        assert removed not in APP_BUILD, removed
+    assert "Translation.framework in Frameworks" in PROJECT
+    assert not (ROOT / "apple").exists()
+    assert not (ROOT / "scripts" / "build_apple_helper.sh").exists()
+
+
+def test_legacy_script_build_matches_xcode_release_contract():
+    assert "for arch in arm64 x86_64" in APP_BUILD
+    assert '-target "$arch-apple-macos$MINIMUM_MACOS"' in APP_BUILD
+    assert "-parse-as-library" in APP_BUILD
     assert '"$ROOT/scripts/verify_macos_binary.sh"' in APP_BUILD
-    assert '"$ROOT/scripts/verify_macos_signature.sh"' in HELPER_BUILD
     assert '"$ROOT/scripts/verify_macos_signature.sh"' in APP_BUILD
     assert 'lipo "$BINARY_PATH" -verify_arch arm64 x86_64' in VERIFY
     assert 'xcrun vtool -arch "$arch" -show-build' in VERIFY
     assert 'codesign --verify "${VERIFY_ARGS[@]}"' in SIGNATURE_VERIFY
     assert 'flags=.*runtime' in SIGNATURE_VERIFY
     for relative in (
-        "scripts/build_apple_helper.sh",
+        "scripts/build_macos_app.sh",
         "scripts/read_xcconfig_value.sh",
         "scripts/verify_macos_binary.sh",
         "scripts/verify_macos_signature.sh",

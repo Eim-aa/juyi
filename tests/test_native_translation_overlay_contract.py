@@ -93,7 +93,7 @@ def test_overlay_has_no_live_selection_network_or_hotkey_owner():
     assert "commitDisplayedState(" in apply_state
     assert "NSEvent.mouseLocation" in CONTROLLER
     assert "selectionRect: nil" in CONTROLLER
-    assert "hammerspoon/argos-translator.lua" not in joined
+    assert "hammerspoon/argos-translator" + ".lua" not in joined
 
     cta_handler = APP.split("private func handleNativeOverlayCTA", 1)[1].split(
         "\n    }\n", 1

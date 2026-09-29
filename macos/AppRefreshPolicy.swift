@@ -5,7 +5,6 @@ import Foundation
 struct AppRefreshContext: Equatable {
     var cloudSetupVisible: Bool
     var diagnosticsVisible: Bool
-    var launchAgentInstalled: Bool
     var applicationActive: Bool
 }
 
@@ -13,18 +12,9 @@ enum AppRefreshPolicy {
     static let activeInterval: TimeInterval = 2.5
     static let idleInterval: TimeInterval = 10
 
-    /// The loopback service exists only for early development components.
-    /// Both engines (Apple and the native Volcengine client) work without it,
-    /// so the periodic tick probes `/health` only while a sheet shows its
-    /// state or a legacy LaunchAgent is installed.
-    static func shouldProbeService(_ context: AppRefreshContext) -> Bool {
-        context.cloudSetupVisible
-            || context.diagnosticsVisible
-            || context.launchAgentInstalled
-    }
-
-    /// No engine depends on the legacy heartbeat any more, so an idle app
-    /// uses the slow cadence regardless of the selected engine.
+    /// The periodic tick only re-runs the cheap early-component detection.
+    /// No engine depends on an external process, so an idle app uses the
+    /// slow cadence regardless of the selected engine.
     static func interval(_ context: AppRefreshContext) -> TimeInterval {
         context.applicationActive
             || context.cloudSetupVisible
