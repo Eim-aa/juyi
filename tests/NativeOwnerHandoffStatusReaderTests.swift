@@ -1,4 +1,3 @@
-#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
 import Darwin
 import Foundation
 
@@ -123,4 +122,3 @@ enum NativeOwnerHandoffStatusReaderTests {
         print("NativeOwnerHandoffStatusReaderTests: \(passed) passed")
     }
 }
-#endif

@@ -5,7 +5,7 @@ enum OnboardingDisposition: String, Equatable {
 }
 
 enum OnboardingScreen: Equatable {
-    case welcome, prepare, permission, practice, complete
+    case welcome, permission, practice, complete
 }
 
 /// Pure onboarding decisions kept separate from AppKit, networking and disk IO.
@@ -41,16 +41,6 @@ struct OnboardingPolicy {
             return environmentEngine
         }
         return "apple"
-    }
-
-    static func firstIncompleteScreen(
-        serviceReady: Bool,
-        engineReady: Bool,
-        hotkeyReady: Bool
-    ) -> OnboardingScreen {
-        if !serviceReady || !engineReady { return .prepare }
-        if !hotkeyReady { return .permission }
-        return .practice
     }
 
     static func preservesCompletionDuringRerun(_ disposition: OnboardingDisposition) -> Bool {

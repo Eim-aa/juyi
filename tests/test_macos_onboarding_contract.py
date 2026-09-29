@@ -4,6 +4,7 @@ The policy has executable Swift tests, while these checks protect the complete
 product flow from accidental removal in both Xcode and legacy-script builds.
 """
 
+import re
 from pathlib import Path
 
 
@@ -46,7 +47,13 @@ def test_engine_choice_uses_policy_and_native_routing_is_explicit():
     assert "NativeProductionTranslationCoordinator.shared.isEnabled ? .practice : .permission" in SWIFT
     assert "切换到 Apple 离线并启用" in SWIFT
     assert 'if hasCloudConfiguration { return "volc" }' not in POLICY
-    assert "onboardingEngineReady" not in POLICY.split("firstIncompleteScreen", 1)[1].split("}", 1)[0]
+    # The unreachable engine-self-test screen was removed; routing only
+    # depends on the live native hotkey state.
+    assert "case welcome, permission, practice, complete" in POLICY
+    assert "firstIncompleteScreen" not in POLICY
+    assert "onboardingEngineReady" not in SWIFT
+    assert "verifyOnboardingEngine" not in SWIFT
+    assert re.search(r"\.prepare\b", SWIFT) is None
 
 
 def test_accessible_scroll_layout_and_window_policy_are_wired():

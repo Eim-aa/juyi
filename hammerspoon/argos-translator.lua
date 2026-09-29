@@ -48,7 +48,6 @@ local ownerRequestEpoch = nil
 local ownerRequestNativeInstanceID = nil
 local legacyOwnerState = "starting"
 local statusSequence = 0
-local ENGINE_SHORT = { volc = "云端", apple = "苹果" }
 local ENGINE_SOURCE = { volc = "火山云端", apple = "苹果端上翻译" }
 -- Engine failures come back as error codes with the source text echoed in
 -- `result`; they must render as errors, never as a translation.
@@ -78,9 +77,8 @@ local DIAGNOSTIC_HINT = {
 local currentEngine = "apple"
 local volcAvailable = false
 local appleAvailable = false
-local menubar = nil
 local externalEngineWatcher = nil
-local setEngine, rebuildMenu, persistEngine -- forward declarations (assigned below)
+local persistEngine -- forward declaration (assigned below)
 
 -- A cloud-removal transaction is a data-plane kill switch, not merely UI
 -- state. Any existing marker -- including one we cannot read -- must prevent
@@ -721,7 +719,6 @@ local function callTranslate(text, source, request)
         requestEngine = "apple"
         currentEngine = "apple"
         persistEngine("apple")
-        rebuildMenu()
         appendLog({ event = "cloud_request_blocked", reason = "removal_pending" })
     end
     local body = hs.json.encode({ text = text, engine = requestEngine })
@@ -840,7 +837,7 @@ local function callTranslate(text, source, request)
     )
 end
 
--- ---------- engine selection (menu bar) ---------- --
+-- ---------- engine selection ---------- --
 
 local function readPersistedEngine()
     local f = io.open(ENGINE_STATE_PATH, "r")
@@ -859,63 +856,6 @@ persistEngine = function(eng)
         f:write(eng .. "\n")
         f:close()
     end
-end
-
-rebuildMenu = function()
-    if not menubar then return end
-    menubar:setTitle("句译·" .. (ENGINE_SHORT[currentEngine] or "?"))
-    menubar:setMenu({
-        { title = "翻译引擎", disabled = true },
-        {
-            title = "苹果端上（离线 · 系统翻译）",
-            checked = (currentEngine == "apple"),
-            disabled = (not appleAvailable),
-            fn = function() setEngine("apple") end,
-        },
-        {
-            title = "云端（火山 · 需联网）",
-            checked = (currentEngine == "volc"),
-            disabled = (not volcAvailable),
-            fn = function() setEngine("volc") end,
-        },
-        { title = "-" },
-        { title = "译文下方会标注「来自 …」", disabled = true },
-    })
-end
-
-setEngine = function(eng)
-    if eng == "volc" and cloudRemovalBlocksVolc() then
-        currentEngine = "apple"
-        persistEngine("apple")
-        rebuildMenu()
-        hs.alert.show("云端配置正在移除，已保持离线模式", 1.8)
-        return
-    end
-    if eng == "volc" and not volcAvailable then
-        hs.alert.show("云端不可用：未配置火山 API Key", 1.5)
-        return
-    end
-    if eng == "apple" and not appleAvailable then
-        hs.alert.show("苹果端上翻译不可用（需 macOS 15+ 并构建助手）", 1.8)
-        return
-    end
-    currentEngine = eng
-    persistEngine(eng)
-    rebuildMenu()
-    if eng == "volc" then
-        hs.alert.show("已切到 火山云端", 1.0)
-    else
-        hs.alert.show("已切到 苹果端上翻译", 1.2)
-        -- Warm the helper in the background so the first real translation
-        -- after switching isn't slow.
-        hs.http.asyncPost(
-            URL .. "/translate",
-            hs.json.encode({ text = "warmup", engine = eng }),
-            requestHeaders({ ["Content-Type"] = "application/json" }),
-            function() end
-        )
-    end
-    appendLog({ event = "engine_switch", engine = eng })
 end
 
 local function initEngineState()
@@ -949,7 +889,6 @@ local function initEngineState()
         -- Keep the user's explicit choice even when it is temporarily
         -- unavailable. In particular, never turn an offline choice into a
         -- cloud upload without prior consent.
-        rebuildMenu()
     end)
 end
 
@@ -963,14 +902,12 @@ local function startExternalEngineWatcher()
             and cloudRemovalBlocksVolc() then
             currentEngine = "apple"
             persistEngine("apple")
-            rebuildMenu()
             appendLog({ event = "cloud_request_blocked", reason = "removal_pending" })
             requested = "apple"
         end
         if requested and requested ~= currentEngine then
             if (requested == "apple" and appleAvailable) or (requested == "volc" and volcAvailable) then
                 currentEngine = requested
-                rebuildMenu()
                 appendLog({ event = "engine_switch_external", engine = requested })
             else
                 -- Availability can change after the native app saves cloud
@@ -985,7 +922,6 @@ local function startExternalEngineWatcher()
                     volcAvailable = h.engines.volc and true or false
                     if (requested == "apple" and appleAvailable) or (requested == "volc" and volcAvailable) then
                         currentEngine = requested
-                        rebuildMenu()
                         appendLog({ event = "engine_switch_external", engine = requested })
                     end
                 end)
@@ -1110,7 +1046,6 @@ function M.start()
     startExternalEngineWatcher()
     -- The native app is the single Juyi menu-bar surface. Hammerspoon keeps
     -- only the hotkey, popup and engine watcher.
-    if menubar then menubar:delete(); menubar = nil end
     initEngineState()
     writeStatus(true)
     hs.accessibilityStateCallback = function() writeStatus(true) end
@@ -1121,10 +1056,6 @@ function M.stop()
     if tapWatcher then
         tapWatcher:stop()
         tapWatcher = nil
-    end
-    if menubar then
-        menubar:delete()
-        menubar = nil
     end
     if externalEngineWatcher then externalEngineWatcher:stop(); externalEngineWatcher = nil end
     legacyOwnerState = "stopped"

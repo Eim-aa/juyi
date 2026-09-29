@@ -1,9 +1,10 @@
-"""Contracts for the production overlay and its gated Debug preview."""
+"""Contracts for the production overlay (the Debug preview was removed in 2026-09)."""
 
 from pathlib import Path
 
 
 ROOT = Path(__file__).parents[1]
+REMOVED_FLAG_PREFIX = "JUYI_" + "NATIVE_"  # spelled split so repository greps stay empty
 APP = (ROOT / "macos" / "JuyiMenuBar.swift").read_text(encoding="utf-8")
 MODEL = (ROOT / "macos" / "NativeTranslationOverlayModel.swift").read_text(
     encoding="utf-8"
@@ -20,46 +21,38 @@ CONTROLLER = (
 PROJECT = (ROOT / "Juyi.xcodeproj" / "project.pbxproj").read_text(encoding="utf-8")
 LEGACY = (ROOT / "scripts" / "build_macos_app.sh").read_text(encoding="utf-8")
 CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+RUNNER = (ROOT / "scripts" / "run_swift_tests.sh").read_text(encoding="utf-8")
 DEBUG_CONFIG = (ROOT / "Config" / "Debug.xcconfig").read_text(encoding="utf-8")
 RELEASE_CONFIG = (ROOT / "Config" / "Release.xcconfig").read_text(encoding="utf-8")
 DOC = (ROOT / "docs" / "dev" / "NATIVE_TRANSLATION_OVERLAY.md").read_text(
     encoding="utf-8"
 )
 
-GATE = "#if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY"
 
-
-def test_debug_preview_is_gated_but_the_production_panel_is_not():
-    assert CONTROLLER.count(GATE) >= 1
-    assert not CONTROLLER.rstrip().endswith("#endif")
+def test_production_panel_is_unconditional_and_has_no_debug_preview():
+    for source in (MODEL, INTERACTION, CONTROLLER):
+        assert "#if" not in source
     assert "final class NativeTranslationOverlayController" in CONTROLLER
     assert "func beginNativeTranslation(" in CONTROLLER
     assert "io.github.Eim-aa.Juyi.native-translation-overlay" in CONTROLLER
-    assert APP.count(GATE) >= 2
-    assert CONTROLLER.count("开发：预览下一状态：") == 1
-    assert APP.count("showFixturePreview()") == 1
-    assert "JUYI_NATIVE_TRANSLATION_OVERLAY" not in DEBUG_CONFIG
-    assert "JUYI_NATIVE_TRANSLATION_OVERLAY" not in RELEASE_CONFIG
-    assert 'if [[ "$CONFIGURATION" == "Debug" ]]; then' in LEGACY
-    debug_forwarding = LEGACY.split(
-        'if [[ "$CONFIGURATION" == "Debug" ]]; then', 1
-    )[1].split("\nfi\n", 1)[0]
-    assert 'SWIFT_FLAGS+=(-D JUYI_NATIVE_TRANSLATION_OVERLAY)' in debug_forwarding
-    assert "HAS_NATIVE_OVERLAY=true" in debug_forwarding
-    assert "HAS_NATIVE_DOMAIN" in debug_forwarding
-    assert "JUYI_NATIVE_TRANSLATION_RESULT_LAB" in debug_forwarding
+    for removed in (
+        "开发：预览下一状态：",
+        "showFixturePreview",
+        "NativeTranslationOverlayFixture.allCases",
+        "beginExternal",
+        "focusCurrentOverlay",
+    ):
+        assert removed not in CONTROLLER + APP
+    assert REMOVED_FLAG_PREFIX not in DEBUG_CONFIG + RELEASE_CONFIG + LEGACY
     app_overlay_references = "\n".join(
-        line
-        for line in APP.splitlines()
-        if "NativeTranslationOverlay" in line
-        or "JUYI_NATIVE_TRANSLATION_OVERLAY" in line
+        line for line in APP.splitlines() if "NativeTranslationOverlay" in line
     )
     for source in (CONTROLLER, app_overlay_references):
         for forbidden in ("UserDefaults", "ProcessInfo.processInfo.environment", "remoteConfig"):
             assert forbidden not in source
 
 
-def test_fixture_preview_has_no_live_selection_network_or_hotkey_owner():
+def test_overlay_has_no_live_selection_network_or_hotkey_owner():
     joined = "\n".join((MODEL, ANCHOR, INTERACTION, CONTROLLER))
     for forbidden in (
         "URLSession",
@@ -76,30 +69,6 @@ def test_fixture_preview_has_no_live_selection_network_or_hotkey_owner():
         ".characters",
     ):
         assert forbidden not in joined
-    assert "NativeTranslationOverlayFixture.allCases" in CONTROLLER
-    for fixture in (
-        "case loading",
-        "case appleSuccess",
-        "case volcSuccess",
-        "case volcAppleFallback",
-        "case volcNetwork",
-        "case copyFailure",
-        "case longTruncated",
-        "case noSelection",
-        "case secure",
-        "case unsupported",
-        "case accessibility",
-        "case serviceError",
-        "case applePackage",
-        "case volcCredential",
-        "case privacyRefusal",
-    ):
-        assert fixture in CONTROLLER
-    assert "warning: .usedAppleFallback" in CONTROLLER
-    assert "error: .volcNetwork" in CONTROLLER
-    assert "initialCopyPresentation" in CONTROLLER
-    assert "case .copyFailure: return .failed" in CONTROLLER
-    assert "fixtureCopyPresentationLifecycle.queue(fixture.initialCopyPresentation)" in CONTROLLER
     assert "fixtureCopyPresentationLifecycle.consumeForVisibleState()" in CONTROLLER
     apply_state = CONTROLLER.split("private func apply(", 1)[1].split(
         "private func renderVisibleState", 1
@@ -115,7 +84,7 @@ def test_fixture_preview_has_no_live_selection_network_or_hotkey_owner():
     assert "hammerspoon/argos-translator.lua" not in joined
 
     cta_handler = APP.split("private func handleNativeOverlayCTA", 1)[1].split(
-        "#endif", 1
+        "\n    }\n", 1
     )[0]
     assert "model.prepareApple()" not in cta_handler
     assert "model.chooseCloud()" not in cta_handler
@@ -161,9 +130,10 @@ def test_panel_is_singleton_passive_reused_and_focus_is_explicit():
     assert "panel.orderOut(nil)" in CONTROLLER
     assert "panel.close()" not in CONTROLLER
 
-    show = CONTROLLER.split("func showFixturePreview()", 1)[1].split(
-        "\n    }\n    #endif", 1
+    show = CONTROLLER.split("private func showPanelPassively()", 1)[1].split(
+        "private func crossfadeAndResize", 1
     )[0]
+    assert "panel.orderFrontRegardless()" in show
     assert "activate" not in show
     assert "makeKey" not in show
     focus = CONTROLLER.split("private func enterKeyboardMode()", 1)[1].split(
@@ -336,15 +306,13 @@ def test_all_build_paths_tests_and_docs_include_overlay_without_user_script():
     assert "QuartzCore.framework in Frameworks" in PROJECT
     assert "-framework QuartzCore" in LEGACY
     for test in (
-        "NativeTranslationOverlayModelTests.swift",
-        "NativeTranslationOverlayAnchorPolicyTests.swift",
-        "NativeTranslationOverlayInteractionPolicyTests.swift",
+        "NativeTranslationOverlayModelTests",
+        "NativeTranslationOverlayAnchorPolicyTests",
+        "NativeTranslationOverlayInteractionPolicyTests",
     ):
-        assert f"tests/{test}" in CI
-    assert "JuyiOverlayPreview" in CI
-    assert "JuyiReleaseOverlayFlag" in CI
-    assert "SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG JUYI_NATIVE_TRANSLATION_OVERLAY'" in CI
-    assert "SWIFT_ACTIVE_COMPILATION_CONDITIONS='JUYI_NATIVE_TRANSLATION_OVERLAY'" in CI
+        assert f"run_suite {test} " in RUNNER
+    assert "scripts/run_swift_tests.sh" in CI
+    assert "SWIFT_ACTIVE_COMPILATION_CONDITIONS" not in CI
     assert "scripts/start_service.command" not in PROJECT
     assert "scripts/start_service.command" not in CI
     assert "默认未启用" in DOC

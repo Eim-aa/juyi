@@ -33,7 +33,7 @@ scripts/install_macos_app.sh
 ## 运行测试
 
 - Python 与契约测试：`python -m pip install -r requirements-dev.txt`，然后运行 `python -m pytest`。
-- Swift 单元测试：各测试的编译命令见 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)。
+- Swift 单元测试：`scripts/run_swift_tests.sh`（本地与 CI 共用，逐个用 `swiftc` 编译并运行 `tests/*Tests.swift` 中的 15 个生产套件）。
 
 ## 仓库结构
 

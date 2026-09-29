@@ -1,4 +1,3 @@
-#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
 import Foundation
 
 @main
@@ -157,4 +156,3 @@ enum NativeOwnerHandoffWorkflowTests {
         print("NativeOwnerHandoffWorkflowTests: \(passed) passed")
     }
 }
-#endif

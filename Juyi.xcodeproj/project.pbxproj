@@ -35,32 +35,11 @@
 		A00000000000000000000072 /* NativeTranslationOverlayInteractionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000068 /* NativeTranslationOverlayInteractionPolicy.swift */; };
 		A00000000000000000000073 /* NativeTranslationOverlayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000069 /* NativeTranslationOverlayController.swift */; };
 		A00000000000000000000075 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000074 /* QuartzCore.framework */; };
-		A00000000000000000000079 /* NativeTranslationDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000076 /* NativeTranslationDomain.swift */; };
-		A0000000000000000000007A /* VolcV4RequestBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000077 /* VolcV4RequestBuilder.swift */; };
-		A0000000000000000000007B /* VolcTranslationResponseParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000078 /* VolcTranslationResponseParser.swift */; };
-		A0000000000000000000007E /* NativeAppleTranslationAdapterModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000007C /* NativeAppleTranslationAdapterModel.swift */; };
-		A0000000000000000000007F /* NativeAppleTranslationAdapterHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000007D /* NativeAppleTranslationAdapterHost.swift */; };
-		A00000000000000000000086 /* NativeVolcDebugCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000080 /* NativeVolcDebugCredentialStore.swift */; };
-		A00000000000000000000087 /* NativeVolcDebugInterlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000081 /* NativeVolcDebugInterlock.swift */; };
-		A00000000000000000000088 /* NativeVolcDebugTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000082 /* NativeVolcDebugTransport.swift */; };
-		A00000000000000000000089 /* NativeVolcDebugWorkflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000083 /* NativeVolcDebugWorkflow.swift */; };
-		A0000000000000000000008A /* NativeVolcTranslationAdapterModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000084 /* NativeVolcTranslationAdapterModel.swift */; };
-		A0000000000000000000008B /* NativeVolcTranslationAdapterHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000085 /* NativeVolcTranslationAdapterHost.swift */; };
-		A00000000000000000000090 /* NativeTranslationOverlayExternalPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008C /* NativeTranslationOverlayExternalPresentation.swift */; };
-		A00000000000000000000091 /* NativeTranslationResultLabPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008D /* NativeTranslationResultLabPresentation.swift */; };
-		A00000000000000000000092 /* NativeTranslationResultLabModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008E /* NativeTranslationResultLabModel.swift */; };
-		A00000000000000000000093 /* NativeTranslationResultLabHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008F /* NativeTranslationResultLabHost.swift */; };
-		A00000000000000000000097 /* NativeTranslationAppleResultLabBindingPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000094 /* NativeTranslationAppleResultLabBindingPresentation.swift */; };
-		A00000000000000000000098 /* NativeTranslationAppleResultLabBindingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000095 /* NativeTranslationAppleResultLabBindingModel.swift */; };
-		A00000000000000000000099 /* NativeTranslationAppleResultLabBindingHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000096 /* NativeTranslationAppleResultLabBindingHost.swift */; };
-		A0000000000000000000009C /* NativeSelectionCaptureLabModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000009A /* NativeSelectionCaptureLabModel.swift */; };
-		A0000000000000000000009D /* NativeSelectionCaptureLabHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000009B /* NativeSelectionCaptureLabHost.swift */; };
+		A0000000000000000000007F /* NativeAppleTranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000007D /* NativeAppleTranslationService.swift */; };
 		A0000000000000000000009F /* NativeOwnerHandoffProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000009E /* NativeOwnerHandoffProtocol.swift */; };
 		A000000000000000000000A1 /* NativeOwnerHandoffStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A0 /* NativeOwnerHandoffStore.swift */; };
 		A000000000000000000000A3 /* NativeOwnerHandoffWorkflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */; };
 		A000000000000000000000A5 /* NativeOwnerHandoffStatusReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */; };
-		A000000000000000000000A7 /* NativeOwnerHandoffLabModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A6 /* NativeOwnerHandoffLabModel.swift */; };
-		A000000000000000000000A9 /* NativeOwnerHandoffLabHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000A8 /* NativeOwnerHandoffLabHost.swift */; };
 		A000000000000000000000AB /* NativeOwnerActivationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */; };
 /* End PBXBuildFile section */
 
@@ -98,32 +77,11 @@
 		A00000000000000000000068 /* NativeTranslationOverlayInteractionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationOverlayInteractionPolicy.swift; sourceTree = "<group>"; };
 		A00000000000000000000069 /* NativeTranslationOverlayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationOverlayController.swift; sourceTree = "<group>"; };
 		A00000000000000000000074 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
-		A00000000000000000000076 /* NativeTranslationDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationDomain.swift; sourceTree = "<group>"; };
-		A00000000000000000000077 /* VolcV4RequestBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolcV4RequestBuilder.swift; sourceTree = "<group>"; };
-		A00000000000000000000078 /* VolcTranslationResponseParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolcTranslationResponseParser.swift; sourceTree = "<group>"; };
-		A0000000000000000000007C /* NativeAppleTranslationAdapterModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAppleTranslationAdapterModel.swift; sourceTree = "<group>"; };
-		A0000000000000000000007D /* NativeAppleTranslationAdapterHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAppleTranslationAdapterHost.swift; sourceTree = "<group>"; };
-		A00000000000000000000080 /* NativeVolcDebugCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcDebugCredentialStore.swift; sourceTree = "<group>"; };
-		A00000000000000000000081 /* NativeVolcDebugInterlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcDebugInterlock.swift; sourceTree = "<group>"; };
-		A00000000000000000000082 /* NativeVolcDebugTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcDebugTransport.swift; sourceTree = "<group>"; };
-		A00000000000000000000083 /* NativeVolcDebugWorkflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcDebugWorkflow.swift; sourceTree = "<group>"; };
-		A00000000000000000000084 /* NativeVolcTranslationAdapterModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcTranslationAdapterModel.swift; sourceTree = "<group>"; };
-		A00000000000000000000085 /* NativeVolcTranslationAdapterHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVolcTranslationAdapterHost.swift; sourceTree = "<group>"; };
-		A0000000000000000000008C /* NativeTranslationOverlayExternalPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationOverlayExternalPresentation.swift; sourceTree = "<group>"; };
-		A0000000000000000000008D /* NativeTranslationResultLabPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationResultLabPresentation.swift; sourceTree = "<group>"; };
-		A0000000000000000000008E /* NativeTranslationResultLabModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationResultLabModel.swift; sourceTree = "<group>"; };
-		A0000000000000000000008F /* NativeTranslationResultLabHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationResultLabHost.swift; sourceTree = "<group>"; };
-		A00000000000000000000094 /* NativeTranslationAppleResultLabBindingPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationAppleResultLabBindingPresentation.swift; sourceTree = "<group>"; };
-		A00000000000000000000095 /* NativeTranslationAppleResultLabBindingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationAppleResultLabBindingModel.swift; sourceTree = "<group>"; };
-		A00000000000000000000096 /* NativeTranslationAppleResultLabBindingHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranslationAppleResultLabBindingHost.swift; sourceTree = "<group>"; };
-		A0000000000000000000009A /* NativeSelectionCaptureLabModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSelectionCaptureLabModel.swift; sourceTree = "<group>"; };
-		A0000000000000000000009B /* NativeSelectionCaptureLabHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSelectionCaptureLabHost.swift; sourceTree = "<group>"; };
+		A0000000000000000000007D /* NativeAppleTranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAppleTranslationService.swift; sourceTree = "<group>"; };
 		A0000000000000000000009E /* NativeOwnerHandoffProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffProtocol.swift; sourceTree = "<group>"; };
 		A000000000000000000000A0 /* NativeOwnerHandoffStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffStore.swift; sourceTree = "<group>"; };
 		A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffWorkflow.swift; sourceTree = "<group>"; };
 		A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffStatusReader.swift; sourceTree = "<group>"; };
-		A000000000000000000000A6 /* NativeOwnerHandoffLabModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffLabModel.swift; sourceTree = "<group>"; };
-		A000000000000000000000A8 /* NativeOwnerHandoffLabHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerHandoffLabHost.swift; sourceTree = "<group>"; };
 		A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOwnerActivationCoordinator.swift; sourceTree = "<group>"; };
 		B00000000000000000000001 /* argos-translator.lua */ = {isa = PBXFileReference; lastKnownFileType = text; path = "hammerspoon/argos-translator.lua"; sourceTree = SOURCE_ROOT; };
 		B00000000000000000000002 /* hammerspoon_hook.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = scripts/hammerspoon_hook.sh; sourceTree = SOURCE_ROOT; };
@@ -191,38 +149,17 @@
 				A0000000000000000000002F /* NativeOptionMonitor.swift */,
 				A00000000000000000000061 /* NativeSelectionReader.swift */,
 				A00000000000000000000064 /* NativeSelectionCaptureCoordinator.swift */,
-				A0000000000000000000009A /* NativeSelectionCaptureLabModel.swift */,
-				A0000000000000000000009B /* NativeSelectionCaptureLabHost.swift */,
 				A0000000000000000000009E /* NativeOwnerHandoffProtocol.swift */,
 				A000000000000000000000A0 /* NativeOwnerHandoffStore.swift */,
 				A000000000000000000000A2 /* NativeOwnerHandoffWorkflow.swift */,
 				A000000000000000000000A4 /* NativeOwnerHandoffStatusReader.swift */,
-				A000000000000000000000A6 /* NativeOwnerHandoffLabModel.swift */,
-				A000000000000000000000A8 /* NativeOwnerHandoffLabHost.swift */,
 				A000000000000000000000AA /* NativeOwnerActivationCoordinator.swift */,
 				A00000000000000000000030 /* NativeOptionFeature.swift */,
 				A00000000000000000000066 /* NativeTranslationOverlayModel.swift */,
 				A00000000000000000000067 /* NativeTranslationOverlayAnchorPolicy.swift */,
 				A00000000000000000000068 /* NativeTranslationOverlayInteractionPolicy.swift */,
 				A00000000000000000000069 /* NativeTranslationOverlayController.swift */,
-				A00000000000000000000076 /* NativeTranslationDomain.swift */,
-				A00000000000000000000077 /* VolcV4RequestBuilder.swift */,
-				A00000000000000000000078 /* VolcTranslationResponseParser.swift */,
-				A0000000000000000000007C /* NativeAppleTranslationAdapterModel.swift */,
-				A0000000000000000000007D /* NativeAppleTranslationAdapterHost.swift */,
-				A00000000000000000000080 /* NativeVolcDebugCredentialStore.swift */,
-				A00000000000000000000081 /* NativeVolcDebugInterlock.swift */,
-				A00000000000000000000082 /* NativeVolcDebugTransport.swift */,
-				A00000000000000000000083 /* NativeVolcDebugWorkflow.swift */,
-				A00000000000000000000084 /* NativeVolcTranslationAdapterModel.swift */,
-				A00000000000000000000085 /* NativeVolcTranslationAdapterHost.swift */,
-				A0000000000000000000008C /* NativeTranslationOverlayExternalPresentation.swift */,
-				A0000000000000000000008D /* NativeTranslationResultLabPresentation.swift */,
-				A0000000000000000000008E /* NativeTranslationResultLabModel.swift */,
-				A0000000000000000000008F /* NativeTranslationResultLabHost.swift */,
-				A00000000000000000000094 /* NativeTranslationAppleResultLabBindingPresentation.swift */,
-				A00000000000000000000095 /* NativeTranslationAppleResultLabBindingModel.swift */,
-				A00000000000000000000096 /* NativeTranslationAppleResultLabBindingHost.swift */,
+				A0000000000000000000007D /* NativeAppleTranslationService.swift */,
 				A00000000000000000000024 /* Info.plist */,
 				A00000000000000000000025 /* AppIcon.png */,
 				A0000000000000000000002C /* Assets.xcassets */,
@@ -364,37 +301,16 @@
 				A00000000000000000000038 /* NativeOptionMonitor.swift in Sources */,
 				A00000000000000000000063 /* NativeSelectionReader.swift in Sources */,
 				A00000000000000000000065 /* NativeSelectionCaptureCoordinator.swift in Sources */,
-				A0000000000000000000009C /* NativeSelectionCaptureLabModel.swift in Sources */,
-				A0000000000000000000009D /* NativeSelectionCaptureLabHost.swift in Sources */,
 				A0000000000000000000009F /* NativeOwnerHandoffProtocol.swift in Sources */,
 				A000000000000000000000A1 /* NativeOwnerHandoffStore.swift in Sources */,
 				A000000000000000000000A3 /* NativeOwnerHandoffWorkflow.swift in Sources */,
 				A000000000000000000000A5 /* NativeOwnerHandoffStatusReader.swift in Sources */,
-				A000000000000000000000A7 /* NativeOwnerHandoffLabModel.swift in Sources */,
-				A000000000000000000000A9 /* NativeOwnerHandoffLabHost.swift in Sources */,
 				A000000000000000000000AB /* NativeOwnerActivationCoordinator.swift in Sources */,
 				A00000000000000000000070 /* NativeTranslationOverlayModel.swift in Sources */,
 				A00000000000000000000071 /* NativeTranslationOverlayAnchorPolicy.swift in Sources */,
 				A00000000000000000000072 /* NativeTranslationOverlayInteractionPolicy.swift in Sources */,
 				A00000000000000000000073 /* NativeTranslationOverlayController.swift in Sources */,
-				A00000000000000000000079 /* NativeTranslationDomain.swift in Sources */,
-				A0000000000000000000007A /* VolcV4RequestBuilder.swift in Sources */,
-				A0000000000000000000007B /* VolcTranslationResponseParser.swift in Sources */,
-				A0000000000000000000007E /* NativeAppleTranslationAdapterModel.swift in Sources */,
-				A0000000000000000000007F /* NativeAppleTranslationAdapterHost.swift in Sources */,
-				A00000000000000000000086 /* NativeVolcDebugCredentialStore.swift in Sources */,
-				A00000000000000000000087 /* NativeVolcDebugInterlock.swift in Sources */,
-				A00000000000000000000088 /* NativeVolcDebugTransport.swift in Sources */,
-				A00000000000000000000089 /* NativeVolcDebugWorkflow.swift in Sources */,
-				A0000000000000000000008A /* NativeVolcTranslationAdapterModel.swift in Sources */,
-				A0000000000000000000008B /* NativeVolcTranslationAdapterHost.swift in Sources */,
-				A00000000000000000000090 /* NativeTranslationOverlayExternalPresentation.swift in Sources */,
-				A00000000000000000000091 /* NativeTranslationResultLabPresentation.swift in Sources */,
-				A00000000000000000000092 /* NativeTranslationResultLabModel.swift in Sources */,
-				A00000000000000000000093 /* NativeTranslationResultLabHost.swift in Sources */,
-				A00000000000000000000097 /* NativeTranslationAppleResultLabBindingPresentation.swift in Sources */,
-				A00000000000000000000098 /* NativeTranslationAppleResultLabBindingModel.swift in Sources */,
-				A00000000000000000000099 /* NativeTranslationAppleResultLabBindingHost.swift in Sources */,
+				A0000000000000000000007F /* NativeAppleTranslationService.swift in Sources */,
 				A00000000000000000000032 /* OnboardingPolicy.swift in Sources */,
 				A00000000000000000000033 /* WindowFramePolicy.swift in Sources */,
 			);

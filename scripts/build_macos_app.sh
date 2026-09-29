@@ -23,9 +23,6 @@ case "$CONFIGURATION" in
     *) echo "unsupported CONFIGURATION: $CONFIGURATION (expected Debug or Release)" >&2; exit 2 ;;
 esac
 
-# Native translation slices remain compile-time-only development code. The
-# standard Xcode conditions variable is accepted only for Debug; Release ignores
-# every injected development condition.
 FRAMEWORK_FLAGS=(
     -framework ApplicationServices
     -framework AppKit
@@ -34,82 +31,8 @@ FRAMEWORK_FLAGS=(
     -framework QuartzCore
     -framework ServiceManagement
     -framework SwiftUI
+    -framework Translation
 )
-if [[ "$CONFIGURATION" == "Debug" ]]; then
-    ACTIVE_CONDITIONS=" ${SWIFT_ACTIVE_COMPILATION_CONDITIONS:-} "
-    HAS_NATIVE_DOMAIN=false
-    HAS_NATIVE_OVERLAY=false
-    # Forward the activation-foundation flag independently so a missing
-    # handoff prerequisite fails in source instead of silently compiling out.
-    if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_OWNER_ACTIVATION_LAB "* ]]; then
-        SWIFT_FLAGS+=(-D JUYI_NATIVE_OWNER_ACTIVATION_LAB)
-    fi
-    if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_OWNER_HANDOFF_LAB "* ]]; then
-        SWIFT_FLAGS+=(-warnings-as-errors)
-        SWIFT_FLAGS+=(-D JUYI_NATIVE_OWNER_HANDOFF_LAB)
-        for conflict in \
-            JUYI_NATIVE_SELECTION_CAPTURE_LAB \
-            JUYI_NATIVE_OPTION_MONITOR \
-            JUYI_NATIVE_TRANSLATION_DOMAIN \
-            JUYI_NATIVE_TRANSLATION_OVERLAY \
-            JUYI_NATIVE_TRANSLATION_RESULT_LAB \
-            JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER \
-            JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER \
-            JUYI_NATIVE_APPLE_RESULT_LAB_BINDING; do
-            if [[ "$ACTIVE_CONDITIONS" == *" $conflict "* ]]; then
-                SWIFT_FLAGS+=(-D "$conflict")
-            fi
-        done
-    fi
-    # The capture lab is intentionally independent. Forward it and every
-    # supplied conflicting condition even when that condition would normally
-    # require another slice, so the source-level #error gate rejects the unsafe
-    # combination instead of silently compiling the conflict away.
-    if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_SELECTION_CAPTURE_LAB "* ]]; then
-        SWIFT_FLAGS+=(-warnings-as-errors)
-        SWIFT_FLAGS+=(-D JUYI_NATIVE_SELECTION_CAPTURE_LAB)
-        for conflict in \
-            JUYI_NATIVE_OPTION_MONITOR \
-            JUYI_NATIVE_OWNER_HANDOFF_LAB \
-            JUYI_NATIVE_TRANSLATION_DOMAIN \
-            JUYI_NATIVE_TRANSLATION_OVERLAY \
-            JUYI_NATIVE_TRANSLATION_RESULT_LAB \
-            JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER \
-            JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER \
-            JUYI_NATIVE_APPLE_RESULT_LAB_BINDING; do
-            if [[ "$ACTIVE_CONDITIONS" == *" $conflict "* ]]; then
-                SWIFT_FLAGS+=(-D "$conflict")
-            fi
-        done
-    else
-        # Forward the binding flag independently so its compile-time
-        # prerequisite checks still fail closed when a caller omits any
-        # required slice.
-        if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_APPLE_RESULT_LAB_BINDING "* ]]; then
-            SWIFT_FLAGS+=(-D JUYI_NATIVE_APPLE_RESULT_LAB_BINDING)
-        fi
-        if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_TRANSLATION_OVERLAY "* ]]; then
-            HAS_NATIVE_OVERLAY=true
-            SWIFT_FLAGS+=(-D JUYI_NATIVE_TRANSLATION_OVERLAY)
-        fi
-        if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_TRANSLATION_DOMAIN "* ]]; then
-            HAS_NATIVE_DOMAIN=true
-            SWIFT_FLAGS+=(-D JUYI_NATIVE_TRANSLATION_DOMAIN)
-            if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER "* ]]; then
-                SWIFT_FLAGS+=(-D JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER)
-                FRAMEWORK_FLAGS+=(-framework Translation)
-            fi
-            if [[ "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER "* ]]; then
-                SWIFT_FLAGS+=(-D JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER)
-                FRAMEWORK_FLAGS+=(-framework LocalAuthentication -framework Security)
-            fi
-        fi
-        if [[ "$HAS_NATIVE_DOMAIN" == true && "$HAS_NATIVE_OVERLAY" == true \
-            && "$ACTIVE_CONDITIONS" == *" JUYI_NATIVE_TRANSLATION_RESULT_LAB "* ]]; then
-            SWIFT_FLAGS+=(-D JUYI_NATIVE_TRANSLATION_RESULT_LAB)
-        fi
-    fi
-fi
 
 rm -rf "$BUILD"
 mkdir -p "$BUILD/Contents/MacOS" "$BUILD/Contents/Resources" "$MODULE_CACHE"
@@ -126,39 +49,18 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/NativeOptionEventAdapter.swift" \
         "$ROOT/macos/NativeSelectionReader.swift" \
         "$ROOT/macos/NativeSelectionCaptureCoordinator.swift" \
-        "$ROOT/macos/NativeSelectionCaptureLabModel.swift" \
-        "$ROOT/macos/NativeSelectionCaptureLabHost.swift" \
         "$ROOT/macos/NativeOwnerHandoffProtocol.swift" \
         "$ROOT/macos/NativeOwnerHandoffStore.swift" \
         "$ROOT/macos/NativeOwnerHandoffWorkflow.swift" \
         "$ROOT/macos/NativeOwnerHandoffStatusReader.swift" \
-        "$ROOT/macos/NativeOwnerHandoffLabModel.swift" \
-        "$ROOT/macos/NativeOwnerHandoffLabHost.swift" \
         "$ROOT/macos/NativeOwnerActivationCoordinator.swift" \
         "$ROOT/macos/NativeOptionMonitor.swift" \
         "$ROOT/macos/NativeOptionFeature.swift" \
-        "$ROOT/macos/NativeTranslationDomain.swift" \
-        "$ROOT/macos/VolcV4RequestBuilder.swift" \
-        "$ROOT/macos/VolcTranslationResponseParser.swift" \
-        "$ROOT/macos/NativeAppleTranslationAdapterModel.swift" \
-        "$ROOT/macos/NativeAppleTranslationAdapterHost.swift" \
-        "$ROOT/macos/NativeVolcDebugCredentialStore.swift" \
-        "$ROOT/macos/NativeVolcDebugInterlock.swift" \
-        "$ROOT/macos/NativeVolcDebugTransport.swift" \
-        "$ROOT/macos/NativeVolcDebugWorkflow.swift" \
-        "$ROOT/macos/NativeVolcTranslationAdapterModel.swift" \
-        "$ROOT/macos/NativeVolcTranslationAdapterHost.swift" \
+        "$ROOT/macos/NativeAppleTranslationService.swift" \
         "$ROOT/macos/NativeTranslationOverlayModel.swift" \
         "$ROOT/macos/NativeTranslationOverlayAnchorPolicy.swift" \
         "$ROOT/macos/NativeTranslationOverlayInteractionPolicy.swift" \
         "$ROOT/macos/NativeTranslationOverlayController.swift" \
-        "$ROOT/macos/NativeTranslationOverlayExternalPresentation.swift" \
-        "$ROOT/macos/NativeTranslationResultLabPresentation.swift" \
-        "$ROOT/macos/NativeTranslationResultLabModel.swift" \
-        "$ROOT/macos/NativeTranslationResultLabHost.swift" \
-        "$ROOT/macos/NativeTranslationAppleResultLabBindingPresentation.swift" \
-        "$ROOT/macos/NativeTranslationAppleResultLabBindingModel.swift" \
-        "$ROOT/macos/NativeTranslationAppleResultLabBindingHost.swift" \
         "$ROOT/macos/OnboardingPolicy.swift" \
         "$ROOT/macos/WindowFramePolicy.swift" \
         "$ROOT/macos/JuyiMenuBar.swift"

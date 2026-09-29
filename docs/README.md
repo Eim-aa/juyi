@@ -15,7 +15,7 @@
 
 当前 Apple 本地翻译由原生 App 完成：双 Option、辅助功能取词、Apple Translation 与译文浮窗。全新本地安装不需要 Hammerspoon；已有开发组件保留原有 owner 互斥交接，可选火山云端仍有独立后台依赖。
 
-`dev/` 中的早期 Native Lab / foundation 文档是开发阶段记录，其“默认关闭”“由 Hammerspoon 触发”等描述不代表当前发布版本。当前用户行为以使用说明与对应构建的发布记录为准。
+`dev/` 中的早期 Native Lab / foundation 文档是开发阶段记录，其“默认关闭”“由 Hammerspoon 触发”等描述不代表当前发布版本。相应的 lab 代码与 `JUYI_NATIVE_*` 编译开关已于 2026-09 从仓库移除。当前用户行为以使用说明与对应构建的发布记录为准。
 
 ## 演示素材
 

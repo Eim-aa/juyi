@@ -1,5 +1,7 @@
 # 原生 Apple Translation 适配器（4B，默认关闭）
 
+> 历史记录：lab 与 `JUYI_NATIVE_*` 编译开关已于 2026-09 移除，本文正文保留当时的开发记录，不代表当前代码结构。
+
 这是一个仅供开发验证的 macOS 15 Apple Translation 适配器切片，不是生产翻译链。它不会替换现有 Python 后端、Hammerspoon 双 Option 热键或浮窗，也不会在启动、状态轮询或普通 Debug/Release 构建中运行。
 
 ## 编译门与入口

@@ -1,5 +1,7 @@
 # Native owner handoff protocol
 
+> 历史记录：lab 与 `JUYI_NATIVE_*` 编译开关已于 2026-09 移除，本文正文保留当时的开发记录，不代表当前代码结构。
+
 Status: the existing version-1 owner protocol is now used by the production Apple offline translation MVP.
 
 Hammerspoon and the native App never intentionally monitor double Option at the same time. Native activation is allowed only after Hammerspoon has acknowledged the exact request and reported that its watcher, active request and popup are all gone. The native process keeps the cross-process lock and durable request for its complete active lifetime.
