@@ -22,8 +22,8 @@ LOG_FILE = LOG_DIR / "argos-translator.log"
 HELPER_LOG_FILE = LOG_DIR / "argos-translator-helper.log"
 
 # ---- HTTP transport ----
-# Loopback HTTP over a Unix socket: the RTT difference was negligible in
-# scripts/bench_ipc.py, and Hammerspoon's hs.http only speaks TCP.
+# Loopback HTTP over a Unix socket: the RTT difference was negligible in an
+# earlier IPC benchmark, and Hammerspoon's hs.http only speaks TCP.
 HOST = "127.0.0.1"
 PORT = 54321
 

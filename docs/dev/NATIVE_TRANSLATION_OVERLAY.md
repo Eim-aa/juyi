@@ -1,5 +1,7 @@
 # 原生译文浮窗：纯组件预览
 
+> 历史记录：lab 与 `JUYI_NATIVE_*` 编译开关已于 2026-09 移除，本文正文保留当时的开发记录，不代表当前代码结构。
+
 状态：**仅供开发验证，默认未启用，不是当前用户功能。**
 
 只有同时满足 `DEBUG` 和 `JUYI_NATIVE_TRANSLATION_OVERLAY` 两个编译条件时，句译 App 菜单才会出现唯一的“开发：预览下一状态…”入口。普通 Debug、所有 Release（包括向 Release 单独注入该自定义条件）都没有预览入口或 `NSPanel` controller。默认 xcconfig 与 legacy 构建脚本不定义自定义条件，也没有 UserDefaults、环境变量或远程开关。

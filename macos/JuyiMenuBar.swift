@@ -16,11 +16,10 @@ private let volcKeychainAccount = "volc"
 private let volcPendingKeychainService = "io.github.Eim-aa.juyi.volc.pending"
 private let volcPendingKeychainAccount = "pending"
 private let shortcutDeploymentFingerprintDefaultsKey = "bundledShortcutDeploymentFingerprint"
+private let quitMenuTitle = "退出句译"
 
-struct Health: Decodable {
+struct Health: Decodable, Equatable {
     let ok: Bool
-    let auth_required: Bool?
-    let default_engine: String?
     let engines: [String: Bool]
 }
 
@@ -53,7 +52,7 @@ private enum CloudRemovalMarkerRead: Equatable {
     case unavailable
 }
 
-struct HotkeyStatus: Decodable {
+struct HotkeyStatus: Decodable, Equatable {
     let module_loaded: Bool
     let accessibility: Bool
     let watcher_active: Bool
@@ -114,21 +113,26 @@ final class AppModel: ObservableObject {
     @Published private(set) var testing = false
     @Published private(set) var paused = false
     @Published private(set) var hasChecked = false
-    @Published private(set) var appleNeedsPreparation = false
     @Published var testResult = ""
     @Published var testDetail = ""
     @Published var notice = ""
-    @Published var showCloudSetup = false
-    @Published var showDiagnostics = false
+    @Published var showCloudSetup = false {
+        didSet { if showCloudSetup != oldValue { refreshContextChanged(sheetOpened: showCloudSetup) } }
+    }
+    @Published var showDiagnostics = false {
+        didSet {
+            guard showDiagnostics != oldValue else { return }
+            // The login-item toggle lives in this sheet; query ServiceManagement
+            // only while it can be seen.
+            if showDiagnostics { refreshLoginItemState() }
+            refreshContextChanged(sheetOpened: showDiagnostics)
+        }
+    }
     @Published var showSupportInfo = false
     @Published var cloudBusy = false
     @Published var cloudError = ""
     @Published var onboardingPresented = false
     @Published var onboardingScreen: OnboardingScreen = .welcome
-    @Published private(set) var onboardingEngineChecking = false
-    @Published private(set) var onboardingEngineReady = false
-    @Published private(set) var onboardingEngineResult = ""
-    @Published private(set) var applePreparing = false
     @Published private(set) var loginItemState: LoginItemState = .notRegistered
     @Published private(set) var loginItemBusy = false
     @Published private(set) var loginItemNotice = ""
@@ -138,9 +142,11 @@ final class AppModel: ObservableObject {
 
     var onChange: (() -> Void)?
     private var timer: Timer?
+    private var timerInterval: TimeInterval?
+    private var applicationActive = false
+    private var activationLoginItemMigrationChecked = false
     private var nativeStateObservation: AnyCancellable?
     private var onboardingPreservesCompletion = false
-    private var autoRepairAttempted = false
     private var loginItemMigrationInProgress = false
     private var loginItemBackend: LoginItemBackend = .serviceManagement
     private var localCloudCredentialFingerprint: String?
@@ -155,17 +161,6 @@ final class AppModel: ObservableObject {
     private var cloudRemovalMarker: URL { configDir.appendingPathComponent("cloud-removal-pending") }
     private var plist: URL { home.appendingPathComponent("Library/LaunchAgents/\(serviceLabel).plist") }
     private var fallbackLoginItemPlist: URL { home.appendingPathComponent("Library/LaunchAgents/\(fallbackLoginItemLabel).plist") }
-    private var installRoot: URL {
-        if let data = try? Data(contentsOf: plist),
-           let value = try? PropertyListSerialization.propertyList(from: data, format: nil),
-           let dictionary = value as? [String: Any],
-           let root = dictionary["WorkingDirectory"] as? String,
-           root.hasPrefix("/") {
-            return URL(fileURLWithPath: root, isDirectory: true)
-        }
-        return home.appendingPathComponent(".local/share/argos-translator", isDirectory: true)
-    }
-    private var helper: URL { installRoot.appendingPathComponent("bin/apple-translation-helper") }
     private var bundledShortcutModule: URL? {
         Bundle.main.url(forResource: "argos-translator", withExtension: "lua")
     }
@@ -238,6 +233,7 @@ final class AppModel: ObservableObject {
         // waiting to finish. Keychain commands are deliberately deferred so
         // the Apple-only startup path never waits on `security` on MainActor.
         let shouldMigrateLegacyCloud = readCloudRemovalMarker() == .notFound
+        hammerspoonInstalled = Self.queryHammerspoonInstalled()
         migrateOnboardingState()
         let explicitEngine = readExplicitEngineChoice()
         readLocalState()
@@ -269,11 +265,8 @@ final class AppModel: ObservableObject {
             if onboardingPresented && onboardingDisposition == .inProgress {
                 onboardingScreen = firstIncompleteScreen()
             }
-            if onboardingPresented && onboardingScreen == .prepare { verifyOnboardingEngine() }
         }
-        timer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.refresh() }
-        }
+        scheduleRefreshTimer()
         nativeStateObservation = NativeProductionTranslationCoordinator.shared
             .objectWillChange.sink { [weak self] _ in
                 Task { @MainActor in
@@ -283,9 +276,47 @@ final class AppModel: ObservableObject {
             }
     }
 
-    var hammerspoonInstalled: Bool {
+    /// Updated once per refresh; derived status properties read this value
+    /// instead of querying LaunchServices on every evaluation.
+    @Published private(set) var hammerspoonInstalled = false
+
+    private static func queryHammerspoonInstalled() -> Bool {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: "org.hammerspoon.Hammerspoon") != nil
     }
+
+    private var refreshContext: AppRefreshContext {
+        AppRefreshContext(
+            selectedEngine: selectedEngine,
+            cloudSetupVisible: showCloudSetup,
+            diagnosticsVisible: showDiagnostics,
+            launchAgentInstalled: serviceInstalled,
+            applicationActive: applicationActive
+        )
+    }
+
+    /// Reschedules the periodic refresh only when its cadence changes.
+    private func scheduleRefreshTimer() {
+        let interval = AppRefreshPolicy.interval(refreshContext)
+        guard timer == nil || timerInterval != interval else { return }
+        timer?.invalidate()
+        timerInterval = interval
+        let next = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.refresh() }
+        }
+        next.tolerance = interval / 10
+        timer = next
+    }
+
+    private func refreshContextChanged(sheetOpened: Bool) {
+        scheduleRefreshTimer()
+        if sheetOpened { Task { await refresh() } }
+    }
+
+    func applicationResignedActive() {
+        applicationActive = false
+        scheduleRefreshTimer()
+    }
+
     var hammerspoonRunning: Bool {
         !NSRunningApplication.runningApplications(withBundleIdentifier: "org.hammerspoon.Hammerspoon").isEmpty
     }
@@ -297,7 +328,6 @@ final class AppModel: ObservableObject {
         paused && !NativeProductionTranslationCoordinator.shared.recoveryPauseHeld
     }
     var serviceInstalled: Bool { FileManager.default.fileExists(atPath: plist.path) }
-    var appleHelperInstalled: Bool { FileManager.default.fileExists(atPath: helper.path) }
     var appleAvailable: Bool { health?.engines["apple"] == true }
     var cloudConfigured: Bool { health?.engines["volc"] == true }
     var cloudConfigExists: Bool { localCloudCredentialFingerprint != nil }
@@ -426,21 +456,6 @@ final class AppModel: ObservableObject {
         if !onboardingCompleted { return "最后试一次双击 Option，确认译文能够出现。" }
         return "选中英文，快速连按两次 Option。"
     }
-    var statusSymbol: String {
-        if !hasChecked { return "ellipsis.circle.fill" }
-        if userPaused { return "pause.circle.fill" }
-        if ready { return "checkmark.circle.fill" }
-        return selectedEngine == "apple" || serviceReady
-            ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill"
-    }
-    var statusColor: Color {
-        if !hasChecked { return .secondary }
-        if userPaused { return .secondary }
-        if ready { return Color(nsColor: .systemGreen) }
-        return selectedEngine == "apple" || serviceReady
-            ? Color(nsColor: .systemOrange) : Color(nsColor: .systemRed)
-    }
-
     // Presentation only: reuse the existing owner, pause and readiness state.
     // A disabled native path does not imply the legacy watcher has stopped.
     var translationSetupInProgress: Bool {
@@ -542,7 +557,6 @@ final class AppModel: ObservableObject {
         practiceTroubleshooting = false
         onboardingScreen = firstIncompleteScreen()
         onboardingPresented = true
-        if onboardingScreen == .prepare { verifyOnboardingEngine() }
         onChange?()
     }
 
@@ -567,9 +581,6 @@ final class AppModel: ObservableObject {
 
     func rerunFullOnboarding() {
         onboardingPreservesCompletion = OnboardingPolicy.preservesCompletionDuringRerun(onboardingDisposition)
-        autoRepairAttempted = false
-        onboardingEngineReady = false
-        onboardingEngineResult = ""
         permissionTroubleshooting = false
         practiceTroubleshooting = false
         onboardingScreen = .welcome
@@ -590,9 +601,6 @@ final class AppModel: ObservableObject {
     func advanceOnboarding() {
         switch onboardingScreen {
         case .welcome: startInitialOnboarding()
-        case .prepare:
-            guard onboardingEngineReady else { return }
-            onboardingScreen = .permission
         case .permission:
             guard NativeProductionTranslationCoordinator.shared.isEnabled else { return }
             onboardingScreen = .practice
@@ -609,41 +617,6 @@ final class AppModel: ObservableObject {
 
     private func firstIncompleteScreen() -> OnboardingScreen {
         NativeProductionTranslationCoordinator.shared.isEnabled ? .practice : .permission
-    }
-
-    func verifyOnboardingEngine() {
-        guard !onboardingEngineChecking else { return }
-        guard serviceReady else {
-            onboardingEngineReady = false
-            onboardingEngineResult = ""
-            if serviceInstalled && !autoRepairAttempted {
-                autoRepairAttempted = true
-                repairService()
-            }
-            return
-        }
-        guard engineReady else {
-            onboardingEngineReady = false
-            onboardingEngineResult = ""
-            return
-        }
-        onboardingEngineChecking = true
-        onboardingEngineResult = ""
-        let engine = selectedEngine
-        Task {
-            let response = await translate("Good tools should feel effortless.", engine: engine)
-            onboardingEngineChecking = false
-            onboardingEngineReady = response?.error == nil && response?.engine == engine && !(response?.result ?? "").isEmpty
-            onboardingEngineResult = onboardingEngineReady ? (response?.result ?? "") : ""
-            appleNeedsPreparation = response?.error == "apple_error"
-            if onboardingEngineReady { announce(engine == "apple" ? "Apple 离线翻译已准备好" : "火山云端翻译已准备好") }
-        }
-    }
-
-    func retryOnboardingEngine() {
-        autoRepairAttempted = false
-        onboardingEngineReady = false
-        verifyOnboardingEngine()
     }
 
     func showPermissionStep() {
@@ -693,6 +666,7 @@ final class AppModel: ObservableObject {
 
     private func installBundledShortcut(enableNativeAfterInstall: Bool) {
         guard !shortcutRepairBusy else { return }
+        hammerspoonInstalled = Self.queryHammerspoonInstalled()
         guard hammerspoonInstalled else {
             notice = "请先安装 Hammerspoon；安装后句译会自动部署当前快捷键模块。"
             return
@@ -847,11 +821,17 @@ final class AppModel: ObservableObject {
     }
 
     func applicationBecameActive() {
-        refreshLoginItemState()
-        migrateFallbackToServiceManagementIfNeeded()
+        applicationActive = true
+        scheduleRefreshTimer()
+        // SMAppService.status is only shown in Diagnostics. The fallback
+        // migration runs once per process on the first activation.
+        if showDiagnostics { refreshLoginItemState() }
+        if !activationLoginItemMigrationChecked {
+            activationLoginItemMigrationChecked = true
+            migrateFallbackToServiceManagementIfNeeded()
+        }
         Task {
             await refresh()
-            if onboardingPresented && onboardingScreen == .prepare { verifyOnboardingEngine() }
             try? await Task.sleep(for: .milliseconds(700))
             await refresh()
         }
@@ -1201,14 +1181,8 @@ final class AppModel: ObservableObject {
         return CloudCredentials(accessKey: access, secretKey: secret)
     }
 
-    private func readCloudCredentials() -> CloudCredentials? {
-        switch AppModel.readKeychainCloudCredentials() {
-        case .found(let credentials): return credentials
-        case .notFound: return readLegacyCloudCredentials()
-        case .invalid, .unavailable: return nil
-        }
-    }
-
+    /// `security` runs as a bounded child process; never wait for it on the
+    /// main actor.
     private func readCloudCredentialsOffMainActor() async -> CloudCredentials? {
         let keychainState = await Task.detached {
             AppModel.readKeychainCloudCredentials()
@@ -1428,15 +1402,23 @@ final class AppModel: ObservableObject {
         return request
     }
 
-    func refresh() async {
+    /// Reads local state and, only when the optional loopback service is
+    /// relevant (or a service operation requires it), probes `/health`.
+    func refresh(probeService forced: Bool = false) async {
         readLocalState()
-        var request = authenticatedRequest(url: serviceURL.appendingPathComponent("health")); request.timeoutInterval = 1.4
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if (response as? HTTPURLResponse)?.statusCode == 200 { health = try JSONDecoder().decode(Health.self, from: data) }
-            else { health = nil }
-        } catch { health = nil }
-        hasChecked = true
+        let installed = Self.queryHammerspoonInstalled()
+        if hammerspoonInstalled != installed { hammerspoonInstalled = installed }
+        var latestHealth: Health?
+        if forced || AppRefreshPolicy.shouldProbeService(refreshContext) {
+            var request = authenticatedRequest(url: serviceURL.appendingPathComponent("health")); request.timeoutInterval = 1.4
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if (response as? HTTPURLResponse)?.statusCode == 200 { latestHealth = try JSONDecoder().decode(Health.self, from: data) }
+            } catch { latestHealth = nil }
+        }
+        if health != latestHealth { health = latestHealth }
+        if !hasChecked { hasChecked = true }
+        scheduleRefreshTimer()
         onChange?()
     }
 
@@ -1695,9 +1677,8 @@ final class AppModel: ObservableObject {
                 let retry = AppModel.launchctl(["kickstart", "-k", serviceTarget])
                 return retry.0 == 0 ? retry : bootstrap
             }.value
-            try? await Task.sleep(for: .seconds(1.2)); await refresh(); serviceBusy = false
+            try? await Task.sleep(for: .seconds(1.2)); await refresh(probeService: true); serviceBusy = false
             if !serviceReady { notice = "自动修复没有完成，请打开“诊断与帮助”查看下一步。" }
-            if onboardingPresented && onboardingScreen == .prepare { verifyOnboardingEngine() }
         }
     }
 
@@ -1733,14 +1714,6 @@ final class AppModel: ObservableObject {
             selectedEngine = engine
             NativeProductionTranslationCoordinator.shared
                 .setAppleEngineSelected(engine == "apple")
-            #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-            NativeTranslationAppleResultLabLive.shared.invalidate(.engineChanged)
-            #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-            NativeAppleTranslationAdapterCoordinator.shared.invalidate(.engineChanged)
-            #endif
-            #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
-            NativeVolcTranslationAdapterCoordinator.shared.invalidate(.engineChanged)
-            #endif
             onChange?()
             return true
         } catch {
@@ -1842,7 +1815,7 @@ final class AppModel: ObservableObject {
             notice = cleaned
                 ? "已恢复上次中断的云端设置。"
                 : "云端已恢复；安全清理会在下次启动时继续。"
-            await refresh()
+            await refresh(probeService: true)
         }
     }
 
@@ -1856,7 +1829,7 @@ final class AppModel: ObservableObject {
                 testing = false
                 cloudBusy = false
             }
-            guard let credentials = readCloudCredentials() else {
+            guard let credentials = await readCloudCredentialsOffMainActor() else {
                 notice = "云端设置不完整，请重新配置。"
                 showCloudSetup = true
                 return
@@ -1865,7 +1838,7 @@ final class AppModel: ObservableObject {
             // running service with an ordinary translation request, so AK/SK
             // never cross the unauthenticated loopback transport.
             let response = await translate("Good tools should feel effortless.", engine: "volc")
-            guard credentialFingerprint(readCloudCredentials()) == credentialFingerprint(credentials) else {
+            guard credentialFingerprint(await readCloudCredentialsOffMainActor()) == credentialFingerprint(credentials) else {
                 cloudVerified = false
                 notice = "验证期间云端配置已变化，请重新运行验证。"
                 announce(notice)
@@ -1878,7 +1851,6 @@ final class AppModel: ObservableObject {
                     ? "云端连接验证成功，已切换到火山云端。"
                     : "云端连接已验证，但暂时无法保存翻译方式。"
                 announce(notice)
-                if onboardingPresented && onboardingScreen == .prepare { verifyOnboardingEngine() }
             } else { cloudVerified = false; notice = friendlyError(response); announce(notice) }
         }
     }
@@ -1895,14 +1867,18 @@ final class AppModel: ObservableObject {
             cloudError = "暂时无法读取旧的云端设置文件，原配置未更改。"
             return
         }
-        let keychainBackup = AppModel.readKeychainCloudCredentials()
-        guard keychainBackup != .invalid, keychainBackup != .unavailable else {
-            cloudBusy = false
-            cloudError = "暂时无法读取 macOS 钥匙串，原有云端配置未更改。请解锁钥匙串后重试。"
-            return
-        }
-        let verifiedFingerprintBackup = UserDefaults.standard.string(forKey: "cloudVerifiedFingerprint")
         Task {
+            // cloudBusy already holds the operation lock; read the backup off
+            // the main actor before any write, exactly as before.
+            let keychainBackup = await Task.detached {
+                AppModel.readKeychainCloudCredentials()
+            }.value
+            guard keychainBackup != .invalid, keychainBackup != .unavailable else {
+                cloudBusy = false
+                cloudError = "暂时无法读取 macOS 钥匙串，原有云端配置未更改。请解锁钥匙串后重试。"
+                return
+            }
+            let verifiedFingerprintBackup = UserDefaults.standard.string(forKey: "cloudVerifiedFingerprint")
             var pendingWriteAttempted = false
             var activeWriteAttempted = false
             var environmentWriteAttempted = false
@@ -1965,7 +1941,6 @@ final class AppModel: ObservableObject {
                     ? "火山云端已可用。"
                     : "火山云端已可用；安全清理会在下次启动时继续。"
                 announce(notice)
-                if onboardingPresented && onboardingScreen == .prepare { verifyOnboardingEngine() }
             } catch {
                 var keychainRestored = true
                 if activeWriteAttempted {
@@ -1984,7 +1959,7 @@ final class AppModel: ObservableObject {
                         AppModel.deletePendingCloudCredentials(matching: candidate)
                     }.value
                 }
-                localCloudCredentialFingerprint = credentialFingerprint(readCloudCredentials())
+                localCloudCredentialFingerprint = credentialFingerprint(await readCloudCredentialsOffMainActor())
                 if let verifiedFingerprintBackup { UserDefaults.standard.set(verifiedFingerprintBackup, forKey: "cloudVerifiedFingerprint") }
                 else { UserDefaults.standard.removeObject(forKey: "cloudVerifiedFingerprint") }
                 cloudBusy = false
@@ -1994,7 +1969,7 @@ final class AppModel: ObservableObject {
                     cloudError = "连接验证失败，且无法自动恢复原配置。请先不要继续修改，打开“诊断与帮助”。"
                 }
                 announce(cloudError)
-                await refresh()
+                await refresh(probeService: true)
             }
         }
     }
@@ -2023,7 +1998,7 @@ final class AppModel: ObservableObject {
         }
         let engineRestored = runtimeRestored && setEngine(selectedEngineBackup)
         if keychainsRestored && environmentRestored && runtimeRestored && engineRestored {
-            localCloudCredentialFingerprint = credentialFingerprint(readCloudCredentials())
+            localCloudCredentialFingerprint = credentialFingerprint(await readCloudCredentialsOffMainActor())
             if let verifiedFingerprintBackup {
                 UserDefaults.standard.set(verifiedFingerprintBackup, forKey: "cloudVerifiedFingerprint")
             } else {
@@ -2151,40 +2126,50 @@ final class AppModel: ObservableObject {
             announce(cloudError)
             return
         }
-        let keychainBackup = AppModel.readKeychainCloudCredentials()
-        guard keychainBackup != .invalid, keychainBackup != .unavailable else {
-            cloudError = "暂时无法读取 macOS 钥匙串，云端配置未更改。"
-            announce(cloudError)
-            return
-        }
-        let pendingBackup = AppModel.readKeychainCloudCredentials(
-            service: volcPendingKeychainService,
-            account: volcPendingKeychainAccount
-        )
-        guard pendingBackup != .invalid, pendingBackup != .unavailable else {
-            cloudError = "暂时无法确认待处理的云端设置，云端配置未更改。"
-            announce(cloudError)
-            return
-        }
-        let verifiedFingerprintBackup = UserDefaults.standard.string(forKey: "cloudVerifiedFingerprint")
-        let selectedEngineBackup = selectedEngine
-        let expectedCloudBackup = readCloudCredentials() != nil
-        guard createCloudRemovalMarker() else {
-            cloudError = "暂时无法创建安全的云端移除事务，原配置未更改。"
-            announce(cloudError)
-            return
-        }
-        guard setEngine("apple") else {
-            let markerCleared = deleteCloudRemovalMarker()
-            cloudError = markerCleared
-                ? "暂时无法先切换到离线翻译，云端配置未更改。"
-                : "无法切换到离线翻译，安全事务会在下次启动时继续。"
-            announce(cloudError)
-            return
-        }
+        // Hold the operation lock while the Keychain backups are read off the
+        // main actor. The transaction order below is unchanged.
         cloudBusy = true
         cloudError = ""
         Task {
+            let keychainBackup = await Task.detached {
+                AppModel.readKeychainCloudCredentials()
+            }.value
+            guard keychainBackup != .invalid, keychainBackup != .unavailable else {
+                cloudBusy = false
+                cloudError = "暂时无法读取 macOS 钥匙串，云端配置未更改。"
+                announce(cloudError)
+                return
+            }
+            let pendingBackup = await Task.detached {
+                AppModel.readKeychainCloudCredentials(
+                    service: volcPendingKeychainService,
+                    account: volcPendingKeychainAccount
+                )
+            }.value
+            guard pendingBackup != .invalid, pendingBackup != .unavailable else {
+                cloudBusy = false
+                cloudError = "暂时无法确认待处理的云端设置，云端配置未更改。"
+                announce(cloudError)
+                return
+            }
+            let verifiedFingerprintBackup = UserDefaults.standard.string(forKey: "cloudVerifiedFingerprint")
+            let expectedCloudBackup = await readCloudCredentialsOffMainActor() != nil
+            let selectedEngineBackup = selectedEngine
+            guard createCloudRemovalMarker() else {
+                cloudBusy = false
+                cloudError = "暂时无法创建安全的云端移除事务，原配置未更改。"
+                announce(cloudError)
+                return
+            }
+            guard setEngine("apple") else {
+                let markerCleared = deleteCloudRemovalMarker()
+                cloudBusy = false
+                cloudError = markerCleared
+                    ? "暂时无法先切换到离线翻译，云端配置未更改。"
+                    : "无法切换到离线翻译，安全事务会在下次启动时继续。"
+                announce(cloudError)
+                return
+            }
             let removedFromRuntime = await completeCloudRemoval(allowAlreadyStopped: false)
             if removedFromRuntime {
                 localCloudCredentialFingerprint = nil
@@ -2212,7 +2197,7 @@ final class AppModel: ObservableObject {
                     : "原配置已恢复，但安全事务标记未能清理；下次启动会继续处理。"
             } else {
                 let stopped = await stopServiceAndConfirm(allowAlreadyStopped: true)
-                await refresh()
+                await refresh(probeService: true)
                 cloudError = stopped
                     ? "移除和自动恢复都未完成；后台服务已安全停止，请打开“诊断与帮助”。"
                     : "无法确认云端凭据已从运行内存清除。请退出句译并立即打开“诊断与帮助”。"
@@ -2248,11 +2233,10 @@ final class AppModel: ObservableObject {
             let response = await translate("Good tools should feel effortless.", engine: engine)
             testing = false
             if let response, response.error == nil, let result = response.result, !result.isEmpty {
-                appleNeedsPreparation = false
                 testResult = result
                 testDetail = "\(response.engine == "volc" ? "火山云端" : "Apple 离线") · \(response.elapsed_ms ?? 0) ms · 仅确认翻译方式"
                 if engine == "volc" { cloudVerified = true }
-            } else { testResult = ""; testDetail = friendlyError(response); if response?.error == "apple_error" { appleNeedsPreparation = true }; announce(testDetail) }
+            } else { testResult = ""; testDetail = friendlyError(response); announce(testDetail) }
         }
     }
 
@@ -2273,7 +2257,7 @@ final class AppModel: ObservableObject {
     private func waitForService(expectCloud: Bool? = nil) async -> Bool {
         for _ in 0..<16 {
             try? await Task.sleep(for: .milliseconds(400))
-            await refresh()
+            await refresh(probeService: true)
             if serviceReady {
                 guard let expectCloud else { return true }
                 if cloudConfigured == expectCloud { return true }
@@ -2292,37 +2276,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func prepareApple() {
-        if selectedEngine == "apple" {
-            NativeProductionTranslationCoordinator.shared.prepareLanguages()
-            return
-        }
-        guard !applePreparing else { return }
-        guard FileManager.default.fileExists(atPath: helper.path) else { notice = "这台 Mac 暂不支持 Apple 离线翻译，可以改用火山云端。"; return }
-        applePreparing = true
-        notice = "请在系统窗口中确认下载中英语言包。"
-        let path = helper.path
-        Task {
-            let code = await Task.detached {
-                AppModel.runBoundedProcess(
-                    executablePath: path,
-                    arguments: ["--prepare"],
-                    timeout: .seconds(300)
-                ).status
-            }.value
-            applePreparing = false
-            appleNeedsPreparation = code != 0
-            notice = code == 0
-                ? "Apple 离线翻译已准备好。"
-                : "语言包还没有准备完成，请重试。"
-            announce(notice)
-            await refresh()
-            if onboardingPresented && onboardingScreen == .prepare {
-                verifyOnboardingEngine()
-            }
-        }
-    }
-
     func openAccessibility() { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!) }
     func openInstallationGuide() {
         NSWorkspace.shared.open(URL(string: "https://github.com/Eim-aa/juyi/blob/main/docs/MENU_BAR_APP.md#%E5%AE%89%E8%A3%85")!)
@@ -2336,7 +2289,7 @@ final class AppModel: ObservableObject {
         onboardingDisposition = .completed
         onboardingPreservesCompletion = true
         onboardingScreen = .complete
-        notice = "设置完成。以后选中英文，连按两次 Option 即可。"
+        notice = ""
         announce("句译准备好了")
         onChange?()
     }
@@ -2369,24 +2322,6 @@ final class AppModel: ObservableObject {
         do { try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true); try (paused ? "1\n" : "0\n").write(to: pauseFile, atomically: true, encoding: .utf8) }
         catch { paused = previous; notice = "暂时无法更改状态。"; return }
         native.setPaused(paused, byUser: true)
-        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
-        if paused != previous {
-            NativeOwnerHandoffLabLive.shared.invalidate(.pause)
-        }
-        #endif
-        #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
-        if paused != previous {
-            NativeSelectionCaptureLabLive.shared.setPaused(paused)
-        }
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        if paused != previous { NativeTranslationAppleResultLabLive.shared.invalidate(.pause) }
-        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        if paused != previous { NativeAppleTranslationAdapterCoordinator.shared.invalidate(.pause) }
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
-        if paused != previous { NativeVolcTranslationAdapterCoordinator.shared.invalidate(.pause) }
-        #endif
         onChange?()
     }
 
@@ -2437,21 +2372,7 @@ final class AppModel: ObservableObject {
     func stopService() {
         guard serviceReady && !serviceBusy && !cloudBusy else { return }; serviceBusy = true
         NativeProductionTranslationCoordinator.shared.invalidate(.stop)
-        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
-        NativeOwnerHandoffLabLive.shared.invalidate(.stop)
-        #endif
-        #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
-        NativeSelectionCaptureLabLive.shared.invalidate(.stop)
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        NativeTranslationAppleResultLabLive.shared.invalidate(.stop)
-        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        NativeAppleTranslationAdapterCoordinator.shared.invalidate(.stop)
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
-        NativeVolcTranslationAdapterCoordinator.shared.invalidate(.stop)
-        #endif
-        Task { _ = await Task.detached { AppModel.launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"]) }.value; try? await Task.sleep(for: .milliseconds(600)); await refresh(); serviceBusy = false; notice = "后台翻译组件已停止。需要时可点“自动修复”重新启动。" }
+        Task { _ = await Task.detached { AppModel.launchctl(["bootout", "gui/\(getuid())/\(serviceLabel)"]) }.value; try? await Task.sleep(for: .milliseconds(600)); await refresh(probeService: true); serviceBusy = false; notice = "后台翻译组件已停止。需要时可点“自动修复”重新启动。" }
     }
     func openLogs() {
         let log = home.appendingPathComponent("Library/Logs/argos-translator.err.log")
@@ -2463,23 +2384,9 @@ final class AppModel: ObservableObject {
 }
 
 private struct Surface: ViewModifier {
-    var selected = false
     func body(content: Content) -> some View {
         content.padding(18).background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(nsColor: .controlBackgroundColor)))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(selected ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: selected ? 2 : 1))
-    }
-}
-
-private struct EngineCard: View {
-    let symbol: String, title: String, badge: String?, subtitle: String, detail: String, selected: Bool, action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack { Image(systemName: symbol).font(.title2).foregroundStyle(selected ? Color.accentColor : Color.secondary); Text(title).font(.headline); Spacer(); if let badge { Text(badge).font(.caption).padding(.horizontal, 7).padding(.vertical, 3).background(.quaternary, in: Capsule()) }; Image(systemName: selected ? "checkmark.circle.fill" : "circle").foregroundStyle(selected ? Color.accentColor : Color.secondary) }
-                Text(subtitle).font(.subheadline).fontWeight(.medium)
-                Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }.frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading).modifier(Surface(selected: selected))
-        }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color(nsColor: .separatorColor), lineWidth: 1))
     }
 }
 
@@ -2502,14 +2409,13 @@ private struct OnboardingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 Text("句译").font(.headline)
                 Spacer()
-                if let progressText { Text(progressText).font(.callout).foregroundStyle(.secondary).accessibilityLabel(progressAccessibilityLabel) }
+                Text(progressText).font(.callout).foregroundStyle(.secondary).accessibilityLabel(progressAccessibilityLabel)
             }.padding(.horizontal, 28).padding(.vertical, 18)
             Divider()
             ScrollView {
                 Group {
                     switch model.onboardingScreen {
                     case .welcome: welcome
-                    case .prepare: prepare
                     case .permission: permission
                     case .practice: practice
                     case .complete: complete
@@ -2527,26 +2433,21 @@ private struct OnboardingView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { focusAndAnnouncePage() }
         .onChange(of: model.onboardingScreen) { focusAndAnnouncePage() }
-        .onChange(of: model.hotkeyProblem) {
-            guard model.onboardingScreen == .permission else { return }
-            let state = shortcutStatus
-            announce("快捷键状态：\(state.title)。\(state.detail)")
-            DispatchQueue.main.async { accessibilityFocus = .statusSummary }
-        }
-        .onChange(of: nativeTranslation.phase) {
-            guard model.onboardingScreen == .permission else { return }
-            let state = shortcutStatus
-            announce("快捷键状态：\(state.title)。\(state.detail)")
-            DispatchQueue.main.async { accessibilityFocus = .statusSummary }
-        }
+        .onChange(of: model.hotkeyProblem) { announceShortcutStatus() }
+        .onChange(of: nativeTranslation.phase) { announceShortcutStatus() }
+    }
+
+    private func announceShortcutStatus() {
+        guard model.onboardingScreen == .permission else { return }
+        let state = shortcutStatus
+        announce("快捷键状态：\(state.title)。\(state.detail)")
+        DispatchQueue.main.async { accessibilityFocus = .statusSummary }
     }
 
     @ViewBuilder private var onboardingFooter: some View {
         switch model.onboardingScreen {
         case .welcome:
             footer(primary: "开始设置", primaryEnabled: true) { model.advanceOnboarding() }
-        case .prepare:
-            engineFooter
         case .permission:
             shortcutFooter
         case .practice:
@@ -2567,20 +2468,20 @@ private struct OnboardingView: View {
         }
     }
 
-    private var progressText: String? {
+    /// Welcome and completion frame the two real steps: prepare, then practice.
+    private var progressText: String {
         switch model.onboardingScreen {
-        case .welcome: return "欢迎 · 准备 · 练习 · 完成"
-        case .prepare, .permission: return "第 2 步 · 准备"
-        case .practice: return "第 3 步 · 练习"
-        case .complete: return "第 4 步 · 完成"
+        case .welcome: return "准备 · 练习 · 完成"
+        case .permission: return "第 1 步 · 准备"
+        case .practice: return "第 2 步 · 练习"
+        case .complete: return "完成"
         }
     }
 
     private var progressAccessibilityLabel: String {
         switch model.onboardingScreen {
-        case .prepare: return "准备翻译"
-        case .permission: return "第 2 步，共 4 步：准备快捷键和翻译"
-        case .practice: return "第 3 步，共 4 步：实际试用"
+        case .permission: return "第 1 步，共 2 步：准备快捷键和翻译"
+        case .practice: return "第 2 步，共 2 步：实际试用"
         case .welcome, .complete: return ""
         }
     }
@@ -2602,71 +2503,10 @@ private struct OnboardingView: View {
                 Image(systemName: "arrow.right").foregroundStyle(.tertiary)
                 welcomeAction("查看中文", symbol: "character.bubble")
             }.accessibilityElement(children: .combine).accessibilityLabel("选中英文，然后连按两次 Option，查看中文")
-            Text("先在文本编辑中试用。其他 App 和文字层 PDF 的支持情况取决于选区接口；扫描件、图片和安全输入框不支持。")
+            Text("先在文本编辑中试用；其他 App 和文字层 PDF 能否取词取决于其选区接口。")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }.padding(.horizontal, 34).padding(.vertical, 24)
-    }
-
-    private var prepare: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            stepTitle("先把翻译准备好", subtitle: model.selectedEngine == "apple" ? "句译优先使用 Apple 离线翻译，文本只在这台 Mac 上处理。" : "继续使用你已经验证过的火山云端翻译设置。")
-            engineStatusCard
-            if model.onboardingEngineReady {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("固定样例自检通过").font(.subheadline.weight(.medium))
-                    Text("Good tools should feel effortless. → \(model.onboardingEngineResult)").font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-                }.padding(12).frame(maxWidth: .infinity, alignment: .leading).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-            }
-            if !model.serviceInstalled {
-                Label("句译后台组件尚未安装完整。请打开安装说明并按步骤重新安装；现有设置不会被清除。", systemImage: "shippingbox")
-                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-        }.padding(.horizontal, 34).padding(.vertical, 28)
-            .onAppear { model.verifyOnboardingEngine() }
-    }
-
-    private var engineStatusCard: some View {
-        let state = engineStatus
-        return HStack(alignment: .top, spacing: 14) {
-            Image(systemName: state.symbol).font(.title2).foregroundStyle(state.color).frame(width: 28)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(state.title).font(.headline)
-                Text(state.detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-            if model.onboardingEngineChecking || model.serviceBusy || model.applePreparing { ProgressView().controlSize(.small) }
-        }.modifier(Surface())
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("翻译状态：\(state.title)。\(state.detail)")
-    }
-
-    private var engineStatus: (symbol: String, color: Color, title: String, detail: String) {
-        if model.onboardingEngineChecking { return ("hourglass", .secondary, "正在检查翻译组件…", "使用固定英文样例确认当前翻译方式能够工作，不会读取你的内容。") }
-        if model.serviceBusy { return ("arrow.triangle.2.circlepath", .secondary, "正在恢复翻译组件…", "句译会自动修复一次，然后继续检查。") }
-        if !model.serviceInstalled { return ("shippingbox.fill", Color(nsColor: .systemOrange), "句译安装不完整", "请打开安装说明，并按当前安装步骤重新安装。") }
-        if !model.serviceReady { return ("exclamationmark.triangle.fill", Color(nsColor: .systemOrange), "翻译组件没有响应", "自动恢复没有完成，可以重新尝试或查看安装帮助。") }
-        if model.selectedEngine == "volc" && (!model.cloudConfigured || !model.cloudVerifiedForUI) { return ("cloud.fill", Color(nsColor: .systemOrange), "需要验证火山云端", "只有你主动配置并验证密钥后，句译才会发送选中的英文。") }
-        if model.selectedEngine == "apple" && !model.appleAvailable { return ("desktopcomputer.trianglebadge.exclamationmark", Color(nsColor: .systemOrange), "这台 Mac 无法使用 Apple 离线翻译", "可以主动设置火山云端，句译不会自动上传文字。") }
-        if model.appleNeedsPreparation { return ("arrow.down.circle.fill", Color(nsColor: .systemOrange), "还需要下载中英语言包", "macOS 可能显示下载确认。完成后回到句译，这里会自动检查。") }
-        if model.onboardingEngineReady { return ("checkmark.circle.fill", Color(nsColor: .systemGreen), model.selectedEngine == "apple" ? "Apple 离线已准备好" : "火山云端已准备好", "已通过固定英文样例自检。") }
-        return ("ellipsis.circle.fill", .secondary, "正在准备翻译", "句译会检查当前翻译方式。")
-    }
-
-    @ViewBuilder private var engineFooter: some View {
-        if model.onboardingEngineReady {
-            footer(primary: "继续", primaryEnabled: true) { model.advanceOnboarding() }
-        } else if model.appleNeedsPreparation || model.applePreparing {
-            footer(primary: model.applePreparing ? "正在准备…" : "下载语言包", primaryEnabled: !model.applePreparing) { model.prepareApple() }
-        } else if !model.serviceInstalled {
-            footer(primary: "打开安装说明", primaryEnabled: true) { model.openInstallationGuide() }
-        } else if model.selectedEngine == "apple" && model.serviceReady && !model.appleAvailable {
-            footer(primary: "设置火山云端", primaryEnabled: true) { model.chooseCloud() }
-        } else if model.selectedEngine == "volc" && (!model.cloudConfigured || !model.cloudVerifiedForUI) {
-            footer(primary: model.cloudConfigured ? "验证云端连接" : "设置火山云端", primaryEnabled: true) { model.chooseCloud() }
-        } else {
-            footer(primary: (model.onboardingEngineChecking || model.serviceBusy) ? "正在检查…" : "重新尝试", primaryEnabled: !(model.onboardingEngineChecking || model.serviceBusy)) { model.retryOnboardingEngine() }
-        }
     }
 
     private var permission: some View {
@@ -2736,10 +2576,14 @@ private struct OnboardingView: View {
         }.accessibilityElement(children: .ignore)
             .accessibilityLabel("\(title)：\(complete ? "已确认" : "待检查")。\(detail)")
     }
-    private var shortcutStatus: (symbol: String, color: Color, title: String, detail: String) {
-        if model.userPaused {
-            return ("pause.circle.fill", Color(nsColor: .systemOrange), "句译目前已暂停", "恢复翻译后即可继续设置或练习双击 Option。")
-        }
+    private typealias ShortcutState = (symbol: String, color: Color, title: String, detail: String)
+    /// Native states first. The Hammerspoon states at the end are reachable
+    /// only while an earlier development component still needs a handoff.
+    private var shortcutStatus: ShortcutState {
+        let orange = Color(nsColor: .systemOrange)
+        let paused: ShortcutState = ("pause.circle.fill", orange, "句译目前已暂停", "恢复翻译后即可继续设置或练习双击 Option。")
+        let canEnable: ShortcutState = ("hand.tap.fill", orange, "可以启用双 Option", "点击启用后，按系统提示为句译开启辅助功能权限。")
+        if model.userPaused { return paused }
         if nativeTranslation.isEnabled {
             return ("checkmark.circle.fill", Color(nsColor: .systemGreen), "双 Option 已启用", "现在可以到文本编辑中选中英文，试一次翻译。")
         }
@@ -2752,33 +2596,30 @@ private struct OnboardingView: View {
         case .waitingForHammerspoon:
             return ("arrow.left.arrow.right.circle.fill", .secondary, "正在安全交接快捷键…", nativeTranslation.detail)
         case .languagePackRequired:
-            return ("arrow.down.circle.fill", Color(nsColor: .systemOrange), nativeTranslation.isPreparingLanguages ? "正在准备 Apple 语言包…" : "需要准备 Apple 语言包", nativeTranslation.detail)
+            return ("arrow.down.circle.fill", orange, nativeTranslation.isPreparingLanguages ? "正在准备 Apple 语言包…" : "需要准备 Apple 语言包", nativeTranslation.detail)
         case .unsupported:
             return ("xmark.circle.fill", Color(nsColor: .systemRed), "这台 Mac 不支持 Apple 离线翻译", nativeTranslation.detail)
         case .unavailable:
-            return ("exclamationmark.circle.fill", Color(nsColor: .systemOrange), "原生双 Option 尚未启用", nativeTranslation.detail)
+            return ("exclamationmark.circle.fill", orange, "原生双 Option 尚未启用", nativeTranslation.detail)
         case .active, .disabled:
             break
         }
         if model.selectedEngine != "apple" {
-            return ("lock.shield.fill", Color(nsColor: .systemOrange), "原生双 Option 使用 Apple 离线翻译", "点击下一步会明确切换到 Apple 离线；现有火山云端密钥不会被删除。")
+            return ("lock.shield.fill", orange, "原生双 Option 使用 Apple 离线翻译", "点击下一步会明确切换到 Apple 离线；现有火山云端密钥不会被删除。")
         }
-        if !model.nativeNeedsLegacyHandoff || model.nativeOwnerBridgeReady {
-            return ("hand.tap.fill", Color(nsColor: .systemOrange), "可以启用双 Option", "点击启用后，按系统提示为句译开启辅助功能权限。")
-        }
+        guard legacyHandoffPending else { return canEnable }
         switch model.hotkeyProblem {
-        case .notInstalled: return ("arrow.down.app.fill", Color(nsColor: .systemOrange), "先安装 Hammerspoon", "此预览版需要这个免费的兼容组件。下载后将它放入应用程序并打开，再回到句译继续。")
-        case .notRunning: return ("play.circle.fill", Color(nsColor: .systemOrange), "准备快捷键兼容组件", "句译会打开 Hammerspoon 并更新兼容配置，然后继续启用。")
-        case .heartbeatExpired: return ("clock.badge.exclamationmark.fill", Color(nsColor: .systemOrange), "快捷键助手没有响应", "请打开 Hammerspoon，并从它的菜单重新载入配置。")
-        case .needsUpdate: return ("arrow.down.circle.fill", Color(nsColor: .systemOrange), "快捷键组件需要更新", "点击继续，句译会自动更新兼容配置。")
-        case .notAuthorized: return ("hand.raised.fill", Color(nsColor: .systemOrange), "继续设置双 Option", "句译会先检查兼容组件，再请求自己的辅助功能权限。")
-        case .notLoaded: return ("arrow.clockwise.circle.fill", Color(nsColor: .systemOrange), "快捷键配置尚未载入", "请打开 Hammerspoon，并选择 Reload Config。")
-        case .paused: return ("pause.circle.fill", Color(nsColor: .systemOrange), "句译目前已暂停", "恢复翻译后即可练习双击 Option。")
-        case .ready: return ("hand.tap.fill", Color(nsColor: .systemOrange), "可以启用双 Option", "点击启用，让句译准备原生离线翻译。")
+        case .notInstalled: return ("arrow.down.app.fill", orange, "先安装 Hammerspoon", "这台 Mac 留有早期快捷键组件，句译需要先安全交接。下载 Hammerspoon 后将它放入应用程序并打开，再回到句译继续。")
+        case .notRunning, .heartbeatExpired, .needsUpdate, .notLoaded: return ("arrow.down.circle.fill", orange, "快捷键组件需要更新", "句译会打开 Hammerspoon 并更新兼容配置，然后继续启用。")
+        case .paused: return paused
+        case .notAuthorized, .ready: return canEnable
         }
     }
 
+    private var legacyHandoffPending: Bool { model.nativeNeedsLegacyHandoff && !model.nativeOwnerBridgeReady }
+
     @ViewBuilder private var shortcutFooter: some View {
+        let enable = { model.enableNativeShortcut() }
         if model.userPaused {
             footer(primary: "恢复翻译", primaryEnabled: true) { model.togglePause() }
         } else if nativeTranslation.isEnabled {
@@ -2794,29 +2635,23 @@ private struct OnboardingView: View {
             case .languagePackRequired:
                 footer(primary: nativeTranslation.isPreparingLanguages ? "正在准备…" : "准备 Apple 语言包", primaryEnabled: !nativeTranslation.isPreparingLanguages) { nativeTranslation.prepareLanguages() }
             case .unsupported:
-                footer(primary: "重新检查 Apple 翻译", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
+                footer(primary: "重新检查 Apple 翻译", primaryEnabled: nativeTranslation.actionIsEnabled, action: enable)
             case .unavailable where AccessibilityController.status != .authorized:
                 footer(primary: "打开辅助功能设置", primaryEnabled: true) { model.openAccessibility() }
             case .unavailable:
-                footer(primary: "重新尝试", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
+                footer(primary: "重新尝试", primaryEnabled: nativeTranslation.actionIsEnabled, action: enable)
             case .active:
                 footer(primary: "继续", primaryEnabled: true) { model.advanceOnboarding() }
+            case .disabled where model.selectedEngine != "apple":
+                footer(primary: "切换到 Apple 离线并启用", primaryEnabled: nativeTranslation.actionIsEnabled, action: enable)
+            case .disabled where !legacyHandoffPending:
+                footer(primary: "启用双 Option", primaryEnabled: nativeTranslation.actionIsEnabled, action: enable)
             case .disabled:
-                if model.selectedEngine != "apple" {
-                    footer(primary: "切换到 Apple 离线并启用", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
-                } else if !model.nativeNeedsLegacyHandoff || model.nativeOwnerBridgeReady || model.hotkeyProblem == .ready {
-                    footer(primary: "启用双 Option", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
-                } else {
-                    switch model.hotkeyProblem {
-                    case .notInstalled: footer(primary: "前往下载 Hammerspoon", primaryEnabled: true) { model.openHammerspoon() }
-                    case .notRunning: footer(primary: "准备并启用双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
-                    case .notAuthorized: footer(primary: "继续启用双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
-                    case .paused: footer(primary: "恢复翻译", primaryEnabled: true) { model.togglePause() }
-                    case .heartbeatExpired, .needsUpdate, .notLoaded:
-                        footer(primary: "更新并启用双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
-                    case .ready:
-                        footer(primary: "启用双 Option", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
-                    }
+                switch model.hotkeyProblem {
+                case .notInstalled: footer(primary: "前往下载 Hammerspoon", primaryEnabled: true) { model.openHammerspoon() }
+                case .paused: footer(primary: "恢复翻译", primaryEnabled: true) { model.togglePause() }
+                case .notRunning, .heartbeatExpired, .needsUpdate, .notLoaded: footer(primary: "更新并启用双 Option", primaryEnabled: true, action: enable)
+                case .notAuthorized, .ready: footer(primary: "启用双 Option", primaryEnabled: model.hotkeyProblem == .notAuthorized || nativeTranslation.actionIsEnabled, action: enable)
                 }
             }
         }
@@ -2838,7 +2673,7 @@ private struct OnboardingView: View {
                 Text("句译不会读取自身窗口中的文字；这是为了避免把设置页误当成翻译目标。")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.modifier(Surface())
-            Text("扫描图片型 PDF 暂不支持。WPS PDF 兼容取词会临时使用剪贴板，剪贴板管理器可能保留原文。")
+            Text("WPS PDF 兼容取词会临时使用剪贴板，剪贴板管理器可能保留原文；扫描图片型 PDF 暂不支持。")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if !nativeTranslation.isEnabled {
                 Label(nativeTranslation.detail, systemImage: "exclamationmark.circle.fill")
@@ -2863,13 +2698,7 @@ private struct OnboardingView: View {
                 .accessibilityFocused($accessibilityFocus, equals: .pageTitle)
             Text("以后只需：选中英文，连按两次 Option。")
                 .font(.title3).multilineTextAlignment(.center)
-            VStack(alignment: .leading, spacing: 12) {
-                Label("关闭窗口：继续在菜单栏运行，仍可翻译。", systemImage: "macwindow")
-                Divider()
-                Label("暂停翻译：停止响应双 Option，保留设置。", systemImage: "pause.circle")
-                Divider()
-                Label("退出句译：翻译停止，重开后需手动恢复。", systemImage: "power")
-            }.font(.callout).frame(maxWidth: .infinity, alignment: .leading).modifier(Surface())
+            Button("后台运行与停止…") { model.showSupportInfo = true }.buttonStyle(.link)
         }.padding(.horizontal, 34).padding(.vertical, 36)
     }
 
@@ -2900,7 +2729,6 @@ private struct OnboardingView: View {
     private var pageTitle: String {
         switch model.onboardingScreen {
         case .welcome: return "欢迎使用句译"
-        case .prepare: return "先把翻译准备好"
         case .permission: return "允许句译响应快捷键"
         case .practice: return "试一次，马上就会"
         case .complete: return "句译准备好了"
@@ -2919,7 +2747,6 @@ private struct OnboardingView: View {
         VStack(spacing: 6) { Image(systemName: symbol).font(.title2); Text(title).font(.callout.weight(.medium)) }
             .frame(width: 96, height: 64).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 11))
     }
-    private func pill(_ text: String) -> some View { Text(text).font(.caption.weight(.medium)).padding(.horizontal, 10).padding(.vertical, 5).background(.quaternary, in: Capsule()) }
     private func keycap(_ text: String) -> some View { Text(text).font(.system(size: 18, weight: .semibold, design: .rounded)).frame(width: 38, height: 34).background(.quaternary, in: RoundedRectangle(cornerRadius: 7)) }
 }
 
@@ -2956,11 +2783,14 @@ private struct CloudSetupView: View {
 private struct DiagnosticsView: View {
     @ObservedObject var model: AppModel
     @ObservedObject private var nativeTranslation = NativeProductionTranslationCoordinator.shared
+    /// Stacked on this sheet: RootView presents only one sheet at a time.
+    @State private var showSupportInfo = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("诊断与帮助").font(.title2.bold()).accessibilityAddTraits(.isHeader)
                 Text("先在文本编辑中选中英文并试用双 Option；这里可以检查权限、语言包和兼容范围。").foregroundStyle(.secondary)
+                sectionTitle("状态与修复")
                 GroupBox("当前状态") {
                     VStack(alignment: .leading, spacing: 6) {
                         Label("双 Option：\(model.hotkeyReady ? "已启用" : "尚未启用")", systemImage: model.hotkeyReady ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
@@ -2991,19 +2821,14 @@ private struct DiagnosticsView: View {
                 } else if model.selectedEngine == "volc" && model.serviceReady {
                     Button("停止云端翻译组件", role: .destructive) { model.stopService() }
                 }
-                DisclosureGroup("支持范围与隐私") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("当前仅支持英语到简体中文。文本编辑、预览、WPS 文本 PDF 和 Chrome 网页已在本机验证；其他 App 的取词能力取决于其辅助功能接口。扫描图片型 PDF、安全输入框和受保护内容暂不支持。")
-                        Text("WPS PDF 兼容取词会临时执行系统复制，并尽力恢复原剪贴板。剪贴板管理器可能保留原文或干扰取词；敏感内容请避免使用这条兼容路径。")
-                        Text("本地翻译由句译独立完成，不需要额外安装快捷键工具。检测到已有的早期开发组件时，才会处理兼容交接。Apple 离线失败时不会自动上传云端。")
-                        Text("关闭窗口后继续运行；暂停或退出会停止翻译。退出后重新打开，需要点击“恢复翻译”。")
-                        if model.nativeNeedsLegacyHandoff || model.selectedEngine != "apple" {
-                            Button("检查已有 Hammerspoon 组件") { model.openHammerspoon() }
-                        }
-                        Button("打开技术日志") { model.openLogs() }
-                    }.font(.callout).foregroundStyle(.secondary).padding(.top, 6)
+                HStack {
+                    Button("打开技术日志") { model.openLogs() }
+                    if model.nativeNeedsLegacyHandoff || model.selectedEngine != "apple" {
+                        Button("检查已有 Hammerspoon 组件") { model.openHammerspoon() }
+                    }
                 }
                 Divider()
+                sectionTitle("设置")
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
@@ -3048,14 +2873,24 @@ private struct DiagnosticsView: View {
                     Text("从头复检翻译、权限和实际快捷键，不会清除引擎、密钥或其他设置。").font(.callout).foregroundStyle(.secondary)
                     Button("重新运行完整设置…") { model.rerunFullOnboarding() }
                 }
-                HStack { Spacer(); Button("完成") { model.showDiagnostics = false }.keyboardShortcut(.defaultAction) }
+                Divider()
+                HStack {
+                    Button("支持范围与隐私") { showSupportInfo = true }.buttonStyle(.link)
+                    Spacer()
+                    Button("完成") { model.showDiagnostics = false }.keyboardShortcut(.defaultAction)
+                }
             }.padding(28)
         }.frame(width: 500, height: 500)
+            .sheet(isPresented: $showSupportInfo) { SupportInfoView() }
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title).font(.title3.weight(.semibold)).accessibilityAddTraits(.isHeader)
     }
 }
 
 private struct SupportInfoView: View {
-    @ObservedObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("支持范围与隐私").font(.title2.bold()).accessibilityAddTraits(.isHeader)
@@ -3080,7 +2915,7 @@ private struct SupportInfoView: View {
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
-            HStack { Spacer(); Button("完成") { model.showSupportInfo = false }.keyboardShortcut(.defaultAction) }
+            HStack { Spacer(); Button("完成") { dismiss() }.keyboardShortcut(.defaultAction) }
         }.padding(24).frame(width: 472, height: 510)
     }
     private func section<Content: View>(_ title: String, symbol: String, @ViewBuilder content: () -> Content) -> some View {
@@ -3174,7 +3009,8 @@ private struct AppView: View {
                     }.font(.callout)
                 }
             }
-            if !model.ready && model.canPauseTranslation && !model.translationSetupInProgress {
+            if !model.ready && model.canPauseTranslation && !model.translationSetupInProgress
+                && model.nativeNeedsLegacyHandoff {
                 Text("兼容快捷键可能仍在运行；暂停会同时停止两条翻译路径。")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -3253,30 +3089,6 @@ private struct AppView: View {
 
 private struct RootView: View {
     @ObservedObject var model: AppModel
-    #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
-    @ObservedObject private var nativeOwnerHandoffLab =
-        NativeOwnerHandoffLabLive.shared
-    #endif
-    #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
-    @ObservedObject private var nativeSelectionCaptureLab =
-        NativeSelectionCaptureLabLive.shared
-    #endif
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-    @ObservedObject private var nativeAppleTranslationAdapter =
-        NativeAppleTranslationAdapterCoordinator.shared
-    #endif
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
-    @ObservedObject private var nativeVolcTranslationAdapter =
-        NativeVolcTranslationAdapterCoordinator.shared
-    #endif
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-    @ObservedObject private var nativeTranslationResultLab =
-        NativeTranslationResultLabLive.shared
-    #endif
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-    @ObservedObject private var nativeAppleResultLab =
-        NativeTranslationAppleResultLabLive.shared
-    #endif
     var body: some View {
         Group {
             if model.onboardingPresented { OnboardingView(model: model) }
@@ -3284,91 +3096,13 @@ private struct RootView: View {
         }
         .sheet(isPresented: $model.showCloudSetup) { CloudSetupView(model: model) }
         .sheet(isPresented: $model.showDiagnostics) { DiagnosticsView(model: model) }
-        .sheet(isPresented: $model.showSupportInfo) { SupportInfoView(model: model) }
+        .sheet(isPresented: $model.showSupportInfo) { SupportInfoView() }
         .background(
             NativeAppleProductionTranslationHost(
                 service: NativeAppleProductionTranslationService.shared
             )
         )
-        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
-        .sheet(
-            isPresented: Binding(
-                get: { nativeOwnerHandoffLab.isPresented },
-                set: { presented in
-                    if !presented { nativeOwnerHandoffLab.close() }
-                }
-            )
-        ) {
-            NativeOwnerHandoffLabHost()
-        }
-        #endif
-        #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
-        .sheet(
-            isPresented: Binding(
-                get: { nativeSelectionCaptureLab.isPresented },
-                set: { presented in
-                    if !presented { nativeSelectionCaptureLab.close() }
-                }
-            )
-        ) {
-            NativeSelectionCaptureLabHost()
-        }
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        .sheet(
-            isPresented: Binding(
-                get: { nativeAppleTranslationAdapter.isPresented },
-                set: { presented in
-                    if !presented { nativeAppleTranslationAdapter.close() }
-                }
-            )
-        ) {
-            NativeAppleTranslationAdapterSheet(
-                coordinator: nativeAppleTranslationAdapter
-            )
-        }
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
-        .sheet(
-            isPresented: Binding(
-                get: { nativeVolcTranslationAdapter.isPresented },
-                set: { presented in
-                    if !presented { nativeVolcTranslationAdapter.close() }
-                }
-            )
-        ) {
-            NativeVolcTranslationAdapterSheet(coordinator: nativeVolcTranslationAdapter)
-        }
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        .sheet(
-            isPresented: Binding(
-                get: { nativeTranslationResultLab.isPresented },
-                set: { presented in
-                    if !presented { nativeTranslationResultLab.close() }
-                }
-            )
-        ) {
-            NativeTranslationResultLabSheet(coordinator: nativeTranslationResultLab)
-        }
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        .sheet(
-            isPresented: Binding(
-                get: { nativeAppleResultLab.isPresented },
-                set: { presented in
-                    if !presented { nativeAppleResultLab.close() }
-                }
-            )
-        ) {
-            NativeTranslationAppleResultLabSheet(coordinator: nativeAppleResultLab)
-        }
-        #endif
     }
-}
-
-private extension AppModel {
-    var cloudVerifiedForUI: Bool { cloudVerified }
 }
 
 @MainActor
@@ -3377,15 +3111,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private var window: NSWindow!
     private var lastOnboardingMode: Bool?
-    private var nativeTranslationObservation: AnyCancellable?
+    private var chromeGate = AppChromeRenderGate()
     private var nativeProductionIsAwake = true
     private var nativeProductionSessionIsActive = true
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-    private var nativeOverlayPreviewMenuItem: NSMenuItem?
-    #endif
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-    private var nativeAppleResultLabAccessibilityStatus = AccessibilityController.status
-    #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let isLoginLaunch = launchedFromLogin
@@ -3398,11 +3126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             [weak self] cta in self?.handleNativeOverlayCTA(cta)
         }
         NativeTranslationOverlayController.shared.setPaused(model.paused)
-        nativeTranslationObservation = NativeProductionTranslationCoordinator.shared
-            .objectWillChange
-            .sink { [weak self] _ in
-                Task { @MainActor in self?.updateChrome() }
-            }
+        // Coordinator changes reach the chrome once, through AppModel.onChange.
         NativeProductionTranslationCoordinator.shared.setPaused(model.paused)
         NativeProductionTranslationCoordinator.shared
             .setAppleEngineSelected(model.selectedEngine == "apple")
@@ -3423,49 +3147,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self, selector: #selector(nativeProductionSessionBecameActive(_:)),
             name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil
         )
-        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
-        let workspaceCenter = NSWorkspace.shared.notificationCenter
-        workspaceCenter.addObserver(
-            self, selector: #selector(nativeOwnerHandoffWillSleep(_:)),
-            name: NSWorkspace.willSleepNotification, object: nil
-        )
-        workspaceCenter.addObserver(
-            self, selector: #selector(nativeOwnerHandoffSessionResigned(_:)),
-            name: NSWorkspace.sessionDidResignActiveNotification, object: nil
-        )
-        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        let workspaceCenter = NSWorkspace.shared.notificationCenter
-        workspaceCenter.addObserver(
-            self, selector: #selector(nativeAppleResultLabWillSleep(_:)),
-            name: NSWorkspace.willSleepNotification, object: nil
-        )
-        workspaceCenter.addObserver(
-            self, selector: #selector(nativeAppleResultLabSessionResigned(_:)),
-            name: NSWorkspace.sessionDidResignActiveNotification, object: nil
-        )
-        workspaceCenter.addObserver(
-            self, selector: #selector(nativeAppleResultLabSpaceChanged(_:)),
-            name: NSWorkspace.activeSpaceDidChangeNotification, object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(nativeAppleResultLabDisplayChanged(_:)),
-            name: NSApplication.didChangeScreenParametersNotification, object: nil
-        )
-        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
-        let workspaceCenter = NSWorkspace.shared.notificationCenter
-        workspaceCenter.addObserver(
-            self, selector: #selector(nativeVolcWillSleep(_:)),
-            name: NSWorkspace.willSleepNotification, object: nil
-        )
-        workspaceCenter.addObserver(
-            self, selector: #selector(nativeVolcDidWake(_:)),
-            name: NSWorkspace.didWakeNotification, object: nil
-        )
-        workspaceCenter.addObserver(
-            self, selector: #selector(nativeVolcSessionResigned(_:)),
-            name: NSWorkspace.sessionDidResignActiveNotification, object: nil
-        )
-        #endif
         nativeProductionSessionIsActive = Self.currentSessionAllowsNativeActivation
         if nativeProductionSessionIsActive {
             resumeNativeProductionIfEligible()
@@ -3480,43 +3161,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.applicationBecameActive()
         nativeProductionSessionIsActive = Self.currentSessionAllowsNativeActivation
         resumeNativeProductionIfEligible()
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        let currentAccessibilityStatus = AccessibilityController.status
-        if nativeAppleResultLabAccessibilityStatus == .authorized,
-           currentAccessibilityStatus == .notAuthorized {
-            NativeTranslationAppleResultLabLive.shared.invalidate(.accessibilityRevoked)
-        }
-        nativeAppleResultLabAccessibilityStatus = currentAccessibilityStatus
-        #endif
+    }
+    func applicationDidResignActive(_ notification: Notification) {
+        model.applicationResignedActive()
     }
     func applicationWillTerminate(_ notification: Notification) {
         NativeProductionTranslationCoordinator.shared.invalidate(.terminate)
-        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
-        NativeOwnerHandoffLabLive.shared.invalidate(.terminate)
-        #endif
-        #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
-        NativeSelectionCaptureLabLive.shared.invalidate(.terminate)
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
-        NotificationCenter.default.removeObserver(
-            self,
-            name: NSApplication.didChangeScreenParametersNotification,
-            object: nil
-        )
-        NativeTranslationAppleResultLabLive.shared.invalidate(.ownerChanged)
-        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        NativeTranslationResultLabLive.shared.invalidate(.ownerChanged)
-        #endif
         NativeTranslationOverlayController.shared.shutdown()
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        NativeAppleTranslationAdapterCoordinator.shared.invalidate(.terminate)
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
-        NSWorkspace.shared.notificationCenter.removeObserver(self)
-        NativeVolcTranslationAdapterCoordinator.shared.invalidate(.terminate)
-        #endif
         if model.onboardingPresented { model.deferOnboarding() }
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -3529,23 +3180,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return .terminateNow
     }
     func windowWillClose(_ notification: Notification) {
-        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
-        NativeOwnerHandoffLabLive.shared.close()
-        #endif
-        #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
-        NativeSelectionCaptureLabLive.shared.close()
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        NativeTranslationAppleResultLabLive.shared.close()
-        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        NativeTranslationResultLabLive.shared.close()
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        NativeAppleTranslationAdapterCoordinator.shared.close()
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
-        NativeVolcTranslationAdapterCoordinator.shared.close()
-        #endif
         if model.onboardingPresented { model.deferOnboarding() }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -3565,124 +3199,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func installMainMenu() {
         let main = NSMenu(), app = NSMenuItem(), submenu = NSMenu()
-        #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
-        let ownerLab = NSMenuItem(
-            title: "开发：双 Option owner 交接实验室…",
-            action: #selector(openNativeOwnerHandoffLab),
-            keyEquivalent: ""
-        )
-        ownerLab.target = self
-        submenu.addItem(ownerLab)
-        submenu.addItem(.separator())
-        #elseif DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
-        let captureLab = NSMenuItem(
-            title: "开发：原生取词实验室…",
-            action: #selector(openNativeSelectionCaptureLab),
-            keyEquivalent: ""
-        )
-        captureLab.target = self
-        submenu.addItem(captureLab)
-        submenu.addItem(.separator())
-        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        let resultLab = NSMenuItem(
-            title: "开发：真实 Apple 结果实验室…",
-            action: #selector(openNativeAppleResultLab),
-            keyEquivalent: ""
-        )
-        resultLab.target = self
-        submenu.addItem(resultLab)
-        let focusResult = NSMenuItem(
-            title: "聚焦当前结果",
-            action: #selector(focusNativeAppleResultLab),
-            keyEquivalent: ""
-        )
-        focusResult.target = self
-        submenu.addItem(focusResult)
-        submenu.addItem(.separator())
-        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        let resultLab = NSMenuItem(
-            title: "开发：结果界面实验室…",
-            action: #selector(openNativeTranslationResultLab),
-            keyEquivalent: ""
-        )
-        resultLab.target = self
-        submenu.addItem(resultLab)
-        let focusResult = NSMenuItem(
-            title: "聚焦当前结果",
-            action: #selector(focusNativeTranslationResultLab),
-            keyEquivalent: ""
-        )
-        focusResult.target = self
-        submenu.addItem(focusResult)
-        submenu.addItem(.separator())
-        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY
-        let preview = NSMenuItem(title: NativeTranslationOverlayController.shared.nextFixturePreviewTitle, action: #selector(previewNativeOverlay), keyEquivalent: ""); preview.target = self; nativeOverlayPreviewMenuItem = preview; submenu.addItem(preview)
-        let focus = NSMenuItem(title: "聚焦当前译文", action: #selector(focusNativeOverlay), keyEquivalent: ""); focus.target = self; submenu.addItem(focus)
-        submenu.addItem(.separator())
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        let appleAdapter = NSMenuItem(
-            title: "开发：测试 Apple 离线翻译…",
-            action: #selector(testNativeAppleTranslationAdapter),
-            keyEquivalent: ""
-        )
-        appleAdapter.target = self
-        submenu.addItem(appleAdapter)
-        submenu.addItem(.separator())
-        #endif
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
-        let volcAdapter = NSMenuItem(
-            title: "开发：测试火山云端翻译…",
-            action: #selector(testNativeVolcTranslationAdapter),
-            keyEquivalent: ""
-        )
-        volcAdapter.target = self
-        submenu.addItem(volcAdapter)
-        submenu.addItem(.separator())
-        #endif
-        let quit = NSMenuItem(title: "退出句译", action: #selector(terminate), keyEquivalent: "q"); quit.target = self; submenu.addItem(quit)
+        let quit = NSMenuItem(title: quitMenuTitle, action: #selector(terminate), keyEquivalent: "q"); quit.target = self; submenu.addItem(quit)
         app.submenu = submenu; main.addItem(app); NSApp.mainMenu = main
     }
     private func item(_ title: String, action: Selector? = nil, enabled: Bool = true) -> NSMenuItem { let i = NSMenuItem(title: title, action: action, keyEquivalent: ""); i.target = self; i.isEnabled = enabled; return i }
-    private func updateMenu() {
-        let symbol = model.ready ? "character.bubble.fill" : model.summarySymbol
-        statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "句译 · \(model.summaryStatus)")
+    private var chromeSnapshot: AppChromeSnapshot {
+        AppChromeSnapshot(
+            summaryStatus: model.summaryStatus,
+            statusSymbol: model.ready ? "character.bubble.fill" : model.summarySymbol,
+            primaryActionTitle: model.primaryActionTitle,
+            primaryActionEnabled: model.primaryActionEnabled,
+            showsPauseItem: !model.ready && model.canPauseTranslation,
+            selectedEngine: model.selectedEngine,
+            engineMenuEnabled: !model.translationSetupInProgress && !model.cloudBusy,
+            onboardingCompleted: model.onboardingCompleted
+        )
+    }
+    private func updateMenu(_ snapshot: AppChromeSnapshot) {
+        statusItem.button?.image = NSImage(systemSymbolName: snapshot.statusSymbol, accessibilityDescription: "句译 · \(snapshot.summaryStatus)")
         statusItem.button?.image?.isTemplate = true
-        statusItem.button?.toolTip = "句译 · \(model.summaryStatus)"
+        statusItem.button?.toolTip = "句译 · \(snapshot.summaryStatus)"
         let menu = NSMenu()
         menu.autoenablesItems = false
-        menu.addItem(item("句译 · \(model.summaryStatus)", enabled: false))
-        menu.addItem(item(model.primaryActionTitle, action: #selector(primaryAction), enabled: model.primaryActionEnabled))
-        if !model.ready && model.canPauseTranslation {
-            menu.addItem(item("暂停所有翻译", action: #selector(pause)))
-        }
+        // Six groups: status / window / engine / pause-resume / help / quit.
+        menu.addItem(item("句译 · \(snapshot.summaryStatus)", enabled: false))
         menu.addItem(.separator())
         menu.addItem(item("打开句译…", action: #selector(showWindow)))
+        menu.addItem(.separator())
         let engine = item("翻译方式")
         let sub = NSMenu()
         sub.autoenablesItems = false
         let apple = item("本地翻译（Apple）", action: #selector(apple))
-        apple.state = model.selectedEngine == "apple" ? .on : .off
+        apple.state = snapshot.selectedEngine == "apple" ? .on : .off
         let cloud = item("云端翻译（仅火山）…", action: #selector(cloud))
-        cloud.state = model.selectedEngine == "volc" ? .on : .off
+        cloud.state = snapshot.selectedEngine == "volc" ? .on : .off
         sub.addItem(apple); sub.addItem(cloud); engine.submenu = sub
-        engine.isEnabled = !model.translationSetupInProgress && !model.cloudBusy
+        engine.isEnabled = snapshot.engineMenuEnabled
         menu.addItem(engine)
-        menu.addItem(item(model.onboardingCompleted ? "重新练习双 Option…" : "继续设置…", action: #selector(onboarding)))
-        menu.addItem(item("支持范围与隐私…", action: #selector(supportInfo)))
-        menu.addItem(item("诊断与帮助…", action: #selector(diagnostics)))
         menu.addItem(.separator())
-        let quit = item("退出句译", action: #selector(terminate))
+        menu.addItem(item(snapshot.primaryActionTitle, action: #selector(primaryAction), enabled: snapshot.primaryActionEnabled))
+        if snapshot.showsPauseItem {
+            menu.addItem(item("暂停所有翻译", action: #selector(pause)))
+        }
+        menu.addItem(.separator())
+        menu.addItem(item("诊断与帮助…", action: #selector(diagnostics)))
+        menu.addItem(item("支持范围与隐私…", action: #selector(supportInfo)))
+        menu.addItem(item(snapshot.onboardingCompleted ? "重新练习双 Option…" : "继续设置…", action: #selector(onboarding)))
+        menu.addItem(.separator())
+        let quit = item(quitMenuTitle, action: #selector(terminate))
         quit.keyEquivalent = "q"
         menu.addItem(quit)
         statusItem.menu = menu
     }
     private func updateChrome() {
-        #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
-        NativeSelectionCaptureLabLive.shared.setPaused(model.paused)
-        #endif
         NativeTranslationOverlayController.shared.setPaused(model.userPaused)
-        updateMenu()
+        let snapshot = chromeSnapshot
+        if chromeGate.needsRender(snapshot) { updateMenu(snapshot) }
         guard window != nil else { return }
         let mode = model.onboardingPresented
         guard lastOnboardingMode != mode else { return }
@@ -3710,19 +3282,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
-    #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
-    @objc private func openNativeOwnerHandoffLab() {
-        showWindow()
-        NativeOwnerHandoffLabLive.shared.open()
-    }
-    #endif
-    #if DEBUG && JUYI_NATIVE_SELECTION_CAPTURE_LAB
-    @objc private func openNativeSelectionCaptureLab() {
-        showWindow()
-        NativeSelectionCaptureLabLive.shared.setPaused(model.paused)
-        NativeSelectionCaptureLabLive.shared.open()
-    }
-    #endif
     @objc private func onboarding() {
         if model.onboardingCompleted {
             model.hotkeyReady ? model.relearnShortcut() : model.repairShortcut()
@@ -3731,34 +3290,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         showWindow()
     }
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-    @objc private func openNativeAppleResultLab() {
-        showWindow()
-        NativeTranslationAppleResultLabLive.shared.open()
-    }
-    @objc private func focusNativeAppleResultLab() {
-        NativeTranslationAppleResultLabLive.shared.focusCurrentResult()
-    }
-    #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-    @objc private func openNativeTranslationResultLab() {
-        showWindow()
-        NativeTranslationResultLabLive.shared.open()
-    }
-    @objc private func focusNativeTranslationResultLab() {
-        NativeTranslationResultLabLive.shared.focusCurrentResult()
-    }
-    #endif
 
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_OVERLAY && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-    @objc private func previewNativeOverlay() {
-        NativeTranslationOverlayController.shared.showFixturePreview()
-        nativeOverlayPreviewMenuItem?.title = NativeTranslationOverlayController.shared
-            .nextFixturePreviewTitle
-    }
-    @objc private func focusNativeOverlay() {
-        NativeTranslationOverlayController.shared.focusCurrentOverlay()
-    }
-    #endif
     private func handleNativeOverlayCTA(_ cta: NativeTranslationOverlayCTA) {
         switch cta {
         case .openJuyi:
@@ -3777,27 +3309,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             showWindow()
         }
     }
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-    @objc private func testNativeAppleTranslationAdapter() {
-        showWindow()
-        NativeAppleTranslationAdapterCoordinator.shared.open()
-    }
-    #endif
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_VOLC_TRANSLATION_ADAPTER
-    @objc private func testNativeVolcTranslationAdapter() {
-        showWindow()
-        NativeVolcTranslationAdapterCoordinator.shared.open()
-    }
-    @objc private func nativeVolcWillSleep(_ notification: Notification) {
-        NativeVolcTranslationAdapterCoordinator.shared.invalidate(.sleep)
-    }
-    @objc private func nativeVolcDidWake(_ notification: Notification) {
-        NativeVolcTranslationAdapterCoordinator.shared.invalidate(.wake)
-    }
-    @objc private func nativeVolcSessionResigned(_ notification: Notification) {
-        NativeVolcTranslationAdapterCoordinator.shared.invalidate(.sessionResigned)
-    }
-    #endif
     @objc private func nativeProductionWillSleep(_ notification: Notification) {
         nativeProductionIsAwake = false
         NativeProductionTranslationCoordinator.shared
@@ -3838,42 +3349,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         return true
     }
-    #if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB
-    @objc private func nativeOwnerHandoffWillSleep(_ notification: Notification) {
-        NativeOwnerHandoffLabLive.shared.invalidate(.sleep)
-    }
-    @objc private func nativeOwnerHandoffSessionResigned(_ notification: Notification) {
-        NativeOwnerHandoffLabLive.shared.invalidate(.sessionResigned)
-    }
-    #endif
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-    @objc private func nativeAppleResultLabWillSleep(_ notification: Notification) {
-        NativeTranslationAppleResultLabLive.shared.invalidate(.ownerChanged)
-    }
-    @objc private func nativeAppleResultLabSessionResigned(_ notification: Notification) {
-        NativeTranslationAppleResultLabLive.shared.invalidate(.ownerChanged)
-    }
-    @objc private func nativeAppleResultLabSpaceChanged(_ notification: Notification) {
-        NativeTranslationAppleResultLabLive.shared.invalidate(.ownerChanged)
-    }
-    @objc private func nativeAppleResultLabDisplayChanged(_ notification: Notification) {
-        NativeTranslationAppleResultLabLive.shared.invalidate(.ownerChanged)
-    }
-    #endif
     @objc private func apple() {
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        NativeTranslationAppleResultLabLive.shared.invalidate(.engineChanged)
-        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        NativeTranslationResultLabLive.shared.invalidate(.engineChanged)
-        #endif
         model.chooseApple()
     }
     @objc private func cloud() {
-        #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        NativeTranslationAppleResultLabLive.shared.invalidate(.engineChanged)
-        #elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-        NativeTranslationResultLabLive.shared.invalidate(.engineChanged)
-        #endif
         model.chooseCloud(); showWindow()
     }
     @objc private func primaryAction() {
@@ -3883,28 +3362,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func supportInfo() { model.showSupportInfo = true; showWindow() }
     @objc private func pause() { model.togglePause() }; @objc private func diagnostics() { model.showDiagnostics = true; showWindow() }; @objc private func terminate() { NSApp.terminate(nil) }
 }
-
-#if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-extension AppDelegate: NSMenuItemValidation {
-    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        if menuItem.action == #selector(focusNativeAppleResultLab) {
-            return NativeTranslationAppleResultLabLive.shared.hasVisibleResult
-        }
-        return true
-    }
-}
-#elseif DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-extension AppDelegate: NSMenuItemValidation {
-    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        if menuItem.action == #selector(focusNativeTranslationResultLab) {
-            return NativeTranslationResultLabMenuPolicy.focusIsEnabled(
-                hasVisibleResult: NativeTranslationResultLabLive.shared.hasVisibleResult
-            )
-        }
-        return true
-    }
-}
-#endif
 
 @main enum JuyiMain {
     static func main() {

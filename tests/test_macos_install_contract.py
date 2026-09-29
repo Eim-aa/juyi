@@ -179,8 +179,18 @@ def test_signed_build_migration_never_removes_working_fallback_early():
     assert "SMAppService.mainApp.unregister()" in migration
     assert "status == .notRegistered || status == .enabled" in migration
     became_active = SWIFT.split("func applicationBecameActive()", 1)[1]
-    became_active = became_active.split("private func readLocalState", 1)[0]
+    became_active = became_active.split("func refreshLoginItemState()", 1)[0]
     assert "migrateFallbackToServiceManagementIfNeeded()" in became_active
+    # The migration runs once per process; SMAppService.status is queried on
+    # activation only while Diagnostics (the login-item UI) is visible.
+    assert "if !activationLoginItemMigrationChecked {" in became_active
+    assert "if showDiagnostics { refreshLoginItemState() }" in became_active
+    assert became_active.count("refreshLoginItemState()") == 1
+    assert became_active.count("await refresh()") == 2
+    diagnostics = SWIFT.split("@Published var showDiagnostics = false {", 1)[1].split(
+        "@Published var showSupportInfo", 1
+    )[0]
+    assert "if showDiagnostics { refreshLoginItemState() }" in diagnostics
 
 
 def test_login_item_launch_stays_quiet_but_manual_launch_opens_window():
@@ -213,6 +223,39 @@ def test_build_links_service_management_and_keeps_dock_and_menu_bar():
     assert "NSApp.setActivationPolicy(.regular)" in SWIFT
     assert "applicationShouldTerminateAfterLastWindowClosed" in SWIFT
     assert 'NSStatusBar.system.statusItem' in SWIFT
+
+
+def test_periodic_refresh_is_gated_and_chrome_is_deduplicated():
+    assert BUILD.count('"$ROOT/macos/AppRefreshPolicy.swift"') == 1
+    assert BUILD.count('"$ROOT/macos/NativeTriggerPreflight.swift"') == 1
+    refresh = SWIFT.split("func refresh(probeService forced: Bool = false) async {", 1)[1]
+    refresh = refresh.split("nonisolated private static func runBoundedProcess", 1)[0]
+    assert "forced || AppRefreshPolicy.shouldProbeService(refreshContext)" in refresh
+    assert refresh.index("shouldProbeService") < refresh.index('appendingPathComponent("health")')
+    assert "scheduleRefreshTimer()" in refresh
+    # Service operations still observe the service directly.
+    wait = SWIFT.split("private func waitForService", 1)[1].split("private func friendlyError", 1)[0]
+    assert "await refresh(probeService: true)" in wait
+    assert "Timer.scheduledTimer(withTimeInterval: 2.5" not in SWIFT
+    assert "AppRefreshPolicy.interval(refreshContext)" in SWIFT
+    assert "launchAgentInstalled: serviceInstalled" in SWIFT
+    assert "func applicationDidResignActive" in SWIFT
+
+    # One LaunchServices query per refresh; derived properties read a value.
+    assert SWIFT.count("urlForApplication(withBundleIdentifier: \"org.hammerspoon.Hammerspoon\") != nil") == 1
+    assert SWIFT.count("Self.queryHammerspoonInstalled()") == 3
+    assert "@Published private(set) var hammerspoonInstalled = false" in SWIFT
+
+    # Coordinator changes reach the chrome once (through AppModel.onChange),
+    # and the NSMenu is rebuilt only when its derived snapshot changes.
+    delegate = SWIFT.split("final class AppDelegate", 1)[1]
+    assert "objectWillChange" not in delegate
+    assert "NativeProductionTranslationCoordinator.shared\n            .objectWillChange" in SWIFT
+    chrome = delegate.split("private func updateChrome()", 1)[1].split(
+        "private func ensureWindowVisible", 1
+    )[0]
+    assert "if chromeGate.needsRender(snapshot) { updateMenu(snapshot) }" in chrome
+    assert "NativeTranslationOverlayController.shared.setPaused(model.userPaused)" in chrome
 
 
 def test_ci_builds_the_native_app_and_apple_translation_helper():

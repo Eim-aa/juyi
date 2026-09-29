@@ -139,25 +139,6 @@ enum NativeTranslationOverlayInteractionPolicyTests {
         )
     }
 
-    private static func testCopyFailureFixtureFeedbackIsConsumedOnce() {
-        var lifecycle = NativeTranslationOverlayFixtureCopyPresentationLifecycle()
-        lifecycle.queue(.failed)
-        expect(
-            lifecycle.consumeForVisibleState() == .failed,
-            "copy-failure fixture reaches the next visible panel state"
-        )
-        expect(
-            lifecycle.consumeForVisibleState() == .idle,
-            "fixture feedback is one-shot and later states return to idle"
-        )
-        lifecycle.queue(.copied)
-        lifecycle.queue(.failed)
-        expect(
-            lifecycle.consumeForVisibleState() == .failed,
-            "latest explicitly selected fixture feedback supersedes stale feedback"
-        )
-    }
-
     private static func testPasteboardReplacementIsOrderedAndSingleItem() {
         var operations: [String] = []
         var writtenItems: [String] = []
@@ -523,7 +504,6 @@ enum NativeTranslationOverlayInteractionPolicyTests {
 
     static func main() {
         testDismissFocusAndCopyPolicy()
-        testCopyFailureFixtureFeedbackIsConsumedOnce()
         testPasteboardReplacementIsOrderedAndSingleItem()
         testScopedMonitorTokenCleanup()
         testNewShowRevokesInFlightHideCompletion()

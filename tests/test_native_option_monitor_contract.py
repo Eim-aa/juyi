@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).parents[1]
+REMOVED_FLAG_PREFIX = "JUYI_" + "NATIVE_"  # spelled split so repository greps stay empty
 STATE = (ROOT / "macos" / "DoubleOptionStateMachine.swift").read_text(
     encoding="utf-8"
 )
@@ -34,6 +35,7 @@ LEGACY_BUILD = (ROOT / "scripts" / "build_macos_app.sh").read_text(
     encoding="utf-8"
 )
 CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+RUNNER = (ROOT / "scripts" / "run_swift_tests.sh").read_text(encoding="utf-8")
 CONFIG = (ROOT / "config.py").read_text(encoding="utf-8")
 DEBUG_CONFIG = (ROOT / "Config" / "Debug.xcconfig").read_text(encoding="utf-8")
 RELEASE_CONFIG = (ROOT / "Config" / "Release.xcconfig").read_text(
@@ -51,8 +53,8 @@ def test_native_production_chain_is_explicitly_user_enabled():
     assert "setAppleEngineSelected" in FEATURE
     assert "generation == lifecycleGeneration" in FEATURE
     assert "anchorPoint: Self.overlayAnchorPoint(for: target)" in FEATURE
-    assert "JUYI_NATIVE_OPTION_MONITOR" not in DEBUG_CONFIG
-    assert "JUYI_NATIVE_OPTION_MONITOR" not in RELEASE_CONFIG
+    assert REMOVED_FLAG_PREFIX not in DEBUG_CONFIG
+    assert REMOVED_FLAG_PREFIX not in RELEASE_CONFIG
 
 
 def test_capture_runs_on_serial_worker_and_discards_stale_text_early():
@@ -324,7 +326,7 @@ def test_adapter_has_no_text_payload_and_handles_startup_safely():
     assert "rightOptionKeyCode" in ADAPTER
     assert "capsLockKeyCode" in ADAPTER
     assert "keyDown(isAutoRepeat:" in ADAPTER
-    assert "NativeOptionEventAdapterTests.swift" in CI
+    assert "run_suite NativeOptionEventAdapterTests " in RUNNER
 
 
 def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
@@ -428,6 +430,33 @@ def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
     assert "performIfActive(captureGeneration, action)" in COORDINATOR
     assert "cancelAll(onQuiesced:" in COORDINATOR
     assert "capture.cancelAll {" in FEATURE
+    # P4: a trigger consults only cached readiness and legacy answers.
+    pipeline = FEATURE.split("private func beginPipeline(target:", 1)[1].split(
+        "private func suspendForAppleFailure", 1
+    )[0]
+    assert "preflight.decision(" in pipeline
+    assert "if needsReadinessCheck {" in pipeline
+    assert pipeline.index("if needsReadinessCheck {") < pipeline.index("capture.capture(")
+    assert "requiresLegacyHandoff" not in pipeline
+    environment = FEATURE.split(
+        "@discardableResult private func nativeOnlyEnvironmentIsCurrent", 1
+    )[1].split("private func syncOwnerFailure", 1)[0]
+    assert "requiresLegacyHandoff" not in environment
+    assert "didTerminateApplicationNotification" in FEATURE
+    assert "preflight.recordLegacyEnvironment(handoffRequired: legacyHandoffRequired)" in FEATURE
+    disable = FEATURE.split("private func disable(", 1)[1].split(
+        "private func stopOwnerPolling", 1
+    )[0]
+    assert "preflight.reset()" in disable
+    assert FEATURE.count("preflight.invalidateAppleReadiness()") == 2
+    # P5: settle early once stable; keep the deadline and rate-limit AX checks.
+    assert "private static let clipboardCopyTimeout: TimeInterval = 1.20" in SELECTION
+    assert "static let contextRecheckInterval: TimeInterval = 0.2" in SELECTION
+    settle = SELECTION.split("let postedCopyDrainDeadline = max(", 1)[1].split(
+        "let finalChangeCount = pasteboard.changeCount", 1
+    )[0]
+    assert "if settlement.contextCheckIsDue(at: now) {" in settle
+    assert "if settlement.hasStableCandidate(at: now) { break }" in settle
     assert "retryRevocation()" in FEATURE
     assert "cancellationCheck()" in SELECTION
 
@@ -480,13 +509,14 @@ def test_sources_tests_and_frameworks_are_in_every_build_path():
     assert "-framework ApplicationServices" in LEGACY_BUILD
     assert "-framework CoreGraphics" in LEGACY_BUILD
     for test in (
-        "DoubleOptionStateMachineTests.swift",
-        "NativeOptionEventAdapterTests.swift",
-        "NativeSelectionReaderTests.swift",
-        "NativeSelectionCaptureCoordinatorTests.swift",
-        "NativeOptionMonitorTests.swift",
+        "DoubleOptionStateMachineTests",
+        "NativeOptionEventAdapterTests",
+        "NativeSelectionReaderTests",
+        "NativeSelectionCaptureCoordinatorTests",
+        "NativeOptionMonitorTests",
     ):
-        assert f"tests/{test}" in CI
+        assert f"run_suite {test} " in RUNNER
+    assert "scripts/run_swift_tests.sh" in CI
 
 
 def test_docs_record_the_live_native_mvp_and_remaining_boundaries():

@@ -21,9 +21,7 @@ PLIST_TEMPLATE = (
     ROOT / "launchd" / "io.github.Eim-aa.argos-translator.plist.template"
 ).read_text(encoding="utf-8")
 CONFIG = (ROOT / "config.py").read_text(encoding="utf-8")
-SWIFT = (ROOT / "macos" / "JuyiMenuBar.swift").read_text(encoding="utf-8")
 TEST_SCRIPT = (ROOT / "scripts" / "test.sh").read_text(encoding="utf-8")
-BENCH_SCRIPT = (ROOT / "scripts" / "bench.sh").read_text(encoding="utf-8")
 
 BEGIN = "-- BEGIN argos-translator managed block"
 END = "-- END argos-translator managed block"
@@ -52,9 +50,10 @@ def test_installer_roots_follow_the_checkout_and_launchd_accepts_custom_dest():
     assert "<key>JUYI_ROOT</key>" in PLIST_TEMPLATE
     assert "__ROOT__" in LAUNCHD_INSTALL
     assert 'os.environ.get("JUYI_ROOT"' in CONFIG
-    assert 'dictionary["WorkingDirectory"]' in SWIFT
+    # The native app no longer locates the helper through the LaunchAgent's
+    # WorkingDirectory: the legacy Onboarding helper path was removed.
+    assert "WorkingDirectory" not in (ROOT / "macos" / "JuyiMenuBar.swift").read_text(encoding="utf-8")
     assert 'ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"' in TEST_SCRIPT
-    assert 'ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"' in BENCH_SCRIPT
     assert "__HOME__/Library/Logs/argos-translator.out.log" in PLIST_TEMPLATE
     assert "__HOME__/Library/Logs/argos-translator.err.log" in PLIST_TEMPLATE
     assert "__HOME__" in LAUNCHD_INSTALL

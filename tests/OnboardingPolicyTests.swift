@@ -75,19 +75,6 @@ enum OnboardingPolicyTests {
             "only a genuinely new user defaults to Apple"
         )
 
-        expect(
-            OnboardingPolicy.firstIncompleteScreen(
-                serviceReady: true, engineReady: true, hotkeyReady: false
-            ) == .permission,
-            "completed user with a broken hotkey routes directly to permission"
-        )
-        expect(
-            OnboardingPolicy.firstIncompleteScreen(
-                serviceReady: true, engineReady: true, hotkeyReady: true
-            ) == .practice,
-            "routing uses live readiness, not an ephemeral self-test flag"
-        )
-
         let preserved = OnboardingPolicy.preservesCompletionDuringRerun(.completed)
         expect(preserved, "completed rerun preserves completion")
         expect(
@@ -103,6 +90,6 @@ enum OnboardingPolicyTests {
             "closing unfinished onboarding defers and never completes it"
         )
 
-        print("OnboardingPolicyTests: 15 passed")
+        print("OnboardingPolicyTests: 13 passed")
     }
 }

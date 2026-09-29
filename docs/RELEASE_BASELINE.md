@@ -54,13 +54,16 @@ scripts/build_apple_helper.sh /tmp/apple-translation-helper
 
 ## CI 门禁
 
-macOS CI 同时构建 Debug 与 Release Xcode 配置，并验证：
+macOS CI 同时构建 Debug（warnings as errors）与 Release Xcode 配置，并验证：
 
 - App 与 helper 都包含 `arm64`、`x86_64`；
 - 两个架构的 minimum OS 都是 15.0；
 - App 的版本号来自 `Config/Version.xcconfig`；
-- 旧安装脚本构建路径仍可用，并单独核验其 ad-hoc runtime 签名；
-- Swift 策略测试、Python/Lua/Bash 契约继续通过。
+- 生产原生链路的关键符号与 `native-owner.lock` / `owner-request.json` 等协议字符串存在，二进制装载 `Translation.framework`，不装载 `Security.framework` / `LocalAuthentication.framework`；
+- 旧安装脚本构建路径（`scripts/build_macos_app.sh`）与 Apple 翻译 helper 仍可用，并单独核验其 ad-hoc runtime 签名；
+- `scripts/run_swift_tests.sh` 中的 Swift 单元测试、Python/Lua/Bash 契约继续通过。
+
+2026-09 起仓库不再包含 Debug lab 或 `JUYI_NATIVE_*` 编译开关，CI 只构建与测试生产代码。
 
 ## 发行状态与稳定版前仍需完成
 

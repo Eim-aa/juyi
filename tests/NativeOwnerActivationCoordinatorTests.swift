@@ -1,4 +1,3 @@
-#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB && JUYI_NATIVE_OWNER_ACTIVATION_LAB
 import Foundation
 
 @main
@@ -248,4 +247,3 @@ enum NativeOwnerActivationCoordinatorTests {
         print("NativeOwnerActivationCoordinatorTests: \(passed) passed")
     }
 }
-#endif

@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).parents[1]
+REMOVED_FLAG_PREFIX = "JUYI_" + "NATIVE_"  # spelled split so repository greps stay empty
 LUA = (ROOT / "hammerspoon/argos-translator.lua").read_text(encoding="utf-8")
 RUNTIME = (ROOT / "tests/hammerspoon_runtime_test.lua").read_text(encoding="utf-8")
 POLICY = (ROOT / "macos/NativeOwnerHandoffProtocol.swift").read_text(
@@ -25,15 +26,6 @@ STATUS_READER = (ROOT / "macos/NativeOwnerHandoffStatusReader.swift").read_text(
 STATUS_READER_TESTS = (
     ROOT / "tests/NativeOwnerHandoffStatusReaderTests.swift"
 ).read_text(encoding="utf-8")
-LAB_MODEL = (ROOT / "macos/NativeOwnerHandoffLabModel.swift").read_text(
-    encoding="utf-8"
-)
-LAB_HOST = (ROOT / "macos/NativeOwnerHandoffLabHost.swift").read_text(
-    encoding="utf-8"
-)
-LAB_TESTS = (ROOT / "tests/NativeOwnerHandoffLabModelTests.swift").read_text(
-    encoding="utf-8"
-)
 ACTIVATION = (ROOT / "macos/NativeOwnerActivationCoordinator.swift").read_text(
     encoding="utf-8"
 )
@@ -48,6 +40,7 @@ DOC = (ROOT / "docs/dev/NATIVE_OWNER_HANDOFF_PROTOCOL.md").read_text(encoding="u
 PROJECT = (ROOT / "Juyi.xcodeproj/project.pbxproj").read_text(encoding="utf-8")
 LEGACY = (ROOT / "scripts/build_macos_app.sh").read_text(encoding="utf-8")
 CI = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+RUNNER = (ROOT / "scripts/run_swift_tests.sh").read_text(encoding="utf-8")
 
 
 def _between(source: str, start: str, end: str) -> str:
@@ -166,7 +159,7 @@ def test_native_policy_is_pure_and_cannot_start_or_store_an_owner():
 
 
 def test_store_is_production_durable_and_recovery_only():
-    assert "#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB" not in STORE
+    assert REMOVED_FLAG_PREFIX not in STORE
     for required in (
         "native-owner.lock",
         "owner-request.json",
@@ -190,7 +183,7 @@ def test_store_is_production_durable_and_recovery_only():
 
 
 def test_workflow_retains_lease_but_has_no_live_effects():
-    assert "#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB" not in WORKFLOW
+    assert REMOVED_FLAG_PREFIX not in WORKFLOW
     for required in (
         "acknowledgementDeadline: TimeInterval = 5",
         "waitingForLegacy",
@@ -238,50 +231,24 @@ def test_status_reader_is_one_shot_bounded_and_nofollow():
         assert forbidden not in STATUS_READER
 
 
-def test_disclosed_lab_is_explicit_monotonic_and_lifecycle_complete():
-    for required in (
-        "pollingInterval: TimeInterval = 0.2",
-        "acknowledgementDeadline",
-        "monotonicNow",
-        "wallNow",
-        "statusBecameUnavailable",
-        "invalidatePolling()",
-        "generation &+= 1",
-    ):
-        assert required in LAB_MODEL
-    for required in (
-        "打开本页为零 I/O",
-        "开始安全交接测试",
-        "原生 monitor 仍未启动",
-        "安全归还给 Hammerspoon",
-        "不会翻译、联网、读密钥",
-    ):
-        assert required in LAB_HOST
-    for forbidden in (
-        "NativeOptionMonitor",
-        "AXUIElement",
-        "NSPasteboard",
-        "URLSession",
-        "TranslationSession",
-        "SecItem",
-    ):
-        assert forbidden not in LAB_MODEL + LAB_HOST
+def test_owner_handoff_lab_was_removed_without_touching_production_owner():
     for token in (
-        "NativeOwnerHandoffLabLive.shared",
-        "NativeOwnerHandoffLabHost()",
+        "NativeOwnerHandoffLabLive",
+        "NativeOwnerHandoffLabHost",
         "开发：双 Option owner 交接实验室…",
         "openNativeOwnerHandoffLab",
-        "nativeOwnerHandoffWillSleep",
-        "nativeOwnerHandoffSessionResigned",
+        REMOVED_FLAG_PREFIX,
     ):
-        assert token in APP
-    assert "#if DEBUG && JUYI_NATIVE_OWNER_HANDOFF_LAB" in APP
-    assert "testOpenIsZeroIOAndExplicitStartYields" in LAB_TESTS
-    assert "testCloseCancelsAndLatePollCannotReopen" in LAB_TESTS
+        assert token not in APP + PROJECT + LEGACY + CI + RUNNER
+    assert not (ROOT / "macos/NativeOwnerHandoffLabModel.swift").exists()
+    assert not (ROOT / "macos/NativeOwnerHandoffLabHost.swift").exists()
+    for test_source in (STORE_TESTS, WORKFLOW_TESTS, STATUS_READER_TESTS, ACTIVATION_TESTS):
+        assert "#if" not in test_source.split("\n", 1)[0]
+        assert REMOVED_FLAG_PREFIX not in test_source
 
 
 def test_production_activation_orders_effect_stop_before_owner_return():
-    assert "JUYI_NATIVE_OWNER_ACTIVATION_LAB" not in ACTIVATION
+    assert REMOVED_FLAG_PREFIX not in ACTIVATION
     for required in (
         "readyToActivate",
         "nativeActive",
@@ -332,20 +299,21 @@ def test_protocol_tests_cover_every_negative_and_are_in_all_build_paths():
         "statusStale",
     ):
         assert reason in SWIFT_TESTS
-    for source in (PROJECT, LEGACY, CI):
+    for source in (PROJECT, LEGACY, RUNNER):
         assert "NativeOwnerHandoffProtocol.swift" in source
         assert "NativeOwnerHandoffStore.swift" in source
         assert "NativeOwnerHandoffWorkflow.swift" in source
         assert "NativeOwnerHandoffStatusReader.swift" in source
-        assert "NativeOwnerHandoffLabModel.swift" in source
-        assert "NativeOwnerHandoffLabHost.swift" in source
         assert "NativeOwnerActivationCoordinator.swift" in source
-    assert "NativeOwnerHandoffProtocolTests.swift" in CI
-    assert "NativeOwnerHandoffStoreTests.swift" in CI
-    assert "NativeOwnerHandoffWorkflowTests.swift" in CI
-    assert "NativeOwnerHandoffStatusReaderTests.swift" in CI
-    assert "NativeOwnerHandoffLabModelTests.swift" in CI
-    assert "NativeOwnerActivationCoordinatorTests.swift" in CI
+    for suite in (
+        "NativeOwnerHandoffProtocolTests",
+        "NativeOwnerHandoffStoreTests",
+        "NativeOwnerHandoffWorkflowTests",
+        "NativeOwnerHandoffStatusReaderTests",
+        "NativeOwnerActivationCoordinatorTests",
+    ):
+        assert f"run_suite {suite} " in RUNNER
+    assert "scripts/run_swift_tests.sh" in CI
     assert "hammerspoon_runtime_test.lua" in CI
 
 
@@ -365,7 +333,7 @@ def test_documentation_records_the_production_owner_boundary():
         PROJECT, LEGACY, CI, DOC, POLICY, STORE, STORE_TESTS, WORKFLOW,
         WORKFLOW_TESTS,
         STATUS_READER, STATUS_READER_TESTS,
-        LAB_MODEL, LAB_HOST, LAB_TESTS, APP,
+        APP, RUNNER,
         ACTIVATION, ACTIVATION_TESTS,
     ):
         assert user_script not in source

@@ -538,56 +538,6 @@ final class NativeTranslationOverlaySession {
         }
     }
 
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-    @discardableResult
-    func beginResultLabPresentation(
-        engine: NativeTranslationEngine,
-        loading: NativeTranslationResultLabValidatedPresentation,
-        extendedLoading: NativeTranslationResultLabValidatedPresentation
-    ) -> Int {
-        beginInternal(
-            initialLoadingState: loading.overlayState,
-            extendedLoadingState: extendedLoading.overlayState,
-            includesTimeout: false
-        )
-    }
-    #endif
-
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && JUYI_NATIVE_APPLE_TRANSLATION_ADAPTER && JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-    @discardableResult
-    func beginAppleResultLabPresentation(
-        loading: NativeTranslationAppleResultLabValidatedPresentation
-    ) -> Int {
-        beginInternal(
-            initialLoadingState: loading.overlayState,
-            extendedLoadingState: nil,
-            includesTimeout: false
-        )
-    }
-
-    func updateAppleResultLabLoading(
-        _ presentation: NativeTranslationAppleResultLabValidatedPresentation,
-        for expectedGeneration: Int
-    ) {
-        guard generation == expectedGeneration,
-              terminalGeneration != expectedGeneration,
-              presentation.category == .loading else { return }
-        // The owner-wide two-second stage may beat this session's delayed
-        // 150 ms initial publish when availability/claim consumed most of the
-        // budget. Cancel the older visual task before publishing the monotonic
-        // extended state so loading can never regress.
-        cancelScheduledTasks()
-        publish(presentation.overlayState)
-    }
-
-    func resolveAppleResultLabPresentation(
-        _ presentation: NativeTranslationAppleResultLabValidatedPresentation,
-        for expectedGeneration: Int
-    ) {
-        resolveTerminal(presentation.overlayState, for: expectedGeneration)
-    }
-    #endif
-
     private func beginInternal(
         initialLoadingState: NativeTranslationOverlayState,
         extendedLoadingState: NativeTranslationOverlayState?,
@@ -625,15 +575,6 @@ final class NativeTranslationOverlaySession {
             for: expectedGeneration
         )
     }
-
-    #if DEBUG && JUYI_NATIVE_TRANSLATION_DOMAIN && JUYI_NATIVE_TRANSLATION_OVERLAY && JUYI_NATIVE_TRANSLATION_RESULT_LAB && !JUYI_NATIVE_APPLE_RESULT_LAB_BINDING
-    func resolveResultLabPresentation(
-        _ presentation: NativeTranslationResultLabValidatedPresentation,
-        for expectedGeneration: Int
-    ) {
-        resolveTerminal(presentation.overlayState, for: expectedGeneration)
-    }
-    #endif
 
     private func resolveTerminal(
         _ terminal: NativeTranslationOverlayState,

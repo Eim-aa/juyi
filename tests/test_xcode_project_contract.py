@@ -108,3 +108,20 @@ def test_asset_catalog_has_every_required_macos_icon_slot():
             filename = f"icon_{size}x{size}{suffix}.png"
             assert filename in manifest
             assert (iconset / filename).is_file()
+
+
+def test_no_compile_time_development_flags_remain():
+    """The Debug lab scaffolding and its compilation conditions were removed."""
+    prefix = "JUYI_" + "NATIVE_"
+    skipped = {"start_service.command"}
+    checked = 0
+    for directory in ("macos", "tests", "scripts", ".github", "Config"):
+        for path in (ROOT / directory).rglob("*"):
+            if not path.is_file() or path.name in skipped or "__pycache__" in path.parts:
+                continue
+            if path.suffix not in {".swift", ".py", ".sh", ".yml", ".xcconfig", ".lua", ".plist"}:
+                continue
+            assert prefix not in path.read_text(encoding="utf-8"), path
+            checked += 1
+    assert prefix not in PROJECT
+    assert checked > 30
