@@ -1,6 +1,7 @@
 # 原生一次性取词实验室（4D-B，开发中未启用）
 
 > 历史记录：lab 与 `JUYI_NATIVE_*` 编译开关已于 2026-09 移除，本文正文保留当时的开发记录，不代表当前代码结构。
+> Hammerspoon owner 交接、Python 服务、Lua 模块与 Apple helper CLI 已于 2026-09-30（原生云端阶段 4B）从仓库移除；早期组件改由 App 检测，并由用户一键移除后才启用双 Option。
 
 4D-B 是默认关闭的 Debug-only、capture-only 实验切片。它只验证一次显式的
 原生 AX 取词、敏感文字生命周期和权限交互，不接翻译、浮窗或生产热键。

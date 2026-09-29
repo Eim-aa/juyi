@@ -1,6 +1,7 @@
 # 原生火山翻译适配器（4C，默认关闭）
 
 > 历史记录：lab 与 `JUYI_NATIVE_*` 编译开关已于 2026-09 移除，本文正文保留当时的开发记录，不代表当前代码结构。
+> Hammerspoon owner 交接、Python 服务、Lua 模块与 Apple helper CLI 已于 2026-09-30（原生云端阶段 4B）从仓库移除；早期组件改由 App 检测，并由用户一键移除后才启用双 Option。
 
 状态：**仅供开发验证；生产启用仍是 NO-GO。** 这组代码不会替换现有 Python 后端或 Hammerspoon 双 Option 翻译链，也不会修改当前引擎、`volc.env`、LaunchAgent、辅助功能监听、选区读取或原生浮窗。
 

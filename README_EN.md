@@ -19,7 +19,7 @@ macOS 15+ · English → Simplified Chinese · Free & open source · MIT
 - **Translation beside the text** — read webpages, documents and text-based PDFs in supported apps.
 - **Listen, too** — after translating, play the English original or Chinese translation using an installed system voice. Closing the popup stops playback.
 - **Local by default** — Apple Translation processes text on your Mac. Once the language pack is ready, it works offline.
-- **A standalone Mac app** — local mode needs no API key, Hammerspoon, Python or Homebrew.
+- **A standalone Mac app** — no Python, Homebrew or separate shortcut tool; local mode needs no API key either.
 
 ## Get started in three steps
 
@@ -42,16 +42,17 @@ Tap **Option twice in a row** (either Option key works), not both Option keys at
 - **Tested apps.** TextEdit, Preview (text-based PDFs), WPS PDFs and webpages in Chrome. Other apps work only if they expose their selection. Build 16 occasionally needs a second double-tap in Chrome; this is fixed in the source and will ship in the next build.
 - **Unsupported content.** Scanned PDFs, text in images, secure fields and protected content. No OCR.
 - **WPS PDFs usually take longer than Preview.** The compatibility path performs extra copy checks, temporarily uses the clipboard and attempts to restore it. Clipboard managers may retain the source text; avoid this path for sensitive content.
-- **Uninstall.** In **Diagnostics & Help (诊断与帮助)**, turn off **Open at login (登录时自动打开句译)**, quit Juyi, move it from Applications to the Trash, then remove Juyi under System Settings → Privacy & Security → Accessibility. If you installed the cloud backend, do not delete the app by hand; run the uninstaller from your source checkout (for example `~/.local/share/juyi-build16/scripts/uninstall.sh`). It removes the login item and backend, moves Juyi to the Trash, and asks before deleting the Volcengine credentials from Keychain.
+- **Upgrading from an early source install.** If this Mac has the early cloud backend or Hammerspoon shortcut module, Juyi shows **Early components detected (检测到早期组件)** and enables double-Option only after you click **Remove early components (移除早期组件)**, so one keypress is never translated twice. Juyi removes only items it created.
+- **Uninstall.** In **Diagnostics & Help (诊断与帮助)**, turn off **Open at login (登录时自动打开句译)**, quit Juyi, move it from Applications to the Trash, then remove Juyi under System Settings → Privacy & Security → Accessibility. Alternatively run `scripts/uninstall.sh` from the repository: it quits Juyi, removes the login item, asks before deleting the Volcengine key from Keychain, cleans up components left by early versions, and moves Juyi to the Trash.
 
 ## Local and cloud translation
 
 Start with **Local · Apple**: no key required. Juyi does not send translation text to the cloud or automatically switch to cloud when local translation fails.
 
-**Cloud currently supports Volcengine only.** It requires separately installed backend components and your own Volcengine AK/SK. When enabled, selected text is sent to Volcengine; credentials are stored in macOS Keychain. Other providers' keys and custom API endpoints are not supported. See the [configuration guide](docs/MENU_BAR_APP.md#翻译方式) (Chinese).
+**Cloud currently supports Volcengine only.** Choose cloud under **Translation method (翻译方式)** in Juyi and enter your own Volcengine AK/SK; after a successful check nothing else needs to be installed (source build 17 onward; the published build 16 still depends on the old backend). When enabled, the selected English text is sent to Volcengine; the key is stored only in macOS Keychain. A cloud failure never falls back to local translation, and a local failure never falls back to cloud. Other providers' keys and custom API endpoints are not supported. See the [configuration guide](docs/MENU_BAR_APP.md#翻译方式) (Chinese).
 
 ## Help improve Juyi
 
 Found a problem or have an idea? [Open an issue](https://github.com/Eim-aa/juyi/issues) with your macOS version, Juyi version, source app and reproduction steps. Do not include credentials, private selected text or clipboard contents. Pull requests are welcome.
 
-[Usage & troubleshooting](docs/MENU_BAR_APP.md) (Chinese) · [Build from source & repository layout](docs/BUILD.md) (Chinese) · [Optional: cloud backend installation](docs/MENU_BAR_APP.md#安装) (Chinese) · [All docs](docs/README.md) (Chinese) · [MIT license](LICENSE)
+[Usage & troubleshooting](docs/MENU_BAR_APP.md) (Chinese) · [Build from source & repository layout](docs/BUILD.md) (Chinese) · [Volcengine cloud setup](docs/MENU_BAR_APP.md#翻译方式) (Chinese) · [All docs](docs/README.md) (Chinese) · [MIT license](LICENSE)

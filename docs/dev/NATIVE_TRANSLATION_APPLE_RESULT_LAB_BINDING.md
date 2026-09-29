@@ -1,6 +1,7 @@
 # 真实 Apple 结果实验室绑定（4D-A，开发中未启用）
 
 > 历史记录：lab 与 `JUYI_NATIVE_*` 编译开关已于 2026-09 移除，本文正文保留当时的开发记录，不代表当前代码结构。
+> Hammerspoon owner 交接、Python 服务、Lua 模块与 Apple helper CLI 已于 2026-09-30（原生云端阶段 4B）从仓库移除；早期组件改由 App 检测，并由用户一键移除后才启用双 Option。
 
 4D-A 用一个固定、非敏感样例把 4A domain、原生浮窗与 macOS 15
 `Translation` 的真实 session 接起来。它只验证真实 Apple 结果的 owner、展示、

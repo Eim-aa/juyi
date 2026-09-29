@@ -1,6 +1,7 @@
 # 原生翻译 Result Lab（4D0，开发中未启用）
 
 > 历史记录：lab 与 `JUYI_NATIVE_*` 编译开关已于 2026-09 移除，本文正文保留当时的开发记录，不代表当前代码结构。
+> Hammerspoon owner 交接、Python 服务、Lua 模块与 Apple helper CLI 已于 2026-09-30（原生云端阶段 4B）从仓库移除；早期组件改由 App 检测，并由用户一键移除后才启用双 Option。
 
 Result Lab 是默认关闭的 Debug 纯组件切片，用来把 4A 的纯输入、路由和
 generation 契约接到原生浮窗，验证状态、键盘、复制和辅助功能。它不是新的

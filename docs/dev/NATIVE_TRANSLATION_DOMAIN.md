@@ -1,6 +1,7 @@
 # 原生翻译 Domain 4A：默认关闭的开发切片
 
 > 历史记录：lab 与 `JUYI_NATIVE_*` 编译开关已于 2026-09 移除，本文正文保留当时的开发记录，不代表当前代码结构。
+> Hammerspoon owner 交接、Python 服务、Lua 模块与 Apple helper CLI 已于 2026-09-30（原生云端阶段 4B）从仓库移除；早期组件改由 App 检测，并由用户一键移除后才启用双 Option。
 
 4D0 的默认关闭纯 Result Lab 接线与 parity 说明见
 [`NATIVE_TRANSLATION_RESULT_LAB.md`](NATIVE_TRANSLATION_RESULT_LAB.md)。
