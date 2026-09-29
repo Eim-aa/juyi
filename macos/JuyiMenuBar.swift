@@ -16,6 +16,7 @@ private let volcKeychainAccount = "volc"
 private let volcPendingKeychainService = "io.github.Eim-aa.juyi.volc.pending"
 private let volcPendingKeychainAccount = "pending"
 private let shortcutDeploymentFingerprintDefaultsKey = "bundledShortcutDeploymentFingerprint"
+private let quitMenuTitle = "退出句译"
 
 struct Health: Decodable, Equatable {
     let ok: Bool
@@ -2288,7 +2289,7 @@ final class AppModel: ObservableObject {
         onboardingDisposition = .completed
         onboardingPreservesCompletion = true
         onboardingScreen = .complete
-        notice = "设置完成。以后选中英文，连按两次 Option 即可。"
+        notice = ""
         announce("句译准备好了")
         onChange?()
     }
@@ -2408,7 +2409,7 @@ private struct OnboardingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 Text("句译").font(.headline)
                 Spacer()
-                if let progressText { Text(progressText).font(.callout).foregroundStyle(.secondary).accessibilityLabel(progressAccessibilityLabel) }
+                Text(progressText).font(.callout).foregroundStyle(.secondary).accessibilityLabel(progressAccessibilityLabel)
             }.padding(.horizontal, 28).padding(.vertical, 18)
             Divider()
             ScrollView {
@@ -2432,18 +2433,15 @@ private struct OnboardingView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { focusAndAnnouncePage() }
         .onChange(of: model.onboardingScreen) { focusAndAnnouncePage() }
-        .onChange(of: model.hotkeyProblem) {
-            guard model.onboardingScreen == .permission else { return }
-            let state = shortcutStatus
-            announce("快捷键状态：\(state.title)。\(state.detail)")
-            DispatchQueue.main.async { accessibilityFocus = .statusSummary }
-        }
-        .onChange(of: nativeTranslation.phase) {
-            guard model.onboardingScreen == .permission else { return }
-            let state = shortcutStatus
-            announce("快捷键状态：\(state.title)。\(state.detail)")
-            DispatchQueue.main.async { accessibilityFocus = .statusSummary }
-        }
+        .onChange(of: model.hotkeyProblem) { announceShortcutStatus() }
+        .onChange(of: nativeTranslation.phase) { announceShortcutStatus() }
+    }
+
+    private func announceShortcutStatus() {
+        guard model.onboardingScreen == .permission else { return }
+        let state = shortcutStatus
+        announce("快捷键状态：\(state.title)。\(state.detail)")
+        DispatchQueue.main.async { accessibilityFocus = .statusSummary }
     }
 
     @ViewBuilder private var onboardingFooter: some View {
@@ -2470,19 +2468,20 @@ private struct OnboardingView: View {
         }
     }
 
-    private var progressText: String? {
+    /// Welcome and completion frame the two real steps: prepare, then practice.
+    private var progressText: String {
         switch model.onboardingScreen {
-        case .welcome: return "欢迎 · 准备 · 练习 · 完成"
-        case .permission: return "第 2 步 · 准备"
-        case .practice: return "第 3 步 · 练习"
-        case .complete: return "第 4 步 · 完成"
+        case .welcome: return "准备 · 练习 · 完成"
+        case .permission: return "第 1 步 · 准备"
+        case .practice: return "第 2 步 · 练习"
+        case .complete: return "完成"
         }
     }
 
     private var progressAccessibilityLabel: String {
         switch model.onboardingScreen {
-        case .permission: return "第 2 步，共 4 步：准备快捷键和翻译"
-        case .practice: return "第 3 步，共 4 步：实际试用"
+        case .permission: return "第 1 步，共 2 步：准备快捷键和翻译"
+        case .practice: return "第 2 步，共 2 步：实际试用"
         case .welcome, .complete: return ""
         }
     }
@@ -2504,7 +2503,7 @@ private struct OnboardingView: View {
                 Image(systemName: "arrow.right").foregroundStyle(.tertiary)
                 welcomeAction("查看中文", symbol: "character.bubble")
             }.accessibilityElement(children: .combine).accessibilityLabel("选中英文，然后连按两次 Option，查看中文")
-            Text("先在文本编辑中试用。其他 App 和文字层 PDF 的支持情况取决于选区接口；扫描件、图片和安全输入框不支持。")
+            Text("先在文本编辑中试用；其他 App 和文字层 PDF 能否取词取决于其选区接口。")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }.padding(.horizontal, 34).padding(.vertical, 24)
@@ -2577,10 +2576,14 @@ private struct OnboardingView: View {
         }.accessibilityElement(children: .ignore)
             .accessibilityLabel("\(title)：\(complete ? "已确认" : "待检查")。\(detail)")
     }
-    private var shortcutStatus: (symbol: String, color: Color, title: String, detail: String) {
-        if model.userPaused {
-            return ("pause.circle.fill", Color(nsColor: .systemOrange), "句译目前已暂停", "恢复翻译后即可继续设置或练习双击 Option。")
-        }
+    private typealias ShortcutState = (symbol: String, color: Color, title: String, detail: String)
+    /// Native states first. The Hammerspoon states at the end are reachable
+    /// only while an earlier development component still needs a handoff.
+    private var shortcutStatus: ShortcutState {
+        let orange = Color(nsColor: .systemOrange)
+        let paused: ShortcutState = ("pause.circle.fill", orange, "句译目前已暂停", "恢复翻译后即可继续设置或练习双击 Option。")
+        let canEnable: ShortcutState = ("hand.tap.fill", orange, "可以启用双 Option", "点击启用后，按系统提示为句译开启辅助功能权限。")
+        if model.userPaused { return paused }
         if nativeTranslation.isEnabled {
             return ("checkmark.circle.fill", Color(nsColor: .systemGreen), "双 Option 已启用", "现在可以到文本编辑中选中英文，试一次翻译。")
         }
@@ -2593,33 +2596,30 @@ private struct OnboardingView: View {
         case .waitingForHammerspoon:
             return ("arrow.left.arrow.right.circle.fill", .secondary, "正在安全交接快捷键…", nativeTranslation.detail)
         case .languagePackRequired:
-            return ("arrow.down.circle.fill", Color(nsColor: .systemOrange), nativeTranslation.isPreparingLanguages ? "正在准备 Apple 语言包…" : "需要准备 Apple 语言包", nativeTranslation.detail)
+            return ("arrow.down.circle.fill", orange, nativeTranslation.isPreparingLanguages ? "正在准备 Apple 语言包…" : "需要准备 Apple 语言包", nativeTranslation.detail)
         case .unsupported:
             return ("xmark.circle.fill", Color(nsColor: .systemRed), "这台 Mac 不支持 Apple 离线翻译", nativeTranslation.detail)
         case .unavailable:
-            return ("exclamationmark.circle.fill", Color(nsColor: .systemOrange), "原生双 Option 尚未启用", nativeTranslation.detail)
+            return ("exclamationmark.circle.fill", orange, "原生双 Option 尚未启用", nativeTranslation.detail)
         case .active, .disabled:
             break
         }
         if model.selectedEngine != "apple" {
-            return ("lock.shield.fill", Color(nsColor: .systemOrange), "原生双 Option 使用 Apple 离线翻译", "点击下一步会明确切换到 Apple 离线；现有火山云端密钥不会被删除。")
+            return ("lock.shield.fill", orange, "原生双 Option 使用 Apple 离线翻译", "点击下一步会明确切换到 Apple 离线；现有火山云端密钥不会被删除。")
         }
-        if !model.nativeNeedsLegacyHandoff || model.nativeOwnerBridgeReady {
-            return ("hand.tap.fill", Color(nsColor: .systemOrange), "可以启用双 Option", "点击启用后，按系统提示为句译开启辅助功能权限。")
-        }
+        guard legacyHandoffPending else { return canEnable }
         switch model.hotkeyProblem {
-        case .notInstalled: return ("arrow.down.app.fill", Color(nsColor: .systemOrange), "先安装 Hammerspoon", "此预览版需要这个免费的兼容组件。下载后将它放入应用程序并打开，再回到句译继续。")
-        case .notRunning: return ("play.circle.fill", Color(nsColor: .systemOrange), "准备快捷键兼容组件", "句译会打开 Hammerspoon 并更新兼容配置，然后继续启用。")
-        case .heartbeatExpired: return ("clock.badge.exclamationmark.fill", Color(nsColor: .systemOrange), "快捷键助手没有响应", "请打开 Hammerspoon，并从它的菜单重新载入配置。")
-        case .needsUpdate: return ("arrow.down.circle.fill", Color(nsColor: .systemOrange), "快捷键组件需要更新", "点击继续，句译会自动更新兼容配置。")
-        case .notAuthorized: return ("hand.raised.fill", Color(nsColor: .systemOrange), "继续设置双 Option", "句译会先检查兼容组件，再请求自己的辅助功能权限。")
-        case .notLoaded: return ("arrow.clockwise.circle.fill", Color(nsColor: .systemOrange), "快捷键配置尚未载入", "请打开 Hammerspoon，并选择 Reload Config。")
-        case .paused: return ("pause.circle.fill", Color(nsColor: .systemOrange), "句译目前已暂停", "恢复翻译后即可练习双击 Option。")
-        case .ready: return ("hand.tap.fill", Color(nsColor: .systemOrange), "可以启用双 Option", "点击启用，让句译准备原生离线翻译。")
+        case .notInstalled: return ("arrow.down.app.fill", orange, "先安装 Hammerspoon", "这台 Mac 留有早期快捷键组件，句译需要先安全交接。下载 Hammerspoon 后将它放入应用程序并打开，再回到句译继续。")
+        case .notRunning, .heartbeatExpired, .needsUpdate, .notLoaded: return ("arrow.down.circle.fill", orange, "快捷键组件需要更新", "句译会打开 Hammerspoon 并更新兼容配置，然后继续启用。")
+        case .paused: return paused
+        case .notAuthorized, .ready: return canEnable
         }
     }
 
+    private var legacyHandoffPending: Bool { model.nativeNeedsLegacyHandoff && !model.nativeOwnerBridgeReady }
+
     @ViewBuilder private var shortcutFooter: some View {
+        let enable = { model.enableNativeShortcut() }
         if model.userPaused {
             footer(primary: "恢复翻译", primaryEnabled: true) { model.togglePause() }
         } else if nativeTranslation.isEnabled {
@@ -2635,29 +2635,23 @@ private struct OnboardingView: View {
             case .languagePackRequired:
                 footer(primary: nativeTranslation.isPreparingLanguages ? "正在准备…" : "准备 Apple 语言包", primaryEnabled: !nativeTranslation.isPreparingLanguages) { nativeTranslation.prepareLanguages() }
             case .unsupported:
-                footer(primary: "重新检查 Apple 翻译", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
+                footer(primary: "重新检查 Apple 翻译", primaryEnabled: nativeTranslation.actionIsEnabled, action: enable)
             case .unavailable where AccessibilityController.status != .authorized:
                 footer(primary: "打开辅助功能设置", primaryEnabled: true) { model.openAccessibility() }
             case .unavailable:
-                footer(primary: "重新尝试", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
+                footer(primary: "重新尝试", primaryEnabled: nativeTranslation.actionIsEnabled, action: enable)
             case .active:
                 footer(primary: "继续", primaryEnabled: true) { model.advanceOnboarding() }
+            case .disabled where model.selectedEngine != "apple":
+                footer(primary: "切换到 Apple 离线并启用", primaryEnabled: nativeTranslation.actionIsEnabled, action: enable)
+            case .disabled where !legacyHandoffPending:
+                footer(primary: "启用双 Option", primaryEnabled: nativeTranslation.actionIsEnabled, action: enable)
             case .disabled:
-                if model.selectedEngine != "apple" {
-                    footer(primary: "切换到 Apple 离线并启用", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
-                } else if !model.nativeNeedsLegacyHandoff || model.nativeOwnerBridgeReady || model.hotkeyProblem == .ready {
-                    footer(primary: "启用双 Option", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
-                } else {
-                    switch model.hotkeyProblem {
-                    case .notInstalled: footer(primary: "前往下载 Hammerspoon", primaryEnabled: true) { model.openHammerspoon() }
-                    case .notRunning: footer(primary: "准备并启用双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
-                    case .notAuthorized: footer(primary: "继续启用双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
-                    case .paused: footer(primary: "恢复翻译", primaryEnabled: true) { model.togglePause() }
-                    case .heartbeatExpired, .needsUpdate, .notLoaded:
-                        footer(primary: "更新并启用双 Option", primaryEnabled: true) { model.enableNativeShortcut() }
-                    case .ready:
-                        footer(primary: "启用双 Option", primaryEnabled: nativeTranslation.actionIsEnabled) { model.enableNativeShortcut() }
-                    }
+                switch model.hotkeyProblem {
+                case .notInstalled: footer(primary: "前往下载 Hammerspoon", primaryEnabled: true) { model.openHammerspoon() }
+                case .paused: footer(primary: "恢复翻译", primaryEnabled: true) { model.togglePause() }
+                case .notRunning, .heartbeatExpired, .needsUpdate, .notLoaded: footer(primary: "更新并启用双 Option", primaryEnabled: true, action: enable)
+                case .notAuthorized, .ready: footer(primary: "启用双 Option", primaryEnabled: model.hotkeyProblem == .notAuthorized || nativeTranslation.actionIsEnabled, action: enable)
                 }
             }
         }
@@ -2679,7 +2673,7 @@ private struct OnboardingView: View {
                 Text("句译不会读取自身窗口中的文字；这是为了避免把设置页误当成翻译目标。")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.modifier(Surface())
-            Text("扫描图片型 PDF 暂不支持。WPS PDF 兼容取词会临时使用剪贴板，剪贴板管理器可能保留原文。")
+            Text("WPS PDF 兼容取词会临时使用剪贴板，剪贴板管理器可能保留原文；扫描图片型 PDF 暂不支持。")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if !nativeTranslation.isEnabled {
                 Label(nativeTranslation.detail, systemImage: "exclamationmark.circle.fill")
@@ -2704,13 +2698,7 @@ private struct OnboardingView: View {
                 .accessibilityFocused($accessibilityFocus, equals: .pageTitle)
             Text("以后只需：选中英文，连按两次 Option。")
                 .font(.title3).multilineTextAlignment(.center)
-            VStack(alignment: .leading, spacing: 12) {
-                Label("关闭窗口：继续在菜单栏运行，仍可翻译。", systemImage: "macwindow")
-                Divider()
-                Label("暂停翻译：停止响应双 Option，保留设置。", systemImage: "pause.circle")
-                Divider()
-                Label("退出句译：翻译停止，重开后需手动恢复。", systemImage: "power")
-            }.font(.callout).frame(maxWidth: .infinity, alignment: .leading).modifier(Surface())
+            Button("后台运行与停止…") { model.showSupportInfo = true }.buttonStyle(.link)
         }.padding(.horizontal, 34).padding(.vertical, 36)
     }
 
@@ -2795,11 +2783,14 @@ private struct CloudSetupView: View {
 private struct DiagnosticsView: View {
     @ObservedObject var model: AppModel
     @ObservedObject private var nativeTranslation = NativeProductionTranslationCoordinator.shared
+    /// Stacked on this sheet: RootView presents only one sheet at a time.
+    @State private var showSupportInfo = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("诊断与帮助").font(.title2.bold()).accessibilityAddTraits(.isHeader)
                 Text("先在文本编辑中选中英文并试用双 Option；这里可以检查权限、语言包和兼容范围。").foregroundStyle(.secondary)
+                sectionTitle("状态与修复")
                 GroupBox("当前状态") {
                     VStack(alignment: .leading, spacing: 6) {
                         Label("双 Option：\(model.hotkeyReady ? "已启用" : "尚未启用")", systemImage: model.hotkeyReady ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
@@ -2830,19 +2821,14 @@ private struct DiagnosticsView: View {
                 } else if model.selectedEngine == "volc" && model.serviceReady {
                     Button("停止云端翻译组件", role: .destructive) { model.stopService() }
                 }
-                DisclosureGroup("支持范围与隐私") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("当前仅支持英语到简体中文。文本编辑、预览、WPS 文本 PDF 和 Chrome 网页已在本机验证；其他 App 的取词能力取决于其辅助功能接口。扫描图片型 PDF、安全输入框和受保护内容暂不支持。")
-                        Text("WPS PDF 兼容取词会临时执行系统复制，并尽力恢复原剪贴板。剪贴板管理器可能保留原文或干扰取词；敏感内容请避免使用这条兼容路径。")
-                        Text("本地翻译由句译独立完成，不需要额外安装快捷键工具。检测到已有的早期开发组件时，才会处理兼容交接。Apple 离线失败时不会自动上传云端。")
-                        Text("关闭窗口后继续运行；暂停或退出会停止翻译。退出后重新打开，需要点击“恢复翻译”。")
-                        if model.nativeNeedsLegacyHandoff || model.selectedEngine != "apple" {
-                            Button("检查已有 Hammerspoon 组件") { model.openHammerspoon() }
-                        }
-                        Button("打开技术日志") { model.openLogs() }
-                    }.font(.callout).foregroundStyle(.secondary).padding(.top, 6)
+                HStack {
+                    Button("打开技术日志") { model.openLogs() }
+                    if model.nativeNeedsLegacyHandoff || model.selectedEngine != "apple" {
+                        Button("检查已有 Hammerspoon 组件") { model.openHammerspoon() }
+                    }
                 }
                 Divider()
+                sectionTitle("设置")
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
@@ -2887,14 +2873,24 @@ private struct DiagnosticsView: View {
                     Text("从头复检翻译、权限和实际快捷键，不会清除引擎、密钥或其他设置。").font(.callout).foregroundStyle(.secondary)
                     Button("重新运行完整设置…") { model.rerunFullOnboarding() }
                 }
-                HStack { Spacer(); Button("完成") { model.showDiagnostics = false }.keyboardShortcut(.defaultAction) }
+                Divider()
+                HStack {
+                    Button("支持范围与隐私") { showSupportInfo = true }.buttonStyle(.link)
+                    Spacer()
+                    Button("完成") { model.showDiagnostics = false }.keyboardShortcut(.defaultAction)
+                }
             }.padding(28)
         }.frame(width: 500, height: 500)
+            .sheet(isPresented: $showSupportInfo) { SupportInfoView() }
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title).font(.title3.weight(.semibold)).accessibilityAddTraits(.isHeader)
     }
 }
 
 private struct SupportInfoView: View {
-    @ObservedObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("支持范围与隐私").font(.title2.bold()).accessibilityAddTraits(.isHeader)
@@ -2919,7 +2915,7 @@ private struct SupportInfoView: View {
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
-            HStack { Spacer(); Button("完成") { model.showSupportInfo = false }.keyboardShortcut(.defaultAction) }
+            HStack { Spacer(); Button("完成") { dismiss() }.keyboardShortcut(.defaultAction) }
         }.padding(24).frame(width: 472, height: 510)
     }
     private func section<Content: View>(_ title: String, symbol: String, @ViewBuilder content: () -> Content) -> some View {
@@ -3013,7 +3009,8 @@ private struct AppView: View {
                     }.font(.callout)
                 }
             }
-            if !model.ready && model.canPauseTranslation && !model.translationSetupInProgress {
+            if !model.ready && model.canPauseTranslation && !model.translationSetupInProgress
+                && model.nativeNeedsLegacyHandoff {
                 Text("兼容快捷键可能仍在运行；暂停会同时停止两条翻译路径。")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -3099,7 +3096,7 @@ private struct RootView: View {
         }
         .sheet(isPresented: $model.showCloudSetup) { CloudSetupView(model: model) }
         .sheet(isPresented: $model.showDiagnostics) { DiagnosticsView(model: model) }
-        .sheet(isPresented: $model.showSupportInfo) { SupportInfoView(model: model) }
+        .sheet(isPresented: $model.showSupportInfo) { SupportInfoView() }
         .background(
             NativeAppleProductionTranslationHost(
                 service: NativeAppleProductionTranslationService.shared
@@ -3202,7 +3199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     private func installMainMenu() {
         let main = NSMenu(), app = NSMenuItem(), submenu = NSMenu()
-        let quit = NSMenuItem(title: "退出句译", action: #selector(terminate), keyEquivalent: "q"); quit.target = self; submenu.addItem(quit)
+        let quit = NSMenuItem(title: quitMenuTitle, action: #selector(terminate), keyEquivalent: "q"); quit.target = self; submenu.addItem(quit)
         app.submenu = submenu; main.addItem(app); NSApp.mainMenu = main
     }
     private func item(_ title: String, action: Selector? = nil, enabled: Bool = true) -> NSMenuItem { let i = NSMenuItem(title: title, action: action, keyEquivalent: ""); i.target = self; i.isEnabled = enabled; return i }
@@ -3224,13 +3221,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem.button?.toolTip = "句译 · \(snapshot.summaryStatus)"
         let menu = NSMenu()
         menu.autoenablesItems = false
+        // Six groups: status / window / engine / pause-resume / help / quit.
         menu.addItem(item("句译 · \(snapshot.summaryStatus)", enabled: false))
-        menu.addItem(item(snapshot.primaryActionTitle, action: #selector(primaryAction), enabled: snapshot.primaryActionEnabled))
-        if snapshot.showsPauseItem {
-            menu.addItem(item("暂停所有翻译", action: #selector(pause)))
-        }
         menu.addItem(.separator())
         menu.addItem(item("打开句译…", action: #selector(showWindow)))
+        menu.addItem(.separator())
         let engine = item("翻译方式")
         let sub = NSMenu()
         sub.autoenablesItems = false
@@ -3241,11 +3236,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sub.addItem(apple); sub.addItem(cloud); engine.submenu = sub
         engine.isEnabled = snapshot.engineMenuEnabled
         menu.addItem(engine)
-        menu.addItem(item(snapshot.onboardingCompleted ? "重新练习双 Option…" : "继续设置…", action: #selector(onboarding)))
-        menu.addItem(item("支持范围与隐私…", action: #selector(supportInfo)))
-        menu.addItem(item("诊断与帮助…", action: #selector(diagnostics)))
         menu.addItem(.separator())
-        let quit = item("退出句译", action: #selector(terminate))
+        menu.addItem(item(snapshot.primaryActionTitle, action: #selector(primaryAction), enabled: snapshot.primaryActionEnabled))
+        if snapshot.showsPauseItem {
+            menu.addItem(item("暂停所有翻译", action: #selector(pause)))
+        }
+        menu.addItem(.separator())
+        menu.addItem(item("诊断与帮助…", action: #selector(diagnostics)))
+        menu.addItem(item("支持范围与隐私…", action: #selector(supportInfo)))
+        menu.addItem(item(snapshot.onboardingCompleted ? "重新练习双 Option…" : "继续设置…", action: #selector(onboarding)))
+        menu.addItem(.separator())
+        let quit = item(quitMenuTitle, action: #selector(terminate))
         quit.keyEquivalent = "q"
         menu.addItem(quit)
         statusItem.menu = menu

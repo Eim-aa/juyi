@@ -578,7 +578,9 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         case .recoveryRequired:
             detail = "发现未完成的 owner 交接；原生快捷键保持关闭。"
         default:
-            detail = "Hammerspoon 未能安全让出；原生快捷键没有启动。"
+            detail = Self.requiresLegacyHandoff
+                ? "Hammerspoon 未能安全让出；原生快捷键没有启动。"
+                : "原生快捷键没有启动。"
         }
     }
 
@@ -681,7 +683,9 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         if activation?.phase == .recoveryRequired ||
             activation?.phase == .revocationRequired {
             phase = .unavailable
-            detail = "原生快捷键已停止，但暂时无法确认 Hammerspoon 已恢复。请保持句译运行并重试。"
+            detail = Self.requiresLegacyHandoff
+                ? "原生快捷键已停止，但暂时无法确认 Hammerspoon 已恢复。请保持句译运行并重试。"
+                : "原生快捷键已停止。请保持句译运行并重试。"
         } else if phase != .unavailable {
             phase = .disabled
             detail = preservePreference
