@@ -233,9 +233,12 @@ def test_periodic_refresh_is_gated_and_chrome_is_deduplicated():
     assert "forced || AppRefreshPolicy.shouldProbeService(refreshContext)" in refresh
     assert refresh.index("shouldProbeService") < refresh.index('appendingPathComponent("health")')
     assert "scheduleRefreshTimer()" in refresh
-    # Service operations still observe the service directly.
-    wait = SWIFT.split("private func waitForService", 1)[1].split("private func friendlyError", 1)[0]
-    assert "await refresh(probeService: true)" in wait
+    # The legacy repair action still observes the service directly, but no
+    # cloud operation waits for the removed service transport any more.
+    repair = SWIFT.split("func repairService()", 1)[1].split("func chooseApple()", 1)[0]
+    assert "await refresh(probeService: true)" in repair
+    for removed in ("func waitForService", "func startServiceAndWait", "func stopServiceAndConfirm"):
+        assert removed not in SWIFT
     assert "Timer.scheduledTimer(withTimeInterval: 2.5" not in SWIFT
     assert "AppRefreshPolicy.interval(refreshContext)" in SWIFT
     assert "launchAgentInstalled: serviceInstalled" in SWIFT

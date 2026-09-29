@@ -45,7 +45,13 @@ def test_close_defers_and_help_can_rerun_without_reset_path():
 def test_engine_choice_uses_policy_and_native_routing_is_explicit():
     assert "OnboardingPolicy.preferredEngine" in SWIFT
     assert "NativeProductionTranslationCoordinator.shared.isEnabled ? .practice : .permission" in SWIFT
-    assert "切换到 Apple 离线并启用" in SWIFT
+    # Enabling the shortcut never switches the engine: both engines use the
+    # native chain, and a missing cloud key leads to the cloud settings.
+    assert "切换到 Apple 离线并启用" not in SWIFT
+    enable = SWIFT.split("func enableNativeShortcut()", 1)[1].split("private func installBundledShortcut", 1)[0]
+    assert "setEngine(" not in enable
+    assert 'footer(primary: "设置火山云端"' in SWIFT
+    assert "case .unavailable where nativeTranslation.cloudCredentialRequired:" in SWIFT
     assert 'if hasCloudConfiguration { return "volc" }' not in POLICY
     # The unreachable engine-self-test screen was removed; routing only
     # depends on the live native hotkey state.

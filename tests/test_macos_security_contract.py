@@ -1,18 +1,26 @@
-"""Static contracts for native API authentication and Keychain handling."""
+"""Static contracts for native API authentication and Keychain handling.
+
+Since phase 4A the cloud engine is native: the app validates a candidate in
+memory, stores it in Keychain, and signs requests itself. The pending-item /
+removal-marker / service-restart transaction machinery is gone and must stay
+gone.
+"""
 import re
 from pathlib import Path
 
 
-SWIFT = (
-    Path(__file__).parents[1] / "macos" / "JuyiMenuBar.swift"
-).read_text(encoding="utf-8")
+ROOT = Path(__file__).parents[1]
+SWIFT = (ROOT / "macos" / "JuyiMenuBar.swift").read_text(encoding="utf-8")
+ENGINE = (ROOT / "macos" / "VolcTranslationEngine.swift").read_text(encoding="utf-8")
+BUILDER = (ROOT / "macos" / "VolcV4RequestBuilder.swift").read_text(encoding="utf-8")
+PARSER = (ROOT / "macos" / "VolcTranslationResponseParser.swift").read_text(encoding="utf-8")
 
 
 def _body(after, before):
     return SWIFT.split(after, 1)[1].split(before, 1)[0]
 
 
-def test_every_service_request_reads_install_token_and_uses_bearer_header():
+def test_remaining_service_request_reads_install_token_and_uses_bearer_header():
     helper = _body(
         "private func authenticatedRequest", "func refresh(probeService"
     )
@@ -22,17 +30,41 @@ def test_every_service_request_reads_install_token_and_uses_bearer_header():
     assert '"Bearer \\(token)"' in helper
     assert 'forHTTPHeaderField: "Authorization"' in helper
 
-    # The helper itself is the only direct URLRequest constructor.
+    # The helper itself is the only loopback URLRequest constructor, and the
+    # legacy /health probe is the only loopback request left.
     assert SWIFT.count("URLRequest(url:") == 1
-    for endpoint in ("health", "translate", "validate/volc-pending"):
-        request_line = next(
-            line for line in SWIFT.splitlines() if f'appendingPathComponent("{endpoint}")' in line
-        )
-        assert "authenticatedRequest" in request_line
-
+    request_line = next(
+        line for line in SWIFT.splitlines() if 'appendingPathComponent("health")' in line
+    )
+    assert "authenticatedRequest" in request_line
+    for endpoint in ("translate", "validate/volc-pending", "validate/volc"):
+        assert f'appendingPathComponent("{endpoint}")' not in SWIFT
     # Cloud credentials are never serialized into a loopback HTTP request.
-    assert 'appendingPathComponent("validate/volc")' not in SWIFT
     assert '["access_key": accessKey, "secret_key": secretKey]' not in SWIFT
+
+
+def test_transaction_machinery_for_the_service_transport_is_removed():
+    for removed in (
+        "volc.pending",
+        "volcPendingKeychainService",
+        "savePendingCloudCredentials",
+        "deletePendingCloudCredentials",
+        "validatePendingCloud",
+        "cloud-removal-pending",
+        "CloudRemovalMarker",
+        "restoreCloudRemoval",
+        "finishInterruptedCloudRemoval",
+        "recoverInterruptedCloudConfiguration",
+        "completeCloudRemoval",
+        "startServiceAndWait",
+        "stopServiceAndConfirm",
+        "waitForService",
+        "restoreKeychainCloudCredentials",
+        "restoreEnvironment",
+        "TranslationResponse",
+        "friendlyError",
+    ):
+        assert removed not in SWIFT, removed
 
 
 def test_keychain_item_is_single_json_payload_written_via_stdin():
@@ -74,6 +106,10 @@ def test_keychain_item_is_single_json_payload_written_via_stdin():
         "process.standardError = mergeStandardError ? outputPipe : FileHandle.nullDevice"
         in " ".join(process.split())
     )
+    # Security.framework is never imported; Keychain goes through the CLI.
+    for source in (SWIFT, ENGINE, BUILDER, PARSER):
+        assert "import Security" not in source
+        assert "SecItem" not in source
 
 
 def test_keychain_is_preferred_and_legacy_credentials_are_migrated_safely():
@@ -84,7 +120,6 @@ def test_keychain_is_preferred_and_legacy_credentials_are_migrated_safely():
     assert "AppModel.readKeychainCloudCredentials()" in read
     assert "case .notFound: return readLegacyCloudCredentials()" in read
     assert "case .invalid, .unavailable: return nil" in read
-    # The synchronous (MainActor) Keychain reader no longer exists.
     assert "private func readCloudCredentials()" not in SWIFT
     assert "readCloudCredentials()" not in SWIFT
 
@@ -98,26 +133,45 @@ def test_keychain_is_preferred_and_legacy_credentials_are_migrated_safely():
     assert migration.index("saveKeychainCloudCredentials") < migration.index(
         "writeEnvironmentWithoutSecrets"
     )
-    assert "migrateLegacyCloudCredentialsIfNeeded()" in _body(
-        "init() {", "var hammerspoonInstalled"
+    init = _body("init() {", "var hammerspoonInstalled")
+    assert "migrateLegacyCloudCredentialsIfNeeded()" in init
+    assert init.index("cloudBusy = true") < init.index("Task {")
+    assert init.index("migrateLegacyCloudCredentialsIfNeeded()") < init.index("cloudBusy = false")
+
+
+def test_engine_reads_keychain_off_main_actor_through_the_cli_wrapper():
+    reader = _body(
+        "nonisolated static func readVolcEngineCredentials",
+        "func repairService()",
     )
+    assert "readKeychainCloudCredentials()" in reader
+    assert "VolcV4Credentials(accessKey: credentials.accessKey, secretKey: credentials.secretKey)" in reader
+    # Keychain only: the engine never reads plaintext legacy files.
+    assert "readLegacyCloudCredentials" not in reader
+    init = _body("init() {", "var hammerspoonInstalled")
+    assert "VolcTranslationEngine.shared.credentialProvider = {" in init
+    assert "await Task.detached { AppModel.readVolcEngineCredentials() }.value" in init
 
 
-def test_new_cloud_save_never_writes_keys_to_env_and_has_rollback():
-    configure = _body("func configureCloud", "private func restoreCloudRemoval")
+def test_new_cloud_save_validates_in_memory_before_any_keychain_write():
+    configure = _body("func configureCloud", "func removeCloud")
     assert "CloudCredentials(accessKey: access, secretKey: secret)" in configure
-    assert 'writeEnvironmentWithoutSecrets(engine: "volc")' in configure
     assert "VOLC_ACCESS_KEY=" not in configure
     assert "VOLC_SECRET_KEY=" not in configure
-    assert "keychainBackup" in configure
-    assert "environmentBackup" in configure
-    assert "restoreKeychainCloudCredentials(keychainBackup)" in configure
-    assert "restoreEnvironment(environmentBackup)" in configure
-    assert configure.index("savePendingCloudCredentials(candidate)") < configure.index(
-        "validatePendingCloud()"
-    ) < configure.index("saveKeychainCloudCredentials(candidate)")
-    assert "activeWriteAttempted" in configure
-    assert "runtimeRestored" in configure
+    assert "writeEnvironmentWithoutSecrets" not in configure
+    validate = configure.index("VolcTranslationEngine.shared.validate(")
+    guard = configure.index("guard case .translated = outcome else")
+    save = configure.index("AppModel.saveKeychainCloudCredentials(candidate)")
+    assert validate < guard < save
+    # A failed candidate returns before anything is written.
+    failed = configure[guard:save]
+    assert "return" in failed
+    assert "saveKeychainCloudCredentials" not in failed
+    assert "AppModel.readKeychainCloudCredentials() == .found(candidate)" in configure
+    assert configure.index("saveKeychainCloudCredentials(candidate)") < configure.index(
+        'setEngine("volc")'
+    )
+    assert "cloudCredentialsDidChange()" in configure
 
 
 def test_cloud_operations_never_wait_for_security_on_the_main_actor():
@@ -127,23 +181,21 @@ def test_cloud_operations_never_wait_for_security_on_the_main_actor():
         "readKeychainCloudCredentials(",
         "saveKeychainCloudCredentials(",
         "deleteKeychainCloudCredentials(",
-        "restoreKeychainCloudCredentials(",
-        "savePendingCloudCredentials(",
-        "deletePendingCloudCredentials(",
+        "readVolcEngineCredentials(",
         "runSecurity(",
         "runBoundedProcess(",
         "AppModel.launchctl(",
     )
     for start, end in (
+        ("func chooseApple", "func repairCurrentTranslation"),
+        ("func chooseCloud", "private func setEngine"),
+        ("private func setEngine", "func validateExistingCloud"),
         ("func validateExistingCloud", "func configureCloud"),
-        ("func configureCloud", "private func restoreCloudRemoval"),
-        ("private func restoreCloudRemoval", "private func startServiceAndWait"),
-        ("private func startServiceAndWait", "private func stopServiceAndConfirm"),
-        ("private func stopServiceAndConfirm", "private func completeCloudRemoval"),
-        ("private func completeCloudRemoval", "private func finishInterruptedCloudRemoval"),
+        ("func configureCloud", "func removeCloud"),
         ("func removeCloud", "func testTranslation"),
-        ("private func recoverInterruptedCloudConfiguration", "func validateExistingCloud"),
+        ("func testTranslation", "private static func cloudFailureMessage"),
         ("private func migrateLegacyCloudCredentialsIfNeeded", "private func authenticatedRequest"),
+        ("init() {", "var hammerspoonInstalled"),
     ):
         body = _body(start, end)
         off_main = re.sub(r"Task\.detached \{.*?\}\.value", "", body, flags=re.DOTALL)
@@ -154,18 +206,13 @@ def test_cloud_operations_never_wait_for_security_on_the_main_actor():
         "nonisolated private static func launchctl",
     )
     assert SWIFT.count("DispatchSemaphore") == process.count("DispatchSemaphore") == 2
+    for source in (ENGINE, BUILDER, PARSER):
+        assert "DispatchSemaphore" not in source
 
-    # The transaction order is unchanged: lock, backups, then the writes.
     remove = _body("func removeCloud", "func testTranslation")
-    assert remove.index("cloudBusy = true") < remove.index("readKeychainCloudCredentials()")
-    assert remove.index("readKeychainCloudCredentials()") < remove.index(
-        "createCloudRemovalMarker()"
-    )
-    configure = _body("func configureCloud", "private func restoreCloudRemoval")
-    assert configure.index("cloudBusy = true") < configure.index("let keychainBackup")
-    assert configure.index("let keychainBackup") < configure.index(
-        "savePendingCloudCredentials(candidate)"
-    )
+    assert remove.index("cloudBusy = true") < remove.index("deleteKeychainCloudCredentials()")
+    configure = _body("func configureCloud", "func removeCloud")
+    assert configure.index("cloudBusy = true") < configure.index("saveKeychainCloudCredentials(")
 
 
 def test_keychain_read_distinguishes_absent_invalid_and_unavailable():
@@ -180,111 +227,72 @@ def test_keychain_read_distinguishes_absent_invalid_and_unavailable():
     assert "return .found(credentials)" in reader
 
 
-def test_remove_cloud_deletes_keychain_and_strips_legacy_keys():
+def test_remove_cloud_deletes_keychain_switches_to_apple_and_forgets_memory():
     remove = _body("func removeCloud", "func testTranslation")
-    assert "restoreCloudRemoval(" in remove
-    assert "createCloudRemovalMarker()" in remove
-    assert "completeCloudRemoval(allowAlreadyStopped: false)" in remove
-    assert remove.index("createCloudRemovalMarker()") < remove.index('setEngine("apple")')
-
-    complete = _body("private func completeCloudRemoval", "private func finishInterruptedCloudRemoval")
-    assert "deleteKeychainCloudCredentials()" in complete
-    assert "startServiceAndWait(expectCloud: false)" in complete
-    assert 'writeEnvironmentWithoutSecrets(engine: "apple")' in complete
-    assert complete.index("stopServiceAndConfirm") < complete.index(
-        "deleteKeychainCloudCredentials()"
-    )
+    assert "AppModel.deleteKeychainCloudCredentials()" in remove
+    assert remove.index("deleteKeychainCloudCredentials()") < remove.index('setEngine("apple")')
+    assert "cloudCredentialsDidChange()" in remove
+    assert "cloudVerified = false" in remove
+    set_engine = _body("private func setEngine", "func validateExistingCloud")
+    assert "VolcTranslationEngine.shared.forgetCredentials()" in set_engine
+    assert "UserDefaults.standard.set(choice.rawValue, forKey: selectedEngineDefaultsKey)" in set_engine
+    # The legacy mirrors are best effort and never carry secrets.
+    assert "write(to: engineFile" in set_engine
+    assert "writeEnvironmentWithoutSecrets(engine: choice.rawValue)" in set_engine
+    assert "NativeProductionTranslationCoordinator.shared.setEngine(choice)" in set_engine
     sanitizer = _body(
         "private func writeEnvironmentWithoutSecrets",
-        "private func restoreEnvironment",
+        "private func readEnvironmentFile",
     )
     assert 'key == "VOLC_ACCESS_KEY" || key == "VOLC_SECRET_KEY"' in sanitizer
 
 
-def test_pending_item_is_kept_until_commit_and_recovered_after_a_crash():
-    configure = _body("func configureCloud", "private func restoreCloudRemoval")
-    validation = configure.index('translate("Good tools should feel effortless.", engine: "volc")')
-    delete_pending = configure.index("deletePendingCloudCredentials(matching: candidate)", validation)
-    assert validation < delete_pending
-    assert "pendingStillMatches" in configure
-    assert "committedStateMatches" in configure
-
-    recovery = _body(
-        "private func recoverInterruptedCloudConfiguration",
-        "func validateExistingCloud",
-    )
-    assert "activeCredentials != candidate" in recovery
-    assert 'writeEnvironmentWithoutSecrets(engine: "volc")' in recovery
-    assert "startServiceAndWait(expectCloud: true)" in recovery
-    assert recovery.index('translate("Good tools should feel effortless.", engine: "volc")') < recovery.index(
-        "deletePendingCloudCredentials(matching: candidate)",
-        recovery.index('translate("Good tools should feel effortless.", engine: "volc")'),
-    )
-    assert "await recoverInterruptedCloudConfiguration()" in SWIFT
-
-    failed_transaction = configure.split("} catch {", 1)[1]
-    assert failed_transaction.index("restoreKeychainCloudCredentials(keychainBackup)") < failed_transaction.index(
-        "deletePendingCloudCredentials(matching: candidate)"
-    )
-
-
-def test_cloud_operations_share_one_lock_and_removal_confirms_service_exit():
-    init = _body("init() {", "var hammerspoonInstalled")
-    assert init.index("cloudBusy = true") < init.index("Task {")
+def test_cloud_operations_share_one_lock():
     validate = _body("func validateExistingCloud", "func configureCloud")
     assert "guard !testing, !cloudBusy else" in validate
     assert "cloudBusy = true" in validate
     assert "defer" in validate and "cloudBusy = false" in validate
     for operation, end in (
-        ("func chooseApple", "func chooseCloud"),
-        ("func chooseCloud", "@discardableResult private func setEngine"),
-        ("func testTranslation", "private func translate"),
+        ("func chooseApple", "func repairCurrentTranslation"),
+        ("func chooseCloud", "private func setEngine"),
+        ("func testTranslation", "private static func cloudFailureMessage"),
+        ("func configureCloud", "func removeCloud"),
+        ("func removeCloud", "func testTranslation"),
     ):
         assert "cloudBusy" in _body(operation, end)
 
-    stop = _body("private func stopServiceAndConfirm", "func removeCloud")
-    assert "guard requested == 0 else { return false }" in stop
-    assert "Could not find service" in stop
-    assert "for _ in 0..<40" in stop
-    assert "launchctlPID(from: snapshot.1)" in stop
-    assert "processExists(oldPID)" in stop
-    assert "for _ in 0..<80" in stop
 
-
-def test_cloud_removal_marker_is_owner_only_and_recovered_before_migration():
-    marker_reader = _body("private func readCloudRemovalMarker", "private func createCloudRemovalMarker")
-    assert "destinationOfSymbolicLink" in marker_reader
-    assert "permissions & 0o077 == 0" in marker_reader
-    assert "owner == getuid()" in marker_reader
-    assert 'data == Data("1\\n".utf8)' in marker_reader
-
-    marker_creator = _body("private func createCloudRemovalMarker", "private func deleteCloudRemovalMarker")
-    assert "O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC" in marker_creator
-    assert "mode_t(0o600)" in marker_creator
-    assert "Darwin.fchmod" in marker_creator
-    assert "Darwin.fsync" in marker_creator
-
-    init = _body("init() {", "var hammerspoonInstalled")
-    assert init.index("readCloudRemovalMarker() == .notFound") < init.index(
-        "migrateLegacyCloudCredentialsIfNeeded()"
-    )
-    recovery = _body(
-        "private func recoverInterruptedCloudConfiguration",
-        "func validateExistingCloud",
-    )
-    assert recovery.index("readCloudRemovalMarker()") < recovery.index(
-        "readKeychainCloudCredentials("
-    )
-    finish = _body("private func finishInterruptedCloudRemoval", "func removeCloud")
-    assert "completeCloudRemoval(allowAlreadyStopped: true)" in finish
-    assert "deleteCloudRemovalMarker()" in finish
-    engine_failure = finish.split('guard setEngine("apple") else {', 1)[1].split("}", 1)[0]
-    assert "stopServiceAndConfirm(allowAlreadyStopped: true)" in engine_failure
-
-
-def test_environment_backup_distinguishes_absent_from_unreadable():
-    reader = _body("private func readEnvironmentFile", "@discardableResult private func restoreEnvironment")
-    assert "case found" not in reader  # result cases are constructed, not consumed
-    assert "? .unavailable : .notFound" in reader
-    assert "EnvironmentFileRead" in SWIFT
-    assert "environmentBackup != .unavailable" in SWIFT
+def test_volc_engine_never_logs_or_persists_credentials():
+    for source in (ENGINE, BUILDER, PARSER):
+        for forbidden in (
+            "UserDefaults",
+            "FileManager",
+            "write(to:",
+            "print(",
+            "NSLog",
+            "os_log",
+            "Logger",
+            "localizedDescription",
+            "httpCookieStorage = HTTPCookieStorage",
+        ):
+            assert forbidden not in source, forbidden
+    # The engine never touches the secret itself; only the signer does, and
+    # only to derive the HMAC key. The request carries the signature.
+    assert "secretKey" not in ENGINE
+    assert BUILDER.count("credentials.secretKey") == 2
+    assert "Data(credentials.secretKey.utf8)" in BUILDER
+    headers = BUILDER.split("            headers: [\n", 1)[1].split("],", 1)[0]
+    assert "secretKey" not in headers
+    assert '"Authorization": authorization' in headers
+    authorization = BUILDER.split("let authorization =", 1)[1].split("return VolcV4SignedRequest", 1)[0]
+    assert "secretKey" not in authorization
+    for redacted in ("VolcV4Credentials([REDACTED])", "headers: [REDACTED]", "translated([REDACTED])"):
+        assert redacted in BUILDER + ENGINE
+    # Cached only in memory, dropped on removal or Apple selection.
+    assert "private var cachedCredentials: VolcV4Credentials?" in ENGINE
+    assert "func forgetCredentials()" in ENGINE
+    assert "configuration.urlCredentialStorage = nil" in ENGINE
+    assert "configuration.urlCache = nil" in ENGINE
+    assert "configuration.httpCookieStorage = nil" in ENGINE
+    assert "configuration.waitsForConnectivity = false" in ENGINE
+    assert "completionHandler(nil)" in ENGINE  # redirects are refused

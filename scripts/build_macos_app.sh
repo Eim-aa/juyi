@@ -58,6 +58,9 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/NativeTriggerPreflight.swift" \
         "$ROOT/macos/NativeOptionFeature.swift" \
         "$ROOT/macos/NativeAppleTranslationService.swift" \
+        "$ROOT/macos/VolcV4RequestBuilder.swift" \
+        "$ROOT/macos/VolcTranslationResponseParser.swift" \
+        "$ROOT/macos/VolcTranslationEngine.swift" \
         "$ROOT/macos/NativeTranslationOverlayModel.swift" \
         "$ROOT/macos/NativeTranslationOverlayAnchorPolicy.swift" \
         "$ROOT/macos/NativeTranslationOverlayInteractionPolicy.swift" \

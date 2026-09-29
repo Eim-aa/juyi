@@ -13,8 +13,9 @@ private let fallbackLoginItemLabel = "io.github.Eim-aa.Juyi.login-item"
 private let fallbackLoginItemExecutable = "/Applications/句译.app/Contents/MacOS/Juyi"
 private let volcKeychainService = "io.github.Eim-aa.juyi.volc"
 private let volcKeychainAccount = "volc"
-private let volcPendingKeychainService = "io.github.Eim-aa.juyi.volc.pending"
-private let volcPendingKeychainAccount = "pending"
+/// The single source of the engine choice; `hs-engine` is only mirrored for
+/// an existing Hammerspoon installation until the legacy stack is removed.
+private let selectedEngineDefaultsKey = "selectedEngine"
 private let shortcutDeploymentFingerprintDefaultsKey = "bundledShortcutDeploymentFingerprint"
 private let quitMenuTitle = "退出句译"
 
@@ -46,12 +47,6 @@ private enum EnvironmentFileRead: Equatable, Sendable {
     case unavailable
 }
 
-private enum CloudRemovalMarkerRead: Equatable {
-    case present
-    case notFound
-    case unavailable
-}
-
 struct HotkeyStatus: Decodable, Equatable {
     let module_loaded: Bool
     let accessibility: Bool
@@ -62,14 +57,6 @@ struct HotkeyStatus: Decodable, Equatable {
     let legacy_instance_id: String?
     let owner_state: String?
     let status_sequence: Int?
-}
-
-private struct TranslationResponse: Decodable {
-    let result: String?
-    let engine: String?
-    let elapsed_ms: Int?
-    let error: String?
-    let warnings: [String]?
 }
 
 enum HotkeyProblem: Equatable {
@@ -158,7 +145,6 @@ final class AppModel: ObservableObject {
     private var pauseFile: URL { configDir.appendingPathComponent("hs-paused") }
     private var envFile: URL { configDir.appendingPathComponent("volc.env") }
     private var authTokenFile: URL { configDir.appendingPathComponent("auth-token") }
-    private var cloudRemovalMarker: URL { configDir.appendingPathComponent("cloud-removal-pending") }
     private var plist: URL { home.appendingPathComponent("Library/LaunchAgents/\(serviceLabel).plist") }
     private var fallbackLoginItemPlist: URL { home.appendingPathComponent("Library/LaunchAgents/\(fallbackLoginItemLabel).plist") }
     private var bundledShortcutModule: URL? {
@@ -228,17 +214,26 @@ final class AppModel: ObservableObject {
         NativeProductionTranslationCoordinator.shared.setShortcutDeploymentReady(
             bundledShortcutIsCurrent
         )
-        // A persisted removal transaction takes precedence over legacy
-        // migration; never recreate an active credential while removal is
-        // waiting to finish. Keychain commands are deliberately deferred so
-        // the Apple-only startup path never waits on `security` on MainActor.
-        let shouldMigrateLegacyCloud = readCloudRemovalMarker() == .notFound
+        // Keychain commands are deliberately deferred so startup never waits
+        // on `security` on MainActor. The native cloud engine reads the
+        // credential through the same bounded `security` wrapper, off the
+        // main actor, only when it needs it.
+        VolcTranslationEngine.shared.credentialProvider = {
+            await Task.detached { AppModel.readVolcEngineCredentials() }.value
+        }
         hammerspoonInstalled = Self.queryHammerspoonInstalled()
         migrateOnboardingState()
-        let explicitEngine = readExplicitEngineChoice()
+        // UserDefaults is the engine source of truth. An explicit choice in
+        // the legacy `hs-engine` file is migrated once; absent any explicit
+        // choice nothing is persisted and the privacy-safe default applies.
+        let storedEngine = Self.validEngine(UserDefaults.standard.string(forKey: selectedEngineDefaultsKey))
+        let legacyEngine = storedEngine == nil ? readExplicitEngineChoice() : nil
+        if let legacyEngine {
+            UserDefaults.standard.set(legacyEngine, forKey: selectedEngineDefaultsKey)
+        }
         readLocalState()
         selectedEngine = OnboardingPolicy.preferredEngine(
-            explicitEngine: explicitEngine,
+            explicitEngine: storedEngine ?? legacyEngine,
             environmentEngine: readEnvironmentEngineChoice()
         )
         switch onboardingDisposition {
@@ -251,16 +246,18 @@ final class AppModel: ObservableObject {
         }
         configureDefaultLoginItemIfNeeded()
         // Hold the cloud-operation lock before the first scheduled task can
-        // yield, so the setup UI cannot race crash recovery during launch.
+        // yield, so the setup UI cannot race the legacy credential migration.
         cloudBusy = true
         Task {
-            if shouldMigrateLegacyCloud {
-                await migrateLegacyCloudCredentialsIfNeeded()
-            }
+            await migrateLegacyCloudCredentialsIfNeeded()
             localCloudCredentialFingerprint = credentialFingerprint(
                 await readCloudCredentialsOffMainActor()
             )
-            await recoverInterruptedCloudConfiguration()
+            // A just-migrated credential must not stay reported as missing.
+            if localCloudCredentialFingerprint != nil {
+                NativeProductionTranslationCoordinator.shared.cloudCredentialsDidChange()
+            }
+            cloudBusy = false
             await refresh()
             if onboardingPresented && onboardingDisposition == .inProgress {
                 onboardingScreen = firstIncompleteScreen()
@@ -286,7 +283,6 @@ final class AppModel: ObservableObject {
 
     private var refreshContext: AppRefreshContext {
         AppRefreshContext(
-            selectedEngine: selectedEngine,
             cloudSetupVisible: showCloudSetup,
             diagnosticsVisible: showDiagnostics,
             launchAgentInstalled: serviceInstalled,
@@ -328,14 +324,10 @@ final class AppModel: ObservableObject {
         paused && !NativeProductionTranslationCoordinator.shared.recoveryPauseHeld
     }
     var serviceInstalled: Bool { FileManager.default.fileExists(atPath: plist.path) }
-    var appleAvailable: Bool { health?.engines["apple"] == true }
-    var cloudConfigured: Bool { health?.engines["volc"] == true }
     var cloudConfigExists: Bool { localCloudCredentialFingerprint != nil }
-    var hotkeyReady: Bool {
-        selectedEngine == "apple"
-            ? NativeProductionTranslationCoordinator.shared.isEnabled
-            : hotkeyProblem == .ready
-    }
+    /// Both engines share the native chain, so the shortcut is ready exactly
+    /// when that chain is active.
+    var hotkeyReady: Bool { NativeProductionTranslationCoordinator.shared.isEnabled }
     var nativeOwnerBridgeReady: Bool {
         guard let hotkey,
               hotkey.module_loaded,
@@ -373,17 +365,9 @@ final class AppModel: ObservableObject {
         if hotkey.module_loaded != true || hotkey.watcher_active != true { return .notLoaded }
         return .ready
     }
-    var engineReady: Bool {
-        selectedEngine == "apple"
-            ? NativeProductionTranslationCoordinator.shared.isEnabled
-            : (cloudConfigured && cloudVerified)
-    }
     var onboardingCompleted: Bool { onboardingDisposition == .completed }
     var ready: Bool {
-        if selectedEngine == "apple" {
-            return !paused && NativeProductionTranslationCoordinator.shared.isEnabled
-        }
-        return !paused && serviceReady && hotkeyReady && engineReady && onboardingCompleted
+        !paused && NativeProductionTranslationCoordinator.shared.isEnabled
     }
     /// `requiresApproval` still represents an active user request. Keeping the
     /// toggle on lets the user cancel that request with `unregister()`.
@@ -414,56 +398,34 @@ final class AppModel: ObservableObject {
     var statusTitle: String {
         if !hasChecked { return "正在准备句译…" }
         if userPaused { return "句译已暂停" }
-        if selectedEngine == "apple" {
-            let native = NativeProductionTranslationCoordinator.shared
-            if shortcutRepairBusy { return "正在准备快捷键…" }
-            if native.isPreparingLanguages { return "正在准备语言包…" }
-            switch native.phase {
-            case .active: return "句译已就绪"
-            case .requestingAccessibility: return "请允许辅助功能"
-            case .waitingForHammerspoon: return "正在启用双 Option…"
-            case .languagePackRequired: return "还需准备语言包"
-            case .unsupported: return "此设备暂不支持离线翻译"
-            case .disabled: return "启用后即可翻译"
-            case .unavailable: return "快捷键需要处理"
-            }
+        let native = NativeProductionTranslationCoordinator.shared
+        if shortcutRepairBusy { return "正在准备快捷键…" }
+        if native.isPreparingLanguages { return "正在准备语言包…" }
+        switch native.phase {
+        case .active: return "句译已就绪"
+        case .requestingAccessibility: return "请允许辅助功能"
+        case .waitingForHammerspoon: return "正在启用双 Option…"
+        case .languagePackRequired: return "还需准备语言包"
+        case .unsupported: return "此设备暂不支持离线翻译"
+        case .disabled: return "启用后即可翻译"
+        case .unavailable: return native.cloudCredentialRequired ? "请先配置火山密钥" : "快捷键需要处理"
         }
-        if ready { return "句译已就绪" }
-        if !serviceReady { return "句译需要处理" }
-        return "还差一步"
     }
     var statusMessage: String {
         if !hasChecked { return "这通常只需要几秒。" }
         if userPaused { return "恢复后即可继续使用双击 Option 翻译。" }
-        if selectedEngine == "apple" {
-            let native = NativeProductionTranslationCoordinator.shared
-            if native.isEnabled { return "选中英文，连按两次 Option，查看中文译文。" }
-            if shortcutRepairBusy { return "正在更新兼容组件，请稍候。" }
-            return native.detail
-        }
-        if !serviceReady { return serviceBusy ? "正在重新连接翻译组件…" : "翻译组件暂时没有响应，可以自动修复。" }
-        if !engineReady { return selectedEngine == "volc" ? "验证云端连接后即可开始使用。" : "需要准备 Apple 离线翻译。" }
-        switch hotkeyProblem {
-        case .notInstalled: return "需要先安装 Hammerspoon 快捷键助手。"
-        case .notRunning: return "Hammerspoon 尚未运行，请打开它。"
-        case .heartbeatExpired: return "快捷键助手没有响应，请重新打开 Hammerspoon。"
-        case .needsUpdate: return "快捷键模块需要更新，请让句译部署当前版本并重新载入。"
-        case .notAuthorized: return "请在辅助功能中允许 Hammerspoon。"
-        case .notLoaded: return "快捷键配置尚未载入，请在 Hammerspoon 中重新载入配置。"
-        case .paused: return "恢复后即可继续使用双击 Option 翻译。"
-        case .ready: break
-        }
-        if !onboardingCompleted { return "最后试一次双击 Option，确认译文能够出现。" }
-        return "选中英文，快速连按两次 Option。"
+        let native = NativeProductionTranslationCoordinator.shared
+        if native.isEnabled { return "选中英文，连按两次 Option，查看中文译文。" }
+        if shortcutRepairBusy { return "正在更新兼容组件，请稍候。" }
+        return native.detail
     }
     // Presentation only: reuse the existing owner, pause and readiness state.
     // A disabled native path does not imply the legacy watcher has stopped.
     var translationSetupInProgress: Bool {
         let native = NativeProductionTranslationCoordinator.shared
         return !hasChecked || shortcutRepairBusy || native.isPreparingLanguages
-            || (selectedEngine == "apple" && (native.phase == .requestingAccessibility
-                || native.phase == .waitingForHammerspoon))
-            || (selectedEngine == "volc" && (serviceBusy || cloudBusy))
+            || native.phase == .requestingAccessibility
+            || native.phase == .waitingForHammerspoon
     }
     var canPauseTranslation: Bool {
         !userPaused && (NativeProductionTranslationCoordinator.shared.isEnabled
@@ -473,8 +435,7 @@ final class AppModel: ObservableObject {
         if userPaused { return "已暂停" }
         if translationSetupInProgress { return "设置中" }
         if ready { return "已就绪" }
-        if selectedEngine == "apple"
-            && NativeProductionTranslationCoordinator.shared.phase == .disabled {
+        if NativeProductionTranslationCoordinator.shared.phase == .disabled {
             return "未启用"
         }
         return "需要处理"
@@ -497,43 +458,31 @@ final class AppModel: ObservableObject {
         if !hasChecked { return "正在检查…" }
         if shortcutRepairBusy { return "正在准备兼容组件…" }
         if native.isPreparingLanguages { return "正在准备语言包…" }
-        if selectedEngine == "apple" {
-            if native.phase == .requestingAccessibility { return "打开系统设置" }
-            if native.phase == .waitingForHammerspoon { return "正在启用双 Option…" }
-            if native.phase == .languagePackRequired { return "准备语言包" }
-            if native.phase == .unsupported { return "诊断与帮助" }
-            if native.phase == .unavailable { return "重新检查并启用" }
-            return onboardingCompleted ? "启用双 Option" : "继续设置"
-        }
-        if serviceBusy || cloudBusy { return "正在检查云端…" }
-        if !serviceReady { return "修复云端组件" }
-        if !engineReady { return "设置火山云端" }
-        if !hammerspoonInstalled { return "下载 Hammerspoon" }
-        return "检查快捷键设置"
+        if native.phase == .requestingAccessibility { return "打开系统设置" }
+        if native.phase == .waitingForHammerspoon { return "正在启用双 Option…" }
+        if native.phase == .languagePackRequired { return "准备语言包" }
+        if native.phase == .unsupported { return "诊断与帮助" }
+        if native.cloudCredentialRequired { return cloudBusy ? "正在检查云端…" : "设置火山云端" }
+        if native.phase == .unavailable { return "重新检查并启用" }
+        return onboardingCompleted ? "启用双 Option" : "继续设置"
     }
     var primaryActionEnabled: Bool {
         if userPaused || ready { return true }
         let native = NativeProductionTranslationCoordinator.shared
         if !hasChecked || shortcutRepairBusy || native.isPreparingLanguages { return false }
-        if selectedEngine == "apple" {
-            return native.phase == .requestingAccessibility || native.actionIsEnabled
-        }
-        return !serviceBusy && !cloudBusy
+        if native.cloudCredentialRequired { return !cloudBusy }
+        return native.phase == .requestingAccessibility || native.actionIsEnabled
     }
     func performPrimaryAction() {
         guard primaryActionEnabled else { return }
         let native = NativeProductionTranslationCoordinator.shared
         if userPaused || ready { togglePause(); return }
-        if selectedEngine == "apple" {
-            if native.phase == .requestingAccessibility { openAccessibility() }
-            else if native.phase == .languagePackRequired { native.prepareLanguages() }
-            else if native.phase == .unsupported { showDiagnostics = true }
-            else if native.phase == .unavailable || onboardingCompleted { enableNativeShortcut() }
-            else { startOnboarding() }
-        } else if !serviceReady { repairService() }
-        else if !engineReady { chooseCloud() }
-        else if !hammerspoonInstalled { openHammerspoon() }
-        else { showDiagnostics = true }
+        if native.phase == .requestingAccessibility { openAccessibility() }
+        else if native.phase == .languagePackRequired { native.prepareLanguages() }
+        else if native.phase == .unsupported { showDiagnostics = true }
+        else if native.cloudCredentialRequired { openCloudSettings() }
+        else if native.phase == .unavailable || onboardingCompleted { enableNativeShortcut() }
+        else { startOnboarding() }
     }
 
     private func migrateOnboardingState() {
@@ -630,7 +579,7 @@ final class AppModel: ObservableObject {
         practiceTroubleshooting = false
         onboardingScreen = .permission
         onboardingPresented = true
-        if selectedEngine == "apple" && !nativeNeedsLegacyHandoff {
+        if !nativeNeedsLegacyHandoff {
             enableNativeShortcut()
         } else {
             installBundledShortcut(enableNativeAfterInstall: false)
@@ -645,7 +594,7 @@ final class AppModel: ObservableObject {
             notice = "请先把句译拖到“应用程序”文件夹，再启用双 Option。"
             return
         }
-        guard selectedEngine == "apple" || setEngine("apple") else { return }
+        // Enabling never changes the engine: both engines use this chain.
         if native.isEnabled {
             native.enableByUser()
             return
@@ -1120,17 +1069,12 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Reads the shared pause switch and legacy status only. The engine is
+    /// owned by UserDefaults; a change to `hs-engine` never stops the native
+    /// chain.
     private func readLocalState() {
-        let previousEngine = selectedEngine
         let wasPaused = paused
-        if let value = readExplicitEngineChoice() {
-            selectedEngine = value
-        }
         paused = ((try? String(contentsOf: pauseFile, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) == "1")
-        if selectedEngine != previousEngine {
-            NativeProductionTranslationCoordinator.shared
-                .setAppleEngineSelected(selectedEngine == "apple")
-        }
         if paused != wasPaused {
             NativeProductionTranslationCoordinator.shared.setPaused(paused)
         }
@@ -1144,10 +1088,19 @@ final class AppModel: ObservableObject {
     }
 
     private func readExplicitEngineChoice() -> String? {
-        guard let value = try? String(contentsOf: engineFile, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              ["apple", "volc"].contains(value) else { return nil }
+        Self.validEngine(
+            try? String(contentsOf: engineFile, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
+    private static func validEngine(_ value: String?) -> String? {
+        guard let value, ["apple", "volc"].contains(value) else { return nil }
         return value
+    }
+
+    var engineChoice: NativeTranslationEngineChoice {
+        NativeTranslationEngineChoice(rawValue: selectedEngine) ?? .apple
     }
 
     private func readEnvironmentEngineChoice() -> String? {
@@ -1235,126 +1188,6 @@ final class AppModel: ObservableObject {
             return .found(try Data(contentsOf: envFile))
         } catch {
             return FileManager.default.fileExists(atPath: envFile.path) ? .unavailable : .notFound
-        }
-    }
-
-    private func readCloudRemovalMarker() -> CloudRemovalMarkerRead {
-        if (try? FileManager.default.destinationOfSymbolicLink(atPath: cloudRemovalMarker.path)) != nil {
-            return .unavailable
-        }
-        guard FileManager.default.fileExists(atPath: cloudRemovalMarker.path) else { return .notFound }
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: cloudRemovalMarker.path),
-              attributes[.type] as? FileAttributeType == .typeRegular,
-              let permissions = (attributes[.posixPermissions] as? NSNumber)?.intValue,
-              permissions & 0o077 == 0,
-              let owner = (attributes[.ownerAccountID] as? NSNumber)?.uint32Value,
-              owner == getuid(),
-              let data = try? Data(contentsOf: cloudRemovalMarker),
-              data == Data("1\n".utf8) else { return .unavailable }
-        return .present
-    }
-
-    private func createCloudRemovalMarker() -> Bool {
-        switch readCloudRemovalMarker() {
-        case .present:
-            return true
-        case .unavailable:
-            return false
-        case .notFound:
-            break
-        }
-        if (try? FileManager.default.destinationOfSymbolicLink(atPath: configDir.path)) != nil {
-            return false
-        }
-        do {
-            try FileManager.default.createDirectory(
-                at: configDir,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
-            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: configDir.path)
-        } catch {
-            return false
-        }
-
-        var descriptor = cloudRemovalMarker.path.withCString {
-            Darwin.open(
-                $0,
-                O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
-                mode_t(0o600)
-            )
-        }
-        guard descriptor >= 0 else {
-            return errno == EEXIST && readCloudRemovalMarker() == .present
-        }
-
-        var keepMarker = false
-        defer {
-            if descriptor >= 0 { _ = Darwin.close(descriptor) }
-            if !keepMarker { try? FileManager.default.removeItem(at: cloudRemovalMarker) }
-        }
-        guard Darwin.fchmod(descriptor, mode_t(0o600)) == 0 else { return false }
-        let payload = Array("1\n".utf8)
-        let wrotePayload = payload.withUnsafeBytes { buffer -> Bool in
-            guard let baseAddress = buffer.baseAddress else { return false }
-            var offset = 0
-            while offset < buffer.count {
-                let count = Darwin.write(
-                    descriptor,
-                    baseAddress.advanced(by: offset),
-                    buffer.count - offset
-                )
-                if count < 0 {
-                    if errno == EINTR { continue }
-                    return false
-                }
-                guard count > 0 else { return false }
-                offset += count
-            }
-            return true
-        }
-        guard wrotePayload, Darwin.fsync(descriptor) == 0 else { return false }
-        let closeResult = Darwin.close(descriptor)
-        descriptor = -1
-        guard closeResult == 0 else { return false }
-        guard readCloudRemovalMarker() == .present else { return false }
-        keepMarker = true
-        return true
-    }
-
-    private func deleteCloudRemovalMarker() -> Bool {
-        switch readCloudRemovalMarker() {
-        case .notFound:
-            return true
-        case .unavailable:
-            return false
-        case .present:
-            do {
-                try FileManager.default.removeItem(at: cloudRemovalMarker)
-                return readCloudRemovalMarker() == .notFound
-            } catch {
-                return false
-            }
-        }
-    }
-
-    @discardableResult private func restoreEnvironment(_ backup: EnvironmentFileRead) -> Bool {
-        do {
-            switch backup {
-            case .found(let data):
-                try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
-                try data.write(to: envFile, options: .atomic)
-                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: envFile.path)
-            case .notFound:
-                if FileManager.default.fileExists(atPath: envFile.path) {
-                    try FileManager.default.removeItem(at: envFile)
-                }
-            case .unavailable:
-                return false
-            }
-            return true
-        } catch {
-            return false
         }
     }
 
@@ -1532,22 +1365,6 @@ final class AppModel: ObservableObject {
         ).status
     }
 
-    nonisolated private static func launchctlPID(from output: String) -> pid_t? {
-        for rawLine in output.split(separator: "\n") {
-            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard line.hasPrefix("pid = ") else { continue }
-            let value = line.dropFirst("pid = ".count)
-            if let pid = pid_t(value), pid > 1 { return pid }
-        }
-        return nil
-    }
-
-    nonisolated private static func processExists(_ pid: pid_t) -> Bool {
-        errno = 0
-        if Darwin.kill(pid, 0) == 0 { return true }
-        return errno != ESRCH
-    }
-
     nonisolated private static func runSecurity(_ arguments: [String], input: Data? = nil) -> (Int32, Data) {
         let result = runBoundedProcess(
             executablePath: "/usr/bin/security",
@@ -1603,55 +1420,11 @@ final class AppModel: ObservableObject {
         return readKeychainCloudCredentials(service: service, account: account) == .notFound
     }
 
-    nonisolated private static func restoreKeychainCloudCredentials(
-        _ state: CloudCredentialRead,
-        service: String = volcKeychainService,
-        account: String = volcKeychainAccount
-    ) -> Bool {
-        switch state {
-        case .found(let credentials):
-            return saveKeychainCloudCredentials(credentials, service: service, account: account)
-                && readKeychainCloudCredentials(service: service, account: account) == .found(credentials)
-        case .notFound:
-            return deleteKeychainCloudCredentials(service: service, account: account)
-        case .invalid, .unavailable:
-            return false
-        }
-    }
-
-    nonisolated private static func savePendingCloudCredentials(_ credentials: CloudCredentials) -> Bool {
-        saveKeychainCloudCredentials(
-            credentials,
-            service: volcPendingKeychainService,
-            account: volcPendingKeychainAccount
-        ) && readKeychainCloudCredentials(
-            service: volcPendingKeychainService,
-            account: volcPendingKeychainAccount
-        ) == .found(credentials)
-    }
-
-    nonisolated private static func deletePendingCloudCredentials() -> Bool {
-        deleteKeychainCloudCredentials(
-            service: volcPendingKeychainService,
-            account: volcPendingKeychainAccount
-        )
-    }
-
-    nonisolated private static func deletePendingCloudCredentials(
-        matching candidate: CloudCredentials
-    ) -> Bool {
-        let state = readKeychainCloudCredentials(
-            service: volcPendingKeychainService,
-            account: volcPendingKeychainAccount
-        )
-        switch state {
-        case .notFound:
-            return true
-        case .found(let stored) where stored == candidate:
-            return deletePendingCloudCredentials()
-        case .found, .invalid, .unavailable:
-            return false
-        }
+    /// The native cloud engine's credential source. Keychain only (legacy
+    /// `volc.env` keys are migrated at launch); runs off the main actor.
+    nonisolated static func readVolcEngineCredentials() -> VolcV4Credentials? {
+        guard case .found(let credentials) = readKeychainCloudCredentials() else { return nil }
+        return VolcV4Credentials(accessKey: credentials.accessKey, secretKey: credentials.secretKey)
     }
 
     func repairService() {
@@ -1684,13 +1457,17 @@ final class AppModel: ObservableObject {
 
     func chooseApple() {
         guard !cloudBusy else { notice = "云端设置正在安全处理，请稍候。"; return }
-        if setEngine("apple") { notice = "已选择 Apple 离线。启用双 Option 后即可翻译。" }
+        setEngine("apple")
+        notice = NativeProductionTranslationCoordinator.shared.isEnabled
+            ? "已切换到 Apple 离线翻译。"
+            : "已选择 Apple 离线。启用双 Option 后即可翻译。"
     }
 
     func repairCurrentTranslation() {
-        guard selectedEngine == "apple" else { repairService(); return }
         let native = NativeProductionTranslationCoordinator.shared
-        if native.phase == .languagePackRequired {
+        if native.cloudCredentialRequired {
+            openCloudSettings()
+        } else if native.phase == .languagePackRequired {
             native.prepareLanguages()
         } else if native.isEnabled {
             native.retryByUser()
@@ -1698,127 +1475,42 @@ final class AppModel: ObservableObject {
             enableNativeShortcut()
         }
     }
+
+    func openCloudSettings() {
+        cloudError = ""
+        showCloudSetup = true
+    }
+
+    /// Cloud translation needs only a verified Keychain credential; there is
+    /// no background service to start.
     func chooseCloud() {
         guard !cloudBusy else { notice = "云端设置正在安全处理，请稍候。"; return }
-        guard serviceReady else { notice = "请先恢复翻译组件，再选择翻译方式。"; repairService(); return }
-        if cloudConfigured && cloudVerified {
-            if setEngine("volc") { notice = "已切换到火山云端翻译。" }
+        if cloudConfigExists && cloudVerified {
+            setEngine("volc")
+            notice = "已切换到火山云端翻译。"
         }
-        else if cloudConfigured { validateExistingCloud() }
-        else { cloudError = ""; showCloudSetup = true }
-    }
-    @discardableResult private func setEngine(_ engine: String) -> Bool {
-        do {
-            try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            try "\(engine)\n".write(to: engineFile, atomically: true, encoding: .utf8)
-            selectedEngine = engine
-            NativeProductionTranslationCoordinator.shared
-                .setAppleEngineSelected(engine == "apple")
-            onChange?()
-            return true
-        } catch {
-            notice = "暂时无法保存选择，请稍后重试。"
-            return false
-        }
+        else if cloudConfigExists { validateExistingCloud() }
+        else { openCloudSettings() }
     }
 
-    /// A pending item is the durable transaction marker for cloud setup. It is
-    /// kept until the promoted credential has survived a service restart and a
-    /// real translation. After a crash, either finish that promotion or discard
-    /// a candidate that never became active; never guess through Keychain errors.
-    private func recoverInterruptedCloudConfiguration() async {
-        // init() acquires this lock synchronously before scheduling recovery.
-        defer { cloudBusy = false }
-        switch readCloudRemovalMarker() {
-        case .unavailable:
-            _ = setEngine("apple")
-            let stopped = await stopServiceAndConfirm(allowAlreadyStopped: true)
-            notice = stopped
-                ? "检测到无法验证的云端移除标记；后台服务已停止，请打开“诊断与帮助”。"
-                : "检测到无法验证的云端移除标记，且无法确认后台服务已停止；云端请求已被安全阻断。"
-            return
-        case .present:
-            guard await finishInterruptedCloudRemoval() else { return }
-        case .notFound:
-            break
+    /// UserDefaults is the source of truth. `hs-engine` and the `ENGINE=` line
+    /// of an existing `volc.env` are still mirrored (best effort) so a legacy
+    /// Hammerspoon installation stays consistent; they are removed in 4B.
+    private func setEngine(_ engine: String) {
+        guard let choice = NativeTranslationEngineChoice(rawValue: engine) else { return }
+        UserDefaults.standard.set(choice.rawValue, forKey: selectedEngineDefaultsKey)
+        selectedEngine = choice.rawValue
+        if choice == .apple { VolcTranslationEngine.shared.forgetCredentials() }
+        try? FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try? "\(choice.rawValue)\n".write(to: engineFile, atomically: true, encoding: .utf8)
+        if FileManager.default.fileExists(atPath: envFile.path) {
+            try? writeEnvironmentWithoutSecrets(engine: choice.rawValue)
         }
-        let pending = await Task.detached {
-            AppModel.readKeychainCloudCredentials(
-                service: volcPendingKeychainService,
-                account: volcPendingKeychainAccount
-            )
-        }.value
-        switch pending {
-        case .notFound:
-            return
-        case .invalid, .unavailable:
-            notice = "检测到未完成的云端设置，但暂时无法读取。请解锁钥匙串后重新打开句译。"
-            return
-        case .found(let candidate):
-            let active = await Task.detached {
-                AppModel.readKeychainCloudCredentials()
-            }.value
-            switch active {
-            case .invalid, .unavailable:
-                notice = "检测到未完成的云端设置，但暂时无法确认原配置。请解锁钥匙串后重试。"
-                return
-            case .notFound:
-                guard await startServiceAndWait() else {
-                    notice = "未完成的云端设置仍在安全保留；后台恢复后会继续清理。"
-                    return
-                }
-                let cleaned = await Task.detached {
-                    AppModel.deletePendingCloudCredentials(matching: candidate)
-                }.value
-                if !cleaned { notice = "未完成的云端设置暂时无法清理，请稍后重新打开句译。" }
-                return
-            case .found(let activeCredentials) where activeCredentials != candidate:
-                guard await startServiceAndWait() else {
-                    notice = "旧云端配置尚未重新载入；事务标记会保留到后台恢复成功。"
-                    return
-                }
-                let cleaned = await Task.detached {
-                    AppModel.deletePendingCloudCredentials(matching: candidate)
-                }.value
-                if !cleaned { notice = "旧的云端设置草稿暂时无法清理，请稍后重新打开句译。" }
-                return
-            case .found:
-                break
-            }
-
-            do {
-                try writeEnvironmentWithoutSecrets(engine: "volc")
-            } catch {
-                notice = "云端设置恢复尚未完成；凭据仍安全保存在钥匙串中，请稍后重新打开句译。"
-                return
-            }
-            guard await startServiceAndWait(expectCloud: true) else {
-                notice = "云端设置恢复尚未完成；句译会在下次启动时继续，不会丢失凭据。"
-                return
-            }
-            let validation = await translate("Good tools should feel effortless.", engine: "volc")
-            guard validation?.error == nil,
-                  validation?.engine == "volc",
-                  !(validation?.result ?? "").isEmpty else {
-                notice = "云端设置恢复后未通过翻译验证，请打开“诊断与帮助”。"
-                return
-            }
-            localCloudCredentialFingerprint = credentialFingerprint(candidate)
-            cloudVerified = true
-            guard setEngine("volc") else {
-                notice = "云端已验证，但暂时无法保存翻译方式；请稍后重新选择火山云端。"
-                return
-            }
-            let cleaned = await Task.detached {
-                AppModel.deletePendingCloudCredentials(matching: candidate)
-            }.value
-            notice = cleaned
-                ? "已恢复上次中断的云端设置。"
-                : "云端已恢复；安全清理会在下次启动时继续。"
-            await refresh(probeService: true)
-        }
+        NativeProductionTranslationCoordinator.shared.setEngine(choice)
+        onChange?()
     }
 
+    /// Re-validates the stored credential with one fixed English sentence.
     func validateExistingCloud() {
         guard !testing, !cloudBusy else { return }
         testing = true
@@ -1831,379 +1523,99 @@ final class AppModel: ObservableObject {
             }
             guard let credentials = await readCloudCredentialsOffMainActor() else {
                 notice = "云端设置不完整，请重新配置。"
-                showCloudSetup = true
+                openCloudSettings()
                 return
             }
-            // Credentials stay in Keychain. Validation exercises the already
-            // running service with an ordinary translation request, so AK/SK
-            // never cross the unauthenticated loopback transport.
-            let response = await translate("Good tools should feel effortless.", engine: "volc")
+            let outcome = await VolcTranslationEngine.shared.validate(
+                credentials: VolcV4Credentials(
+                    accessKey: credentials.accessKey,
+                    secretKey: credentials.secretKey
+                )
+            )
             guard credentialFingerprint(await readCloudCredentialsOffMainActor()) == credentialFingerprint(credentials) else {
                 cloudVerified = false
                 notice = "验证期间云端配置已变化，请重新运行验证。"
                 announce(notice)
                 return
             }
-            if response?.error == nil, response?.engine == "volc", !(response?.result ?? "").isEmpty {
+            if case .translated = outcome {
                 localCloudCredentialFingerprint = credentialFingerprint(credentials)
                 cloudVerified = true
-                notice = setEngine("volc")
-                    ? "云端连接验证成功，已切换到火山云端。"
-                    : "云端连接已验证，但暂时无法保存翻译方式。"
-                announce(notice)
-            } else { cloudVerified = false; notice = friendlyError(response); announce(notice) }
+                setEngine("volc")
+                notice = "云端连接验证成功，已切换到火山云端。"
+            } else {
+                cloudVerified = false
+                notice = Self.cloudFailureMessage(outcome)
+            }
+            announce(notice)
         }
     }
 
+    /// The candidate is validated in memory first. Keychain is written only
+    /// after a real translation succeeded, so a failed candidate can never
+    /// replace the existing credential.
     func configureCloud(accessKey: String, secretKey: String) {
         guard !cloudBusy else { return }
         let access = accessKey.trimmingCharacters(in: .whitespacesAndNewlines), secret = secretKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !access.isEmpty, !secret.isEmpty, !access.contains("\n"), !secret.contains("\n") else { cloudError = "请完整填写两项访问密钥。"; return }
         cloudBusy = true; cloudError = ""
         let candidate = CloudCredentials(accessKey: access, secretKey: secret)
-        let environmentBackup = readEnvironmentFile()
-        guard environmentBackup != .unavailable else {
-            cloudBusy = false
-            cloudError = "暂时无法读取旧的云端设置文件，原配置未更改。"
-            return
-        }
         Task {
-            // cloudBusy already holds the operation lock; read the backup off
-            // the main actor before any write, exactly as before.
-            let keychainBackup = await Task.detached {
-                AppModel.readKeychainCloudCredentials()
-            }.value
-            guard keychainBackup != .invalid, keychainBackup != .unavailable else {
+            let outcome = await VolcTranslationEngine.shared.validate(
+                credentials: VolcV4Credentials(accessKey: access, secretKey: secret)
+            )
+            guard case .translated = outcome else {
                 cloudBusy = false
-                cloudError = "暂时无法读取 macOS 钥匙串，原有云端配置未更改。请解锁钥匙串后重试。"
+                cloudError = Self.cloudFailureMessage(outcome) + "原有配置未更改。"
+                announce(cloudError)
                 return
             }
-            let verifiedFingerprintBackup = UserDefaults.standard.string(forKey: "cloudVerifiedFingerprint")
-            var pendingWriteAttempted = false
-            var activeWriteAttempted = false
-            var environmentWriteAttempted = false
-            do {
-                pendingWriteAttempted = true
-                let pendingSaved = await Task.detached {
-                    AppModel.savePendingCloudCredentials(candidate)
-                }.value
-                guard pendingSaved else { throw NSError(domain: "Juyi", code: 1) }
-                let pendingValidation = await validatePendingCloud()
-                guard pendingValidation?.error == nil,
-                      pendingValidation?.engine == "volc",
-                      !(pendingValidation?.result ?? "").isEmpty else {
-                    throw NSError(domain: "Juyi", code: 2)
-                }
-                let pendingStillMatches = await Task.detached {
-                    AppModel.readKeychainCloudCredentials(
-                        service: volcPendingKeychainService,
-                        account: volcPendingKeychainAccount
-                    ) == .found(candidate)
-                }.value
-                guard pendingStillMatches else { throw NSError(domain: "Juyi", code: 3) }
-
-                // Promotion happens only after the separate pending item has
-                // passed a real cloud translation. A failed candidate never
-                // overwrites the active credential item.
-                activeWriteAttempted = true
-                let promoted = await Task.detached {
-                    AppModel.saveKeychainCloudCredentials(candidate)
-                        && AppModel.readKeychainCloudCredentials() == .found(candidate)
-                }.value
-                guard promoted else { throw NSError(domain: "Juyi", code: 4) }
-
-                environmentWriteAttempted = true
-                try writeEnvironmentWithoutSecrets(engine: "volc")
-                guard await startServiceAndWait(expectCloud: true) else {
-                    throw NSError(domain: "Juyi", code: 5)
-                }
-                let validation = await translate("Good tools should feel effortless.", engine: "volc")
-                guard validation?.error == nil, validation?.engine == "volc", !(validation?.result ?? "").isEmpty else {
-                    throw NSError(domain: "Juyi", code: 7)
-                }
-                let committedStateMatches = await Task.detached {
-                    AppModel.readKeychainCloudCredentials() == .found(candidate)
-                        && AppModel.readKeychainCloudCredentials(
-                            service: volcPendingKeychainService,
-                            account: volcPendingKeychainAccount
-                        ) == .found(candidate)
-                }.value
-                guard committedStateMatches else { throw NSError(domain: "Juyi", code: 8) }
-                localCloudCredentialFingerprint = credentialFingerprint(candidate)
-                cloudVerified = true
-                guard setEngine("volc") else { throw NSError(domain: "Juyi", code: 9) }
-                let pendingCleaned = await Task.detached {
-                    AppModel.deletePendingCloudCredentials(matching: candidate)
-                }.value
+            let saved = await Task.detached {
+                AppModel.saveKeychainCloudCredentials(candidate)
+                    && AppModel.readKeychainCloudCredentials() == .found(candidate)
+            }.value
+            guard saved else {
                 cloudBusy = false
-                showCloudSetup = false
-                notice = pendingCleaned
-                    ? "火山云端已可用。"
-                    : "火山云端已可用；安全清理会在下次启动时继续。"
-                announce(notice)
-            } catch {
-                var keychainRestored = true
-                if activeWriteAttempted {
-                    keychainRestored = await Task.detached {
-                        AppModel.restoreKeychainCloudCredentials(keychainBackup)
-                    }.value
-                }
-                let environmentRestored = !environmentWriteAttempted || restoreEnvironment(environmentBackup)
-                var runtimeRestored = true
-                if activeWriteAttempted || environmentWriteAttempted {
-                    runtimeRestored = await startServiceAndWait()
-                }
-                var pendingCleaned = !pendingWriteAttempted
-                if keychainRestored && environmentRestored && runtimeRestored && pendingWriteAttempted {
-                    pendingCleaned = await Task.detached {
-                        AppModel.deletePendingCloudCredentials(matching: candidate)
-                    }.value
-                }
-                localCloudCredentialFingerprint = credentialFingerprint(await readCloudCredentialsOffMainActor())
-                if let verifiedFingerprintBackup { UserDefaults.standard.set(verifiedFingerprintBackup, forKey: "cloudVerifiedFingerprint") }
-                else { UserDefaults.standard.removeObject(forKey: "cloudVerifiedFingerprint") }
-                cloudBusy = false
-                if pendingCleaned && keychainRestored && environmentRestored && runtimeRestored {
-                    cloudError = "连接验证失败。请确认已经开通机器翻译服务，并检查两项密钥。原来的配置已恢复。"
-                } else {
-                    cloudError = "连接验证失败，且无法自动恢复原配置。请先不要继续修改，打开“诊断与帮助”。"
-                }
+                cloudError = "连接验证成功，但无法写入 macOS 钥匙串。请解锁钥匙串后重试。"
                 announce(cloudError)
-                await refresh(probeService: true)
+                return
             }
+            localCloudCredentialFingerprint = credentialFingerprint(candidate)
+            cloudVerified = true
+            NativeProductionTranslationCoordinator.shared.cloudCredentialsDidChange()
+            setEngine("volc")
+            cloudBusy = false
+            showCloudSetup = false
+            notice = "火山云端已可用。"
+            announce(notice)
         }
     }
 
-    private func restoreCloudRemoval(
-        activeBackup: CloudCredentialRead,
-        pendingBackup: CloudCredentialRead,
-        environmentBackup: EnvironmentFileRead,
-        selectedEngineBackup: String,
-        verifiedFingerprintBackup: String?,
-        expectedCloudBackup: Bool
-    ) async -> Bool {
-        let keychainsRestored = await Task.detached {
-            let active = AppModel.restoreKeychainCloudCredentials(activeBackup)
-            let pending = AppModel.restoreKeychainCloudCredentials(
-                pendingBackup,
-                service: volcPendingKeychainService,
-                account: volcPendingKeychainAccount
-            )
-            return active && pending
-        }.value
-        let environmentRestored = restoreEnvironment(environmentBackup)
-        var runtimeRestored = false
-        if keychainsRestored && environmentRestored {
-            runtimeRestored = await startServiceAndWait(expectCloud: expectedCloudBackup)
-        }
-        let engineRestored = runtimeRestored && setEngine(selectedEngineBackup)
-        if keychainsRestored && environmentRestored && runtimeRestored && engineRestored {
-            localCloudCredentialFingerprint = credentialFingerprint(await readCloudCredentialsOffMainActor())
-            if let verifiedFingerprintBackup {
-                UserDefaults.standard.set(verifiedFingerprintBackup, forKey: "cloudVerifiedFingerprint")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "cloudVerifiedFingerprint")
-            }
-            return true
-        }
-
-        // Never leave the shortcut pointing at a cloud engine whose removal or
-        // rollback could not be confirmed.
-        _ = setEngine("apple")
-        localCloudCredentialFingerprint = nil
-        UserDefaults.standard.removeObject(forKey: "cloudVerifiedFingerprint")
-        return false
-    }
-
-    private func startServiceAndWait(expectCloud: Bool? = nil) async -> Bool {
-        let domain = "gui/\(getuid())"
-        let target = "gui/\(getuid())/\(serviceLabel)"
-        let plistPath = plist.path
-        let started = await Task.detached {
-            if AppModel.launchctl(["print", target]).0 == 0 {
-                return AppModel.launchctl(["kickstart", "-k", target]).0 == 0
-            }
-            return AppModel.launchctl(["bootstrap", domain, plistPath]).0 == 0
-        }.value
-        guard started else { return false }
-        return await waitForService(expectCloud: expectCloud)
-    }
-
-    private func stopServiceAndConfirm(allowAlreadyStopped: Bool = false) async -> Bool {
-        let target = "gui/\(getuid())/\(serviceLabel)"
-        let snapshot = await Task.detached {
-            AppModel.launchctl(["print", target])
-        }.value
-        if snapshot.0 != 0 {
-            return allowAlreadyStopped
-                && snapshot.1.contains("Could not find service")
-        }
-        let oldPID = AppModel.launchctlPID(from: snapshot.1)
-        let requested = await Task.detached {
-            AppModel.launchctl(["bootout", target]).0
-        }.value
-        // A non-zero result is ambiguous (not loaded, launchctl unavailable,
-        // or a real failure). Treat it as failure instead of claiming that
-        // credentials were purged from memory.
-        guard requested == 0 else { return false }
-        var serviceRemoved = false
-        for _ in 0..<40 {
-            serviceRemoved = await Task.detached {
-                let probe = AppModel.launchctl(["print", target])
-                return probe.0 != 0 && probe.1.contains("Could not find service")
-            }.value
-            if serviceRemoved { break }
-            try? await Task.sleep(for: .milliseconds(250))
-        }
-        guard serviceRemoved else { return false }
-        guard let oldPID else { return true }
-        // launchd may remove the service object before its process finishes
-        // the configured 15-second ExitTimeOut. Wait up to 20 seconds for the
-        // exact old PID to disappear; PID reuse only causes a safe false failure.
-        for _ in 0..<80 {
-            let exists = await Task.detached {
-                AppModel.processExists(oldPID)
-            }.value
-            if !exists { return true }
-            try? await Task.sleep(for: .milliseconds(250))
-        }
-        return false
-    }
-
-    private func completeCloudRemoval(allowAlreadyStopped: Bool) async -> Bool {
-        guard await stopServiceAndConfirm(allowAlreadyStopped: allowAlreadyStopped) else {
-            return false
-        }
-        let deleted = await Task.detached {
-            let active = AppModel.deleteKeychainCloudCredentials()
-            let pending = AppModel.deletePendingCloudCredentials()
-            return active && pending
-        }.value
-        guard deleted else { return false }
-        do {
-            try writeEnvironmentWithoutSecrets(engine: "apple")
-        } catch {
-            return false
-        }
-        guard await startServiceAndWait(expectCloud: false) else {
-            _ = await stopServiceAndConfirm(allowAlreadyStopped: true)
-            return false
-        }
-        return true
-    }
-
-    private func finishInterruptedCloudRemoval() async -> Bool {
-        guard setEngine("apple") else {
-            let stopped = await stopServiceAndConfirm(allowAlreadyStopped: true)
-            notice = stopped
-                ? "无法保存离线翻译方式；后台服务已停止，云端移除会在下次启动时继续。"
-                : "无法保存离线翻译方式，也无法确认后台服务已停止；云端请求已被安全阻断。"
-            return false
-        }
-        guard await completeCloudRemoval(allowAlreadyStopped: true) else {
-            let stopped = await stopServiceAndConfirm(allowAlreadyStopped: true)
-            notice = stopped
-                ? "上次的云端移除仍未完成；后台服务保持停止，请打开“诊断与帮助”。"
-                : "上次的云端移除仍未完成，且无法确认后台服务已停止；云端请求已被安全阻断。"
-            return false
-        }
-        localCloudCredentialFingerprint = nil
-        cloudVerified = false
-        showCloudSetup = false
-        guard deleteCloudRemovalMarker() else {
-            notice = "云端凭据已移除；安全清理会在下次启动时再次确认。"
-            return false
-        }
-        notice = "已完成上次中断的云端移除操作。"
-        return true
-    }
-
+    /// The UI confirms first. The credential is deleted from Keychain and the
+    /// engine returns to Apple either way, so no further selection is sent.
     func removeCloud() {
         guard !cloudBusy else { return }
-        let environmentBackup = readEnvironmentFile()
-        guard environmentBackup != .unavailable else {
-            cloudError = "暂时无法读取旧的云端设置文件，云端配置未更改。"
-            announce(cloudError)
-            return
-        }
-        // Hold the operation lock while the Keychain backups are read off the
-        // main actor. The transaction order below is unchanged.
         cloudBusy = true
         cloudError = ""
         Task {
-            let keychainBackup = await Task.detached {
-                AppModel.readKeychainCloudCredentials()
+            let deleted = await Task.detached {
+                AppModel.deleteKeychainCloudCredentials()
             }.value
-            guard keychainBackup != .invalid, keychainBackup != .unavailable else {
-                cloudBusy = false
-                cloudError = "暂时无法读取 macOS 钥匙串，云端配置未更改。"
-                announce(cloudError)
-                return
-            }
-            let pendingBackup = await Task.detached {
-                AppModel.readKeychainCloudCredentials(
-                    service: volcPendingKeychainService,
-                    account: volcPendingKeychainAccount
-                )
-            }.value
-            guard pendingBackup != .invalid, pendingBackup != .unavailable else {
-                cloudBusy = false
-                cloudError = "暂时无法确认待处理的云端设置，云端配置未更改。"
-                announce(cloudError)
-                return
-            }
-            let verifiedFingerprintBackup = UserDefaults.standard.string(forKey: "cloudVerifiedFingerprint")
-            let expectedCloudBackup = await readCloudCredentialsOffMainActor() != nil
-            let selectedEngineBackup = selectedEngine
-            guard createCloudRemovalMarker() else {
-                cloudBusy = false
-                cloudError = "暂时无法创建安全的云端移除事务，原配置未更改。"
-                announce(cloudError)
-                return
-            }
-            guard setEngine("apple") else {
-                let markerCleared = deleteCloudRemovalMarker()
-                cloudBusy = false
-                cloudError = markerCleared
-                    ? "暂时无法先切换到离线翻译，云端配置未更改。"
-                    : "无法切换到离线翻译，安全事务会在下次启动时继续。"
-                announce(cloudError)
-                return
-            }
-            let removedFromRuntime = await completeCloudRemoval(allowAlreadyStopped: false)
-            if removedFromRuntime {
-                localCloudCredentialFingerprint = nil
-                cloudVerified = false
-                cloudBusy = false
-                showCloudSetup = false
-                notice = deleteCloudRemovalMarker()
-                    ? "已移除火山云端设置，当前只使用离线翻译。"
-                    : "云端凭据已移除；安全清理会在下次启动时再次确认。"
-                announce(notice)
-                return
-            }
-
-            let restored = await restoreCloudRemoval(
-                activeBackup: keychainBackup,
-                pendingBackup: pendingBackup,
-                environmentBackup: environmentBackup,
-                selectedEngineBackup: selectedEngineBackup,
-                verifiedFingerprintBackup: verifiedFingerprintBackup,
-                expectedCloudBackup: expectedCloudBackup
+            setEngine("apple")
+            NativeProductionTranslationCoordinator.shared.cloudCredentialsDidChange()
+            localCloudCredentialFingerprint = credentialFingerprint(
+                await readCloudCredentialsOffMainActor()
             )
-            if restored {
-                cloudError = deleteCloudRemovalMarker()
-                    ? "暂时无法移除云端设置，原配置已完整恢复。"
-                    : "原配置已恢复，但安全事务标记未能清理；下次启动会继续处理。"
-            } else {
-                let stopped = await stopServiceAndConfirm(allowAlreadyStopped: true)
-                await refresh(probeService: true)
-                cloudError = stopped
-                    ? "移除和自动恢复都未完成；后台服务已安全停止，请打开“诊断与帮助”。"
-                    : "无法确认云端凭据已从运行内存清除。请退出句译并立即打开“诊断与帮助”。"
-            }
+            cloudVerified = false
             cloudBusy = false
-            announce(cloudError)
+            if deleted {
+                showCloudSetup = false
+                notice = "已移除火山云端设置，当前只使用离线翻译。"
+                announce(notice)
+            } else {
+                cloudError = "已切换到 Apple 离线，但暂时无法从钥匙串删除火山密钥。请解锁钥匙串后重试。"
+                announce(cloudError)
+            }
         }
     }
 
@@ -2213,7 +1625,7 @@ final class AppModel: ObservableObject {
         Task {
             if engine == "apple" {
                 let result = await NativeAppleProductionTranslationService.shared
-                    .translate("Good tools should feel effortless.")
+                    .translate(VolcTranslationEngine.validationText)
                 testing = false
                 switch result {
                 case let .translated(text):
@@ -2230,49 +1642,34 @@ final class AppModel: ObservableObject {
                 }
                 return
             }
-            let response = await translate("Good tools should feel effortless.", engine: engine)
+            let started = ProcessInfo.processInfo.systemUptime
+            let outcome = await VolcTranslationEngine.shared.validateStoredCredentials()
+            let elapsed = Int(max(0, (ProcessInfo.processInfo.systemUptime - started) * 1_000).rounded())
             testing = false
-            if let response, response.error == nil, let result = response.result, !result.isEmpty {
-                testResult = result
-                testDetail = "\(response.engine == "volc" ? "火山云端" : "Apple 离线") · \(response.elapsed_ms ?? 0) ms · 仅确认翻译方式"
-                if engine == "volc" { cloudVerified = true }
-            } else { testResult = ""; testDetail = friendlyError(response); announce(testDetail) }
+            if case let .translated(text) = outcome {
+                testResult = text
+                testDetail = "火山云端 · \(elapsed) 毫秒 · 仅确认翻译方式；请在文本编辑中实际试用双 Option。"
+                cloudVerified = true
+            } else {
+                testResult = ""
+                testDetail = Self.cloudFailureMessage(outcome)
+                announce(testDetail)
+            }
         }
     }
 
-    private func translate(_ text: String, engine: String) async -> TranslationResponse? {
-        var request = authenticatedRequest(url: serviceURL.appendingPathComponent("translate")); request.httpMethod = "POST"; request.timeoutInterval = 12
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["text": text, "engine": engine])
-        do { let (data, _) = try await URLSession.shared.data(for: request); return try JSONDecoder().decode(TranslationResponse.self, from: data) }
-        catch { return nil }
-    }
-    private func validatePendingCloud() async -> TranslationResponse? {
-        var request = authenticatedRequest(url: serviceURL.appendingPathComponent("validate/volc-pending"))
-        request.httpMethod = "POST"
-        request.timeoutInterval = 12
-        do { let (data, _) = try await URLSession.shared.data(for: request); return try JSONDecoder().decode(TranslationResponse.self, from: data) }
-        catch { return nil }
-    }
-    private func waitForService(expectCloud: Bool? = nil) async -> Bool {
-        for _ in 0..<16 {
-            try? await Task.sleep(for: .milliseconds(400))
-            await refresh(probeService: true)
-            if serviceReady {
-                guard let expectCloud else { return true }
-                if cloudConfigured == expectCloud { return true }
+    private static func cloudFailureMessage(_ outcome: VolcTranslationOutcome) -> String {
+        switch outcome {
+        case .translated: return ""
+        case .cancelled: return "云端验证已取消，可以重新尝试。"
+        case let .failed(error):
+            switch error {
+            case .credential: return "火山云端拒绝了这组密钥。请确认已经开通机器翻译服务，并检查两项密钥和访问权限。"
+            case .network: return "暂时无法连接火山云端，请检查网络后重试。"
+            case .timeout: return "火山云端响应超时，请检查网络后重试。"
+            case .httpFailure: return "火山云端暂时无法完成翻译，请稍后重试。"
+            case .malformedResponse, .emptyResult: return "火山云端没有返回译文，请稍后重试。"
             }
-        }
-        return false
-    }
-    private func friendlyError(_ response: TranslationResponse?) -> String {
-        guard let response else { return "暂时无法连接翻译组件，请检查网络后重试。" }
-        switch response.error {
-        case "apple_error": return "Apple 离线翻译还没准备好，请下载系统语言包后重试。"
-        case "volc_error": return "云端验证失败，请检查访问密钥、网络和机器翻译权限。"
-        case "src_lang_mismatch": return "请输入一段英文内容。"
-        case "no_engine_available": return "当前没有可用的翻译方式，请先完成引擎设置。"
-        default: return "翻译没有完成，请稍后重试。"
         }
     }
 
@@ -2511,7 +1908,9 @@ private struct OnboardingView: View {
 
     private var permission: some View {
         VStack(alignment: .leading, spacing: 18) {
-            stepTitle("完成首次准备", subtitle: "允许辅助功能、准备 Apple 语言资源，就能启用双 Option。")
+            stepTitle("完成首次准备", subtitle: model.selectedEngine == "volc"
+                ? "允许辅助功能、保存火山密钥，就能启用双 Option。"
+                : "允许辅助功能、准备 Apple 语言资源，就能启用双 Option。")
             DisclosureGroup("这项权限有什么作用？", isExpanded: $showPermissionExplanation) {
                 Text("macOS 将选区读取和全局按键归入“辅助功能”权限。句译只在你触发翻译时读取选中的文字；你可以随时在系统设置中关闭权限。")
                     .font(.callout).foregroundStyle(.secondary).padding(.top, 8)
@@ -2555,9 +1954,15 @@ private struct OnboardingView: View {
                 detail: "用于按键监听和读取选区。授权后返回句译，会自动复检。",
                 complete: AccessibilityController.status == .authorized)
             Divider()
-            preparationRow("Apple 英语 → 简体中文语言资源",
-                detail: nativeTranslation.isEnabled ? "已准备好，可在本机翻译。" : "首次准备可能联网，并需要你确认系统下载提示。",
-                complete: nativeTranslation.isEnabled)
+            if model.selectedEngine == "volc" {
+                preparationRow("火山云端访问密钥",
+                    detail: model.cloudConfigExists ? "已保存在钥匙串中；选中的英文会发送至火山翻译。" : "在“翻译方式”中打开火山云端设置并保存访问密钥。",
+                    complete: model.cloudConfigExists && !nativeTranslation.cloudCredentialRequired)
+            } else {
+                preparationRow("Apple 英语 → 简体中文语言资源",
+                    detail: nativeTranslation.isEnabled ? "已准备好，可在本机翻译。" : "首次准备可能联网，并需要你确认系统下载提示。",
+                    complete: nativeTranslation.isEnabled)
+            }
             Divider()
             Label(state.title, systemImage: state.symbol).font(.callout.weight(.medium)).foregroundStyle(state.color)
             Text(state.detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -2599,13 +2004,12 @@ private struct OnboardingView: View {
             return ("arrow.down.circle.fill", orange, nativeTranslation.isPreparingLanguages ? "正在准备 Apple 语言包…" : "需要准备 Apple 语言包", nativeTranslation.detail)
         case .unsupported:
             return ("xmark.circle.fill", Color(nsColor: .systemRed), "这台 Mac 不支持 Apple 离线翻译", nativeTranslation.detail)
+        case .unavailable where nativeTranslation.cloudCredentialRequired:
+            return ("key.fill", orange, "请先配置火山密钥", nativeTranslation.detail)
         case .unavailable:
             return ("exclamationmark.circle.fill", orange, "原生双 Option 尚未启用", nativeTranslation.detail)
         case .active, .disabled:
             break
-        }
-        if model.selectedEngine != "apple" {
-            return ("lock.shield.fill", orange, "原生双 Option 使用 Apple 离线翻译", "点击下一步会明确切换到 Apple 离线；现有火山云端密钥不会被删除。")
         }
         guard legacyHandoffPending else { return canEnable }
         switch model.hotkeyProblem {
@@ -2638,12 +2042,12 @@ private struct OnboardingView: View {
                 footer(primary: "重新检查 Apple 翻译", primaryEnabled: nativeTranslation.actionIsEnabled, action: enable)
             case .unavailable where AccessibilityController.status != .authorized:
                 footer(primary: "打开辅助功能设置", primaryEnabled: true) { model.openAccessibility() }
+            case .unavailable where nativeTranslation.cloudCredentialRequired:
+                footer(primary: "设置火山云端", primaryEnabled: !model.cloudBusy) { model.openCloudSettings() }
             case .unavailable:
                 footer(primary: "重新尝试", primaryEnabled: nativeTranslation.actionIsEnabled, action: enable)
             case .active:
                 footer(primary: "继续", primaryEnabled: true) { model.advanceOnboarding() }
-            case .disabled where model.selectedEngine != "apple":
-                footer(primary: "切换到 Apple 离线并启用", primaryEnabled: nativeTranslation.actionIsEnabled, action: enable)
             case .disabled where !legacyHandoffPending:
                 footer(primary: "启用双 Option", primaryEnabled: nativeTranslation.actionIsEnabled, action: enable)
             case .disabled:
@@ -2758,8 +2162,8 @@ private struct CloudSetupView: View {
     @State private var confirmRemoval = false
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack { Image(systemName: "cloud.fill").font(.title).foregroundStyle(.blue); VStack(alignment: .leading) { Text("火山翻译配置").font(.title2.bold()); Text("云端翻译目前仅支持火山翻译，需要联网").foregroundStyle(.secondary) } }
-            Text("选中的英文会发送至火山翻译。请使用火山的访问密钥，不支持其他服务商的密钥。密钥保存在这台 Mac 的钥匙串中。")
+            HStack { Image(systemName: "cloud.fill").font(.title).foregroundStyle(.blue); VStack(alignment: .leading) { Text("火山翻译配置").font(.title2.bold()); Text("需联网并配置火山密钥；选中的英文会发送至火山").foregroundStyle(.secondary) } }
+            Text("句译直接连接火山翻译，无需另装后台组件。请使用火山的访问密钥，不支持其他服务商的密钥。保存前会用一句固定英文验证；密钥只保存在这台 Mac 的钥匙串中。")
                 .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 6) { Text("Access Key ID").font(.subheadline.weight(.medium)); TextField("输入 Access Key ID", text: $access).textFieldStyle(.roundedBorder) }
             VStack(alignment: .leading, spacing: 6) { Text("Secret Access Key").font(.subheadline.weight(.medium)); HStack { Group { if reveal { TextField("输入 Secret Access Key", text: $secret) } else { SecureField("输入 Secret Access Key", text: $secret) } }.textFieldStyle(.roundedBorder); Button(reveal ? "隐藏" : "显示") { reveal.toggle() } } }
@@ -2776,7 +2180,7 @@ private struct CloudSetupView: View {
             .alert("移除云端翻译设置？", isPresented: $confirmRemoval) {
                 Button("取消", role: .cancel) {}
                 Button("移除", role: .destructive) { model.removeCloud() }
-            } message: { Text(model.appleAvailable ? "句译将切换到 Apple 离线，选中的文字不再发送到火山翻译。" : "移除后将暂时没有可用的翻译方式。") }
+            } message: { Text("句译将从钥匙串删除火山密钥并切换到 Apple 离线，选中的文字不再发送到火山翻译。") }
     }
 }
 
@@ -2795,35 +2199,45 @@ private struct DiagnosticsView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Label("双 Option：\(model.hotkeyReady ? "已启用" : "尚未启用")", systemImage: model.hotkeyReady ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                         Text("当前引擎：\(model.selectedEngine == "apple" ? "Apple 离线" : "火山云端")")
-                        if model.selectedEngine == "apple" {
-                            Text(nativeTranslation.detail).foregroundStyle(.secondary)
-                            Text("Apple 翻译直接在本机运行，无需 Python 后台服务。")
+                        Text(nativeTranslation.detail).foregroundStyle(.secondary)
+                        Text(model.selectedEngine == "apple"
+                            ? "Apple 翻译直接在本机运行，无需 Python 后台服务。"
+                            : "火山云端由句译直接连接，无需 Python 后台服务；密钥保存在钥匙串中。")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if model.serviceInstalled {
+                            Label("早期云端组件：\(model.serviceReady ? "运行中" : "未运行")", systemImage: "shippingbox")
                                 .font(.caption).foregroundStyle(.secondary)
-                        } else {
-                            Label("云端组件：\(model.serviceReady ? "已连接" : "未连接")", systemImage: model.serviceReady ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(4)
                 }
                 HStack {
                     Button("重新检查") { Task { await model.refresh() } }
-                    Button(model.selectedEngine == "apple" ? "重新启用双 Option" : "修复云端组件") { model.repairCurrentTranslation() }
+                    Button("重新启用双 Option") { model.repairCurrentTranslation() }
                         .disabled(model.userPaused || model.shortcutRepairBusy || !nativeTranslation.actionIsEnabled)
                     Button("辅助功能设置") { model.openAccessibility() }
                 }
                 if model.selectedEngine == "apple" {
                     Button(nativeTranslation.isPreparingLanguages ? "正在准备语言包…" : "准备 Apple 语言包") { nativeTranslation.prepareLanguages() }
                         .disabled(model.userPaused || nativeTranslation.isPreparingLanguages)
+                } else {
+                    Button("检查火山云端设置") { model.openCloudSettings() }
+                        .disabled(model.cloudBusy)
                 }
-                if model.selectedEngine == "volc" && !model.serviceInstalled {
-                    Label("句译后台组件尚未安装完整。请打开安装说明并按步骤重新安装；现有设置不会被清除。", systemImage: "shippingbox.and.arrow.backward")
-                        .foregroundStyle(Color(nsColor: .systemOrange)).fixedSize(horizontal: false, vertical: true)
-                    Button("打开安装说明") { model.openInstallationGuide() }
-                } else if model.selectedEngine == "volc" && model.serviceReady {
-                    Button("停止云端翻译组件", role: .destructive) { model.stopService() }
+                // Early development components only; cloud translation itself
+                // no longer uses the background service.
+                if model.serviceInstalled {
+                    HStack {
+                        Button("修复云端组件") { model.repairService() }
+                            .disabled(model.serviceBusy || model.cloudBusy)
+                        if model.serviceReady {
+                            Button("停止云端翻译组件", role: .destructive) { model.stopService() }
+                        }
+                    }
                 }
                 HStack {
                     Button("打开技术日志") { model.openLogs() }
-                    if model.nativeNeedsLegacyHandoff || model.selectedEngine != "apple" {
+                    Button("打开安装说明") { model.openInstallationGuide() }
+                    if model.nativeNeedsLegacyHandoff {
                         Button("检查已有 Hammerspoon 组件") { model.openHammerspoon() }
                     }
                 }
@@ -2859,7 +2273,7 @@ private struct DiagnosticsView: View {
                     Text("测试当前翻译方式").font(.headline)
                     Text("这只检查当前翻译引擎，实际划词与双 Option 仍需在其他 App 中试用。").font(.callout).foregroundStyle(.secondary)
                     Button(model.testing ? "正在测试…" : "测试翻译引擎") { model.testTranslation() }
-                        .disabled(model.testing || model.cloudBusy || model.paused || (model.selectedEngine != "apple" && (!model.serviceReady || !model.engineReady)))
+                        .disabled(model.testing || model.cloudBusy || model.paused || (model.selectedEngine == "volc" && !model.cloudConfigExists))
                     if !model.testResult.isEmpty {
                         Text(model.testResult).textSelection(.enabled)
                         Text(model.testDetail).font(.caption).foregroundStyle(.secondary)
@@ -2907,11 +2321,11 @@ private struct SupportInfoView: View {
                         Text("WPS PDF 的兼容取词会临时执行系统复制，并尽力恢复原剪贴板。剪贴板管理器可能保留原文或干扰取词；敏感内容请避免使用这条路径。")
                     }
                     section("云端翻译 · 火山", symbol: "cloud") {
-                        Text("目前仅支持火山翻译，需联网并配置火山密钥，不支持其他服务商或自定义 API。只有你主动选择并配置云端后，选中的英文才会发送至火山翻译。密钥保存在这台 Mac 的钥匙串中。")
+                        Text("目前仅支持火山翻译，需联网并配置火山密钥，不支持其他服务商或自定义 API。只有你主动选择并配置云端后，选中的英文才会发送至火山翻译；失败时不会自动改用 Apple。密钥保存在这台 Mac 的钥匙串中。")
                     }
                     section("后台运行与停止", symbol: "menubar.rectangle") {
                         Text("关闭窗口：句译继续运行。\n暂停翻译：停止翻译，保留设置。\n退出句译：停止翻译；重开后需要点击“恢复翻译”。")
-                        Text("Apple 路径的按键监听、取词和翻译由句译独立完成，无需安装 Hammerspoon。已有早期开发组件时，句译会先安全处理快捷键交接。")
+                        Text("按键监听、取词和翻译（Apple 离线与火山云端）都由句译独立完成，无需安装 Hammerspoon。已有早期开发组件时，句译会先安全处理快捷键交接。")
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -2963,7 +2377,7 @@ private struct AppView: View {
                 HStack(alignment: .top) {
                     Text("开发者预览 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
                     Spacer()
-                    Text(model.selectedEngine == "apple" ? "原生本地翻译" : "云端需另行配置")
+                    Text(model.selectedEngine == "apple" ? "原生本地翻译" : "原生云端翻译")
                 }.font(.caption).foregroundStyle(.secondary)
             }.padding(.horizontal, 24).padding(.top, 40).padding(.bottom, 20)
         }.background(Color(nsColor: .windowBackgroundColor))
@@ -2988,9 +2402,11 @@ private struct AppView: View {
                 }
                 Text(panelDetail).font(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                if model.selectedEngine == "apple" && nativeTranslation.phase == .disabled
+                if nativeTranslation.phase == .disabled
                     && !model.userPaused && !model.translationSetupInProgress {
-                    Text("需要句译辅助功能权限和 Apple 中英语言资源；无需另装快捷键工具。")
+                    Text(model.selectedEngine == "apple"
+                        ? "需要句译辅助功能权限和 Apple 中英语言资源；无需另装快捷键工具。"
+                        : "需要句译辅助功能权限和火山密钥；无需另装快捷键工具或后台组件。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -3023,7 +2439,7 @@ private struct AppView: View {
             return "现在连按两次 Option 不会翻译。设置仍保留；退出后重新打开，也需要手动恢复。"
         }
         if model.ready { return "" }
-        if model.selectedEngine == "apple" && nativeTranslation.phase == .disabled
+        if nativeTranslation.phase == .disabled
             && !model.translationSetupInProgress {
             return model.onboardingCompleted ? "启用快捷键后，即可在其他 App 中划词翻译。" : "跟随设置完成授权，再在文本编辑中试一次真实翻译。"
         }
@@ -3040,11 +2456,11 @@ private struct AppView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Divider()
                     Button("使用云端翻译…") { model.chooseCloud() }
-                    Text("目前仅支持火山翻译，需联网并配置后台服务和火山密钥。选中的英文会发送至火山翻译，不支持其他服务商的密钥或自定义 API。")
+                    Text("目前仅支持火山翻译，需联网并配置火山密钥；选中的英文会发送至火山翻译。不支持其他服务商的密钥或自定义 API。")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if model.cloudConfigExists {
-                        Button("管理火山翻译配置…") { model.cloudError = ""; model.showCloudSetup = true }
+                        Button("管理火山翻译配置…") { model.openCloudSettings() }
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
             } label: {
@@ -3129,7 +2545,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Coordinator changes reach the chrome once, through AppModel.onChange.
         NativeProductionTranslationCoordinator.shared.setPaused(model.paused)
         NativeProductionTranslationCoordinator.shared
-            .setAppleEngineSelected(model.selectedEngine == "apple")
+            .setEngine(model.engineChoice)
         let nativeWorkspaceCenter = NSWorkspace.shared.notificationCenter
         nativeWorkspaceCenter.addObserver(
             self, selector: #selector(nativeProductionWillSleep(_:)),
@@ -3302,8 +2718,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             showWindow()
             NativeProductionTranslationCoordinator.shared.prepareLanguages()
         case .checkCloudSettings:
-            model.cloudError = ""
-            model.showCloudSetup = true
+            model.openCloudSettings()
             showWindow()
         case .chooseEngine:
             showWindow()

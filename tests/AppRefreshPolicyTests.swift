@@ -13,7 +13,6 @@ enum AppRefreshPolicyTests {
     }
 
     private static let appleOnlyIdle = AppRefreshContext(
-        selectedEngine: "apple",
         cloudSetupVisible: false,
         diagnosticsVisible: false,
         launchAgentInstalled: false,
@@ -31,9 +30,8 @@ enum AppRefreshPolicyTests {
             !AppRefreshPolicy.shouldProbeService(active),
             "bringing the app forward alone does not start HTTP probes"
         )
-        var cloud = appleOnlyIdle
-        cloud.selectedEngine = "volc"
-        expect(AppRefreshPolicy.shouldProbeService(cloud), "the cloud engine needs /health")
+        // The native cloud engine needs no loopback service: the idle context
+        // is identical for both engines and never probes.
         var setup = appleOnlyIdle
         setup.cloudSetupVisible = true
         expect(AppRefreshPolicy.shouldProbeService(setup), "cloud setup needs /health")
@@ -62,12 +60,6 @@ enum AppRefreshPolicyTests {
         var cloudSheet = appleOnlyIdle
         cloudSheet.cloudSetupVisible = true
         expect(AppRefreshPolicy.interval(cloudSheet) == 2.5, "cloud setup restores 2.5 s")
-        var cloud = appleOnlyIdle
-        cloud.selectedEngine = "volc"
-        expect(
-            AppRefreshPolicy.interval(cloud) == 2.5,
-            "the cloud path keeps its legacy heartbeat fresh while idle"
-        )
         var legacyOnly = appleOnlyIdle
         legacyOnly.launchAgentInstalled = true
         expect(

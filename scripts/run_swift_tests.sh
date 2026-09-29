@@ -65,5 +65,10 @@ run_suite NativeTranslationOverlayAnchorPolicyTests PLAIN \
     macos/NativeTranslationOverlayAnchorPolicy.swift
 run_suite NativeTranslationOverlayInteractionPolicyTests PLAIN \
     macos/NativeTranslationOverlayInteractionPolicy.swift
+run_suite VolcV4RequestBuilderTests STRICT macos/VolcV4RequestBuilder.swift
+run_suite VolcTranslationResponseParserTests STRICT macos/VolcTranslationResponseParser.swift
+run_suite VolcTranslationEngineTests PLAIN \
+    macos/NativeTranslationOverlayModel.swift macos/VolcV4RequestBuilder.swift \
+    macos/VolcTranslationResponseParser.swift macos/VolcTranslationEngine.swift
 
 echo "All $passed Swift test suites passed."

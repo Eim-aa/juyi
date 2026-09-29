@@ -50,7 +50,10 @@ def test_native_production_chain_is_explicitly_user_enabled():
     assert "NativeOptionMonitor(" in FEATURE
     assert "NativeSelectionCaptureCoordinator()" in FEATURE
     assert "recognitionHandler:" in FEATURE
-    assert "setAppleEngineSelected" in FEATURE
+    # Both engines share this chain: switching engines never stops it.
+    assert "func setEngine(_ choice: NativeTranslationEngineChoice)" in FEATURE
+    assert "setAppleEngineSelected" not in FEATURE + APP
+    assert "appleEngineSelected" not in FEATURE
     assert "generation == lifecycleGeneration" in FEATURE
     assert "anchorPoint: Self.overlayAnchorPoint(for: target)" in FEATURE
     assert REMOVED_FLAG_PREFIX not in DEBUG_CONFIG
@@ -145,7 +148,7 @@ def test_production_owner_resumes_after_wake_and_session_reactivation():
 
     assert "private var resumeRequestedAfterRevocation = false" in FEATURE
     resume_feature = FEATURE.split("func resumeIfEnabled()", 1)[1].split(
-        "func setAppleEngineSelected", 1
+        "func setEngine(_ choice", 1
     )[0]
     assert "activation?.phase == .revocationRequired" in resume_feature
     assert "resumeRequestedAfterRevocation = true" in resume_feature
@@ -179,7 +182,7 @@ def test_native_language_preparation_stops_before_system_request_and_restores_in
     assert "appleReadinessIssue = nil" in prepare
     assert "resumeIfEnabled()" in prepare
     assert "lifecycleActivationAllowed" in prepare
-    assert "!isPaused, appleEngineSelected" in prepare
+    assert "!isPaused, engine == .apple" in prepare
     assert prepare.index("holdLegacyPauseForRecovery()") < prepare.index(
         "disable(reason: .stop, preservePreference: true)"
     )
@@ -209,13 +212,14 @@ def test_language_failures_cannot_keep_active_or_resume_without_explicit_recover
     assert "presentPendingAppleFailure()" in deferred
     assert "error: .serviceUnavailable" not in FEATURE
     assert "error: .appleFailed" in FEATURE
-    assert "error: .appleTimedOut" in FEATURE
+    assert "error = .appleTimedOut" in FEATURE
+    assert "error = .volcTimeout" in FEATURE
 
 
 def test_native_diagnostic_retry_retains_owner_stop_barrier():
     retry = FEATURE.split("func retryByUser()", 1)[1].split("func resumeIfEnabled()", 1)[0]
     assert "guard nativeActivationReady else" in retry
-    assert "!isPaused, appleEngineSelected" in retry
+    assert "guard actionIsEnabled, !isPaused else { return }" in retry
     assert "UserDefaults.standard.set(true, forKey: Self.enabledKey)" in retry
     assert retry.index("disable(reason: .stop, preservePreference: true)") < retry.index(
         "resumeIfEnabled()"
@@ -265,7 +269,7 @@ def test_resuming_known_apple_fault_never_briefly_unpauses_legacy():
     resume = FEATURE.split("func resumeAppleRecoveryByUser()", 1)[1].split(
         "func resumeIfEnabled()", 1
     )[0]
-    assert "guard isPaused, appleEngineSelected" in resume
+    assert "guard isPaused, engine == .apple" in resume
     assert "appleReadinessIssue != nil" in resume
     assert resume.index("recoveryPauseHeld = true") < resume.index("retryByUser()")
     assert "legacyRecoveryPauseHandler?(false)" not in resume
@@ -448,7 +452,8 @@ def test_ax_reader_is_process_and_focus_bound_secure_fail_closed_and_ax_only():
         "private func stopOwnerPolling", 1
     )[0]
     assert "preflight.reset()" in disable
-    assert FEATURE.count("preflight.invalidateAppleReadiness()") == 2
+    # Apple translation failure, Apple timeout, and an engine switch.
+    assert FEATURE.count("preflight.invalidateAppleReadiness()") == 3
     # P5: settle early once stable; keep the deadline and rate-limit AX checks.
     assert "private static let clipboardCopyTimeout: TimeInterval = 1.20" in SELECTION
     assert "static let contextRecheckInterval: TimeInterval = 0.2" in SELECTION
@@ -534,3 +539,74 @@ def test_docs_record_the_live_native_mvp_and_remaining_boundaries():
     assert "bundle ID 只作元数据" in DOC
     assert "CFEqual" in DOC
     assert "干净 TCC 状态" in DOC
+
+
+def test_engine_dispatch_is_native_for_both_engines_without_fallback():
+    begin = FEATURE.split("private func beginPipeline", 1)[1].split(
+        "private func suspendForAppleFailure", 1
+    )[0]
+    assert "let requestedEngine = engine" in begin
+    assert "requestedEngine == .apple && preflight.decision(" in begin
+    assert "engine: requestedEngine," in begin
+
+    receive = FEATURE.split("private func receiveCapture", 1)[1].split(
+        "private func startTimeout", 1
+    )[0]
+    apple, volc = receive.split("case .volc:", 1)
+    assert "let result = await apple.translate(text)" in apple
+    assert "volc.translate" not in apple
+    assert "let outcome = await volc.translate(text)" in volc
+    assert "apple.translate" not in volc
+    assert "requestedEngine: .volc" in volc
+    assert "actualEngine: .volc" in volc
+    assert "error: error.overlayError" in volc
+    assert "actualEngine: .apple" not in volc
+    assert "usedAppleFallback" not in FEATURE
+    # Late results are dropped by the existing generation gates.
+    assert volc.index("generation == pipelineGeneration") < volc.index("response = .init(")
+    assert "overlayGeneration == panelGeneration" in volc
+
+    timeout = FEATURE.split("private func startTimeout", 1)[1].split(
+        "private static func elapsedMilliseconds", 1
+    )[0]
+    assert "try? await Task.sleep(for: Self.translationTimeout)" in timeout
+    assert "volc.cancelCurrent()" in timeout
+    assert "requestedEngine: requestedEngine.overlayEngine" in timeout
+    assert "private static let translationTimeout: Duration = .seconds(12)" in FEATURE
+
+    for owner in ("private func cancelPipeline", "private func overlayWasDismissed",
+                  "private func stopNativeEffect"):
+        body = FEATURE.split(owner, 1)[1][:600]
+        assert "volc.cancelCurrent()" in body, owner
+
+    switch = FEATURE.split("func setEngine(_ choice", 1)[1].split(
+        "func cloudCredentialsDidChange", 1
+    )[0]
+    assert "cancelPipeline(dismissOverlay: true)" in switch
+    assert "volc.forgetCredentials()" in switch
+    assert "disable(reason: .user)" not in switch
+
+
+def test_volc_enable_requires_accessibility_and_a_stored_credential_only():
+    enable = FEATURE.split("private func enable(promptForAccessibility", 1)[1].split(
+        "private func pollOwner", 1
+    )[0]
+    assert enable.index("AccessibilityController.requestAuthorization()") < enable.index(
+        "await selectedEngineIsReady(generation: generation)"
+    )
+    ready = enable.split("private func selectedEngineIsReady", 1)[1]
+    apple, volc = ready.split("case .volc:", 1)
+    assert "await apple.readiness()" in apple
+    assert "apple.readiness" not in volc
+    assert "await volc.hasCredentials()" in volc
+    assert "cloudCredentialRequired = true" in volc
+    assert "phase = .unavailable" in volc
+    assert "detail = Self.cloudCredentialDetail" in volc
+    assert "请先配置火山密钥" in FEATURE
+    assert "guard engine == checked else { continue }" in apple
+    assert "guard engine == checked else { continue }" in volc
+    for key in ("languagePackRequired", "holdLegacyPauseForRecovery"):
+        assert key not in volc
+    # AppModel wires the Keychain reader off the main actor.
+    assert "VolcTranslationEngine.shared.credentialProvider = {" in APP
+    assert "await Task.detached { AppModel.readVolcEngineCredentials() }.value" in APP

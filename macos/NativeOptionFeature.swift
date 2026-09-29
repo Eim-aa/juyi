@@ -2,9 +2,25 @@ import AppKit
 import Combine
 import Foundation
 
-/// The single production owner for native Apple selection translation.
-/// Clean installations use the native chain without a companion app. Existing
-/// legacy installations must still complete the unchanged owner handshake.
+/// The engine the native chain sends the captured selection to. Both engines
+/// share the same gesture, capture, overlay and read-aloud path; there is no
+/// automatic fallback between them in either direction.
+enum NativeTranslationEngineChoice: String, Equatable, Sendable {
+    case apple
+    case volc
+
+    var overlayEngine: NativeTranslationOverlayEngine {
+        switch self {
+        case .apple: return .apple
+        case .volc: return .volc
+        }
+    }
+}
+
+/// The single production owner for native selection translation (Apple
+/// on-device or Volcengine cloud). Clean installations use the native chain
+/// without a companion app. Existing legacy installations must still complete
+/// the unchanged owner handshake.
 @MainActor
 final class NativeProductionTranslationCoordinator: ObservableObject {
     enum Phase: Equatable {
@@ -23,6 +39,9 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     @Published private(set) var detail = "原生双 Option 尚未启用。"
     @Published private(set) var isPreparingLanguages = false
     @Published private(set) var recoveryPauseHeld = false
+    @Published private(set) var engine: NativeTranslationEngineChoice = .apple
+    /// Volcengine is selected but no credential could be read from Keychain.
+    @Published private(set) var cloudCredentialRequired = false
 
     /// Writes the existing hs-paused switch through AppModel, which owns its
     /// user-visible state. No new owner file or protocol is introduced.
@@ -37,6 +56,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     private let activation: NativeOwnerActivationCoordinator?
     private let capture = NativeSelectionCaptureCoordinator()
     private let apple = NativeAppleProductionTranslationService.shared
+    private let volc = VolcTranslationEngine.shared
     private let overlay = NativeTranslationOverlayController.shared
 
     private var monitor: NativeOptionMonitor?
@@ -53,7 +73,6 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     )?
     private var lifecycleGeneration: UInt64 = 0
     private var isPaused = false
-    private var appleEngineSelected = true
     private var shortcutDeploymentReady = false
     private var nativeOnlySession = false
     private var preflight = NativeTriggerPreflight()
@@ -130,7 +149,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             detail = "请先部署并重新载入当前快捷键模块。"
             return
         }
-        guard actionIsEnabled, !isPaused, appleEngineSelected else { return }
+        guard actionIsEnabled, !isPaused else { return }
         if phase != .active, activation?.phase == .nativeActive {
             retryByUser()
             return
@@ -154,7 +173,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     /// enable/disable toggle. An uncertain capture stop retains the owner
     /// lease until `finishDeferredRevocation` can safely resume this request.
     func retryByUser() {
-        guard actionIsEnabled, !isPaused, appleEngineSelected else { return }
+        guard actionIsEnabled, !isPaused else { return }
         guard nativeActivationReady else {
             phase = .unavailable
             detail = "请先部署并重新载入当前快捷键模块。"
@@ -172,7 +191,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     /// 1→0→1 legacy-watcher window. AppModel keeps hs-paused at 1 until the
     /// normal fresh owner acknowledgement has activated native translation.
     func resumeAppleRecoveryByUser() -> Bool {
-        guard isPaused, appleEngineSelected,
+        guard isPaused, engine == .apple,
               appleReadinessIssue != nil, actionIsEnabled else { return false }
         recoveryPauseHeld = true
         isPaused = false
@@ -201,7 +220,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             }
             return
         }
-        guard !isPaused, appleEngineSelected else { return }
+        guard !isPaused else { return }
         if activation?.phase == .revocationRequired {
             resumeRequestedAfterRevocation = true
             return
@@ -233,25 +252,95 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
     }
 
-    func setAppleEngineSelected(_ selected: Bool) {
-        guard appleEngineSelected != selected else { return }
-        appleEngineSelected = selected
-        if selected {
-            resumeIfEnabled()
-        } else {
-            if recoveryPauseHeld {
-                recoveryPauseHeld = false
-                isPaused = true
-                overlay.setPaused(true)
+    static let cloudCredentialDetail = "请先配置火山密钥：在句译的“翻译方式”中打开火山云端设置并保存访问密钥。"
+
+    /// Switching engines keeps the native chain running. The translation in
+    /// flight is cancelled and the overlay's generation gate drops any late
+    /// result. Apple readiness is re-checked on the next trigger; selecting
+    /// Volcengine without a stored credential stops the chain with a clear
+    /// "configure the key" state. Nothing falls back to the other engine.
+    func setEngine(_ choice: NativeTranslationEngineChoice) {
+        guard engine != choice else { return }
+        engine = choice
+        cancelPipeline(dismissOverlay: true)
+        preflight.invalidateAppleReadiness()
+        let credentialStateWasShown = cloudCredentialRequired
+        cloudCredentialRequired = false
+        switch choice {
+        case .apple:
+            volc.forgetCredentials()
+            if credentialStateWasShown && phase == .unavailable {
+                phase = .disabled
+                detail = "原生双 Option 尚未启用。"
             }
-            pendingUserEnable = false
-            disable(reason: .user)
+        case .volc:
+            clearAppleOnlyState()
         }
+        if phase == .active || phase == .waitingForHammerspoon {
+            if choice == .volc { verifyCloudCredentialWhileRunning() }
+        } else {
+            resumeIfEnabled()
+        }
+    }
+
+    /// The stored Volcengine credential was saved, replaced or removed.
+    func cloudCredentialsDidChange() {
+        volc.forgetCredentials()
+        guard engine == .volc, cloudCredentialRequired else { return }
+        cloudCredentialRequired = false
+        if phase == .unavailable {
+            phase = .disabled
+            detail = "火山密钥已保存；可以启用原生双 Option。"
+        }
+        // Continue an enable the user already asked for, exactly like the
+        // return from System Settings does; otherwise resume a saved choice.
+        if pendingUserEnable, lifecycleActivationAllowed, !enableInProgress, !isPaused {
+            Task { await enable(promptForAccessibility: false) }
+        } else {
+            resumeIfEnabled()
+        }
+    }
+
+    /// Apple language preparation and readiness faults do not apply to the
+    /// cloud engine and must not block it.
+    private func clearAppleOnlyState() {
+        if isPreparingLanguages || pendingLanguagePreparation {
+            // Drops the preparation result; the system request is cancelled.
+            lifecycleGeneration &+= 1
+            isPreparingLanguages = false
+            pendingLanguagePreparation = false
+            apple.cancelCurrent()
+        }
+        pendingAppleFailure = nil
+        guard appleReadinessIssue != nil else { return }
+        appleReadinessIssue = nil
+        if phase == .languagePackRequired || phase == .unsupported || phase == .unavailable {
+            phase = .disabled
+            detail = "已切换到火山云端；启用原生双 Option 后即可翻译。"
+        }
+    }
+
+    private func verifyCloudCredentialWhileRunning() {
+        let generation = lifecycleGeneration
+        Task {
+            let available = await volc.hasCredentials()
+            guard !available, generation == lifecycleGeneration, engine == .volc,
+                  phase == .active || phase == .waitingForHammerspoon else { return }
+            requireCloudCredential()
+        }
+    }
+
+    private func requireCloudCredential() {
+        pendingUserEnable = false
+        disable(reason: .stop, preservePreference: true)
+        cloudCredentialRequired = true
+        phase = .unavailable
+        detail = Self.cloudCredentialDetail
     }
 
     func prepareLanguages() {
         guard !isPreparingLanguages, !enableInProgress,
-              !isPaused, appleEngineSelected,
+              !isPaused, engine == .apple,
               lifecycleActivationAllowed else { return }
         let shouldResume = pendingUserEnable || isEnabled
             || UserDefaults.standard.bool(forKey: Self.enabledKey)
@@ -270,7 +359,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
 
     private func beginLanguagePreparationIfQuiescent() {
         guard pendingLanguagePreparation, isPreparingLanguages,
-              !isPaused, appleEngineSelected,
+              !isPaused, engine == .apple,
               lifecycleActivationAllowed else { return }
         guard activation?.phase != .revocationRequired else {
             detail = "正在安全停止取词，随后准备中英语言包…"
@@ -290,12 +379,12 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         detail = "请在 macOS 系统窗口中确认中英语言包。"
         Task {
             guard generation == lifecycleGeneration, isPreparingLanguages,
-                  !isPaused, appleEngineSelected,
+                  !isPaused, engine == .apple,
                   lifecycleActivationAllowed else { return }
             let result = await apple.prepareLanguages()
             guard generation == lifecycleGeneration,
                   !isPaused,
-                  appleEngineSelected,
+                  engine == .apple,
                   lifecycleActivationAllowed else { return }
             isPreparingLanguages = false
             switch result {
@@ -396,7 +485,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
 
     private func enable(promptForAccessibility: Bool) async {
         guard !enableInProgress, !isPreparingLanguages,
-              appleReadinessIssue == nil, !isPaused, appleEngineSelected,
+              appleReadinessIssue == nil, !isPaused,
               nativeActivationReady,
               lifecycleActivationAllowed else { return }
         enableInProgress = true
@@ -427,39 +516,12 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
         guard generation == lifecycleGeneration,
               !isPaused,
-              appleEngineSelected,
               nativeActivationReady,
               lifecycleActivationAllowed else { return }
-        let readiness = await apple.readiness()
-        guard generation == lifecycleGeneration,
-              !isPaused, appleEngineSelected,
-              nativeActivationReady, lifecycleActivationAllowed else { return }
-        switch readiness {
-        case .installed:
-            preflight.recordAppleReadiness(installed: true)
-        case .needsPreparation:
-            guard holdLegacyPauseForRecovery() else { return }
-            appleReadinessIssue = .needsPreparation
-            phase = .languagePackRequired
-            detail = "需要先准备 Apple 英语到简体中文语言包。"
-            return
-        case .unsupported:
-            guard holdLegacyPauseForRecovery() else { return }
-            appleReadinessIssue = .unsupported
-            phase = .unsupported
-            detail = "这台 Mac 不支持英语到简体中文的 Apple Translation。"
-            return
-        case .unavailable:
-            guard holdLegacyPauseForRecovery() else { return }
-            appleReadinessIssue = .unavailable
-            phase = .unavailable
-            detail = "暂时无法检查 Apple Translation。"
-            return
-        }
+        guard await selectedEngineIsReady(generation: generation) else { return }
 
         guard generation == lifecycleGeneration,
               !isPaused,
-              appleEngineSelected,
               nativeActivationReady,
               lifecycleActivationAllowed else { return }
 
@@ -490,6 +552,61 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         detail = "正在让 Hammerspoon 停止旧快捷键、请求和浮窗…"
         ownerStartedAt = ProcessInfo.processInfo.systemUptime
         pollOwner()
+    }
+
+    /// The enable condition of the selected engine: Apple needs its language
+    /// resources; Volcengine needs a stored credential (no request is sent).
+    /// Accessibility has already been granted for both. A switch while the
+    /// check runs re-checks the newly selected engine.
+    private func selectedEngineIsReady(generation: UInt64) async -> Bool {
+        while true {
+            let checked = engine
+            switch checked {
+            case .apple:
+                let readiness = await apple.readiness()
+                guard generation == lifecycleGeneration,
+                      !isPaused,
+                      nativeActivationReady, lifecycleActivationAllowed else { return false }
+                guard engine == checked else { continue }
+                switch readiness {
+                case .installed:
+                    preflight.recordAppleReadiness(installed: true)
+                    return true
+                case .needsPreparation:
+                    guard holdLegacyPauseForRecovery() else { return false }
+                    appleReadinessIssue = .needsPreparation
+                    phase = .languagePackRequired
+                    detail = "需要先准备 Apple 英语到简体中文语言包。"
+                    return false
+                case .unsupported:
+                    guard holdLegacyPauseForRecovery() else { return false }
+                    appleReadinessIssue = .unsupported
+                    phase = .unsupported
+                    detail = "这台 Mac 不支持英语到简体中文的 Apple Translation。"
+                    return false
+                case .unavailable:
+                    guard holdLegacyPauseForRecovery() else { return false }
+                    appleReadinessIssue = .unavailable
+                    phase = .unavailable
+                    detail = "暂时无法检查 Apple Translation。"
+                    return false
+                }
+            case .volc:
+                let available = await volc.hasCredentials()
+                guard generation == lifecycleGeneration,
+                      !isPaused,
+                      nativeActivationReady, lifecycleActivationAllowed else { return false }
+                guard engine == checked else { continue }
+                guard available else {
+                    cloudCredentialRequired = true
+                    phase = .unavailable
+                    detail = Self.cloudCredentialDetail
+                    return false
+                }
+                cloudCredentialRequired = false
+                return true
+            }
+        }
     }
 
     private func pollOwner() {
@@ -613,6 +730,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             Task { @MainActor in self?.finishDeferredRevocation() }
         }
         apple.cancelCurrent()
+        volc.cancelCurrent()
         return captureIsQuiescent ? .stopped : .uncertain
     }
 
@@ -627,10 +745,14 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             presentPendingAppleFailure()
             return
         }
+        if cloudCredentialRequired {
+            phase = .unavailable
+            detail = Self.cloudCredentialDetail
+            return
+        }
         let shouldResume = resumeRequestedAfterRevocation
             && UserDefaults.standard.bool(forKey: Self.enabledKey)
             && !isPaused
-            && appleEngineSelected
             && nativeActivationReady
             && lifecycleActivationAllowed
         resumeRequestedAfterRevocation = false
@@ -642,8 +764,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
         if isPaused {
             detail = "原生双 Option 已暂停；恢复后会重新安全交接。"
-        } else if UserDefaults.standard.bool(forKey: Self.enabledKey),
-                  appleEngineSelected {
+        } else if UserDefaults.standard.bool(forKey: Self.enabledKey) {
             detail = "原生双 Option 已安全停止；系统恢复后会重新启用。"
         } else {
             detail = "原生双 Option 已停用。"
@@ -679,6 +800,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
             UserDefaults.standard.set(false, forKey: Self.enabledKey)
             pendingUserEnable = false
             appleReadinessIssue = nil
+            cloudCredentialRequired = false
         }
         if activation?.phase == .recoveryRequired ||
             activation?.phase == .revocationRequired {
@@ -707,9 +829,11 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         cancelPipeline(dismissOverlay: true)
         pipelineGeneration &+= 1
         let generation = pipelineGeneration
+        let requestedEngine = engine
         // After a successful check, go straight to capture: no system API is
-        // awaited between recognition and `capture.capture`.
-        let needsReadinessCheck = preflight.decision(
+        // awaited between recognition and `capture.capture`. The cloud engine
+        // has no Apple readiness precondition.
+        let needsReadinessCheck = requestedEngine == .apple && preflight.decision(
             nativeOnlySession: nativeOnlySession
         ) == .checkAppleReadiness
         translationTask = Task { [weak self] in
@@ -737,6 +861,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
                 self?.receiveCapture(
                     result,
                     target: target,
+                    engine: requestedEngine,
                     generation: generation
                 )
             }
@@ -773,7 +898,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         guard activation?.phase != .revocationRequired,
               activation?.phase != .recoveryRequired,
               let failure = pendingAppleFailure,
-              !isPaused, appleEngineSelected, lifecycleActivationAllowed else { return }
+              !isPaused, engine == .apple, lifecycleActivationAllowed else { return }
         pendingAppleFailure = nil
         // Stopping invalidates the old pipeline and closes its panel. Create
         // the actionable error only after that barrier, with a fresh callback.
@@ -802,6 +927,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
     private func receiveCapture(
         _ result: NativeSelectionResult,
         target: NativeSelectionTarget,
+        engine requestedEngine: NativeTranslationEngineChoice,
         generation: UInt64
     ) {
         guard generation == pipelineGeneration,
@@ -815,49 +941,83 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         switch result {
         case let .success(text, didTruncate):
             overlay.nativeSelectionCaptured(generation: panelGeneration, sourceText: text)
-            startTimeout(generation: generation, panelGeneration: panelGeneration)
+            startTimeout(
+                generation: generation,
+                panelGeneration: panelGeneration,
+                engine: requestedEngine
+            )
             let started = ProcessInfo.processInfo.systemUptime
             translationTask = Task { [weak self] in
                 guard !Task.isCancelled, let self,
                       generation == pipelineGeneration,
                       overlayGeneration == panelGeneration else { return }
-                let result = await apple.translate(text)
-                guard generation == pipelineGeneration,
-                      overlayGeneration == panelGeneration else { return }
-                let elapsed = max(
-                    0,
-                    (ProcessInfo.processInfo.systemUptime - started) * 1_000
-                ).rounded()
                 let response: NativeTranslationOverlayResponse
-                switch result {
-                case let .translated(value):
-                    response = .init(
-                        requestedEngine: .apple,
-                        actualEngine: .apple,
-                        result: value,
-                        elapsedMilliseconds: elapsed,
-                        captureDidTruncate: didTruncate,
-                        inputTruncated: didTruncate
-                    )
-                case .needsPreparation, .unsupported:
-                    suspendForAppleFailure(
-                        target: target,
-                        readiness: result == .needsPreparation ? .needsPreparation : .unsupported
-                    )
-                    return
-                case .cancelled:
-                    return
-                default:
-                    preflight.invalidateAppleReadiness()
-                    response = .init(
-                        requestedEngine: .apple,
-                        actualEngine: nil,
-                        result: nil,
-                        elapsedMilliseconds: elapsed,
-                        error: .appleFailed,
-                        captureDidTruncate: didTruncate,
-                        inputTruncated: didTruncate
-                    )
+                switch requestedEngine {
+                case .apple:
+                    let result = await apple.translate(text)
+                    guard generation == pipelineGeneration,
+                          overlayGeneration == panelGeneration else { return }
+                    let elapsed = Self.elapsedMilliseconds(since: started)
+                    switch result {
+                    case let .translated(value):
+                        response = .init(
+                            requestedEngine: .apple,
+                            actualEngine: .apple,
+                            result: value,
+                            elapsedMilliseconds: elapsed,
+                            captureDidTruncate: didTruncate,
+                            inputTruncated: didTruncate
+                        )
+                    case .needsPreparation, .unsupported:
+                        suspendForAppleFailure(
+                            target: target,
+                            readiness: result == .needsPreparation ? .needsPreparation : .unsupported
+                        )
+                        return
+                    case .cancelled:
+                        return
+                    default:
+                        preflight.invalidateAppleReadiness()
+                        response = .init(
+                            requestedEngine: .apple,
+                            actualEngine: nil,
+                            result: nil,
+                            elapsedMilliseconds: elapsed,
+                            error: .appleFailed,
+                            captureDidTruncate: didTruncate,
+                            inputTruncated: didTruncate
+                        )
+                    }
+                case .volc:
+                    let outcome = await volc.translate(text)
+                    guard generation == pipelineGeneration,
+                          overlayGeneration == panelGeneration else { return }
+                    let elapsed = Self.elapsedMilliseconds(since: started)
+                    switch outcome {
+                    case let .translated(value):
+                        response = .init(
+                            requestedEngine: .volc,
+                            actualEngine: .volc,
+                            result: value,
+                            elapsedMilliseconds: elapsed,
+                            captureDidTruncate: didTruncate,
+                            inputTruncated: didTruncate
+                        )
+                    case let .failed(error):
+                        // No fallback: a cloud failure is shown as such and
+                        // the selection is never sent to another engine.
+                        response = .init(
+                            requestedEngine: .volc,
+                            actualEngine: nil,
+                            result: nil,
+                            elapsedMilliseconds: elapsed,
+                            error: error.overlayError,
+                            captureDidTruncate: didTruncate,
+                            inputTruncated: didTruncate
+                        )
+                    case .cancelled:
+                        return
+                    }
                 }
                 timeoutTask?.cancel()
                 timeoutTask = nil
@@ -876,7 +1036,14 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         }
     }
 
-    private func startTimeout(generation: UInt64, panelGeneration: Int) {
+    /// One 12 s deadline for both engines. On expiry the in-flight Apple
+    /// request or URLSession task is cancelled and the engine's own timeout
+    /// copy is shown; nothing is retried with the other engine.
+    private func startTimeout(
+        generation: UInt64,
+        panelGeneration: Int,
+        engine requestedEngine: NativeTranslationEngineChoice
+    ) {
         timeoutTask?.cancel()
         timeoutTask = Task { [weak self] in
             try? await Task.sleep(for: Self.translationTimeout)
@@ -884,20 +1051,32 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
                   generation == pipelineGeneration,
                   overlayGeneration == panelGeneration else { return }
             capture.cancelAll()
-            apple.cancelCurrent()
             translationTask?.cancel()
-            preflight.invalidateAppleReadiness()
+            let error: NativeTranslationOverlayBackendError
+            switch requestedEngine {
+            case .apple:
+                apple.cancelCurrent()
+                preflight.invalidateAppleReadiness()
+                error = .appleTimedOut
+            case .volc:
+                volc.cancelCurrent()
+                error = .volcTimeout
+            }
             overlay.resolveNativeTranslation(
                 .response(.init(
-                    requestedEngine: .apple,
+                    requestedEngine: requestedEngine.overlayEngine,
                     actualEngine: nil,
                     result: nil,
                     elapsedMilliseconds: nil,
-                    error: .appleTimedOut
+                    error: error
                 )),
                 generation: panelGeneration
             )
         }
+    }
+
+    private static func elapsedMilliseconds(since started: TimeInterval) -> Double {
+        max(0, (ProcessInfo.processInfo.systemUptime - started) * 1_000).rounded()
     }
 
     private func overlayWasDismissed(_ generation: UInt64) {
@@ -905,6 +1084,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         overlayGeneration = nil
         capture.cancelAll()
         apple.cancelCurrent()
+        volc.cancelCurrent()
         translationTask?.cancel()
         timeoutTask?.cancel()
         translationTask = nil
@@ -916,6 +1096,7 @@ final class NativeProductionTranslationCoordinator: ObservableObject {
         pipelineGeneration &+= 1
         capture.cancelAll()
         apple.cancelCurrent()
+        volc.cancelCurrent()
         translationTask?.cancel()
         timeoutTask?.cancel()
         translationTask = nil
