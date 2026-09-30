@@ -603,3 +603,14 @@ def test_volc_enable_requires_accessibility_and_a_stored_credential_only():
     # AppModel wires the Keychain reader off the main actor.
     assert "VolcTranslationEngine.shared.credentialProvider = {" in APP
     assert "await Task.detached { AppModel.readVolcEngineCredentials() }.value" in APP
+
+
+def test_pointer_fallback_covers_focusable_link_containers():
+    """A quoted post on X is a focusable link; its selection must go through the
+    pointer fallback rather than being rejected as unsupported."""
+    reader = (ROOT / "macos" / "NativeSelectionReader.swift").read_text(encoding="utf-8")
+    roles = reader.split("static let staticPointerRoles: [String] = [", 1)[1].split("]", 1)[0]
+    for role in ("kAXGroupRole", "kAXStaticTextRole", '"AXLink"', '"AXWebArea"', '"AXPage"'):
+        assert role in roles
+    assert reader.count("staticPointerRoles") >= 3
+    assert '"AXLink"' not in reader.split("static let staticPointerRoles", 1)[0].split("func roleAndSubroleDecision", 1)[-1]
