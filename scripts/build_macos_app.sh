@@ -49,15 +49,14 @@ for arch in arm64 x86_64; do
         "$ROOT/macos/NativeOptionEventAdapter.swift" \
         "$ROOT/macos/NativeSelectionReader.swift" \
         "$ROOT/macos/NativeSelectionCaptureCoordinator.swift" \
-        "$ROOT/macos/NativeOwnerHandoffProtocol.swift" \
-        "$ROOT/macos/NativeOwnerHandoffStore.swift" \
-        "$ROOT/macos/NativeOwnerHandoffWorkflow.swift" \
-        "$ROOT/macos/NativeOwnerHandoffStatusReader.swift" \
-        "$ROOT/macos/NativeOwnerActivationCoordinator.swift" \
         "$ROOT/macos/NativeOptionMonitor.swift" \
+        "$ROOT/macos/LegacyComponentCleanup.swift" \
         "$ROOT/macos/NativeTriggerPreflight.swift" \
         "$ROOT/macos/NativeOptionFeature.swift" \
         "$ROOT/macos/NativeAppleTranslationService.swift" \
+        "$ROOT/macos/VolcV4RequestBuilder.swift" \
+        "$ROOT/macos/VolcTranslationResponseParser.swift" \
+        "$ROOT/macos/VolcTranslationEngine.swift" \
         "$ROOT/macos/NativeTranslationOverlayModel.swift" \
         "$ROOT/macos/NativeTranslationOverlayAnchorPolicy.swift" \
         "$ROOT/macos/NativeTranslationOverlayInteractionPolicy.swift" \
@@ -75,9 +74,6 @@ xcrun actool "$ROOT/macos/Assets.xcassets" \
     --minimum-deployment-target "$MINIMUM_MACOS" \
     --app-icon AppIcon \
     --output-partial-info-plist "$ASSET_INFO" >/dev/null
-
-cp "$ROOT/hammerspoon/argos-translator.lua" "$BUILD/Contents/Resources/argos-translator.lua"
-cp "$ROOT/scripts/hammerspoon_hook.sh" "$BUILD/Contents/Resources/hammerspoon_hook.sh"
 
 cp "$ROOT/macos/Info.plist" "$BUILD/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING_VERSION" "$BUILD/Contents/Info.plist"

@@ -13,40 +13,10 @@ enum AppRefreshPolicyTests {
     }
 
     private static let appleOnlyIdle = AppRefreshContext(
-        selectedEngine: "apple",
         cloudSetupVisible: false,
         diagnosticsVisible: false,
-        launchAgentInstalled: false,
         applicationActive: false
     )
-
-    private static func testServiceProbeIsLimitedToTheCloudPath() {
-        expect(
-            !AppRefreshPolicy.shouldProbeService(appleOnlyIdle),
-            "an Apple-only installation never probes the absent loopback service"
-        )
-        var active = appleOnlyIdle
-        active.applicationActive = true
-        expect(
-            !AppRefreshPolicy.shouldProbeService(active),
-            "bringing the app forward alone does not start HTTP probes"
-        )
-        var cloud = appleOnlyIdle
-        cloud.selectedEngine = "volc"
-        expect(AppRefreshPolicy.shouldProbeService(cloud), "the cloud engine needs /health")
-        var setup = appleOnlyIdle
-        setup.cloudSetupVisible = true
-        expect(AppRefreshPolicy.shouldProbeService(setup), "cloud setup needs /health")
-        var diagnostics = appleOnlyIdle
-        diagnostics.diagnosticsVisible = true
-        expect(AppRefreshPolicy.shouldProbeService(diagnostics), "diagnostics show service state")
-        var legacy = appleOnlyIdle
-        legacy.launchAgentInstalled = true
-        expect(
-            AppRefreshPolicy.shouldProbeService(legacy),
-            "an installed LaunchAgent keeps service monitoring"
-        )
-    }
 
     private static func testIdleCadenceAndRecovery() {
         expect(
@@ -62,18 +32,6 @@ enum AppRefreshPolicyTests {
         var cloudSheet = appleOnlyIdle
         cloudSheet.cloudSetupVisible = true
         expect(AppRefreshPolicy.interval(cloudSheet) == 2.5, "cloud setup restores 2.5 s")
-        var cloud = appleOnlyIdle
-        cloud.selectedEngine = "volc"
-        expect(
-            AppRefreshPolicy.interval(cloud) == 2.5,
-            "the cloud path keeps its legacy heartbeat fresh while idle"
-        )
-        var legacyOnly = appleOnlyIdle
-        legacyOnly.launchAgentInstalled = true
-        expect(
-            AppRefreshPolicy.interval(legacyOnly) == 10,
-            "an installed service alone does not force the active cadence"
-        )
     }
 
     private static func snapshot(
@@ -126,7 +84,6 @@ enum AppRefreshPolicyTests {
     }
 
     static func main() {
-        testServiceProbeIsLimitedToTheCloudPath()
         testIdleCadenceAndRecovery()
         testMenuRebuildsOnlyWhenTheSnapshotChanges()
         testSingleChangeCountsOneRebuild()

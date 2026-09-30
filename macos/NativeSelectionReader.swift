@@ -919,13 +919,7 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
             role == (kAXTextAreaRole as String) {
             return .finish(.unsupported)
         }
-        let staticRoles = [
-            kAXGroupRole as String,
-            kAXStaticTextRole as String,
-            "AXWebArea",
-            "AXPage"
-        ]
-        return staticRoles.contains(role) ? .candidate : .skip
+        return Self.staticPointerRoles.contains(role) ? .candidate : .skip
     }
 
     private func parent(of element: AXUIElement) -> ParentRead {
@@ -1066,12 +1060,22 @@ struct SystemNativeSelectionAXClient: NativeSelectionAXClient {
         CFGetTypeID(roleValue) == CFStringGetTypeID() else {
             return false
         }
-        let role = roleValue as! String
-        return role == (kAXGroupRole as String) ||
-            role == (kAXStaticTextRole as String) ||
-            role == "AXWebArea" ||
-            role == "AXPage"
+        return Self.staticPointerRoles.contains(roleValue as! String)
     }
+
+    /// Non-editable containers whose selection is read through the pointer
+    /// fallback (AXSelectedTextMarkerRange up the parent chain) instead of the
+    /// strict focused-editable path. `AXLink` is included because web apps
+    /// wrap embedded content in focusable link containers: on X, a quoted
+    /// post is such a link, so starting a selection inside it focuses the
+    /// link and the text is otherwise reported as unsupported.
+    static let staticPointerRoles: [String] = [
+        kAXGroupRole as String,
+        kAXStaticTextRole as String,
+        "AXLink",
+        "AXWebArea",
+        "AXPage"
+    ]
 
     private struct WPSPDFContext {
         let window: AXUIElement

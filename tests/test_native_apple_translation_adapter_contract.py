@@ -97,8 +97,9 @@ def test_host_has_no_live_input_network_storage_helper_or_logging_api() -> None:
 
 
 def test_lifecycle_invalidations_remain_wired() -> None:
-    for reason in (".stop", ".terminate"):
-        assert f"NativeProductionTranslationCoordinator.shared.invalidate({reason})" in APP
+    assert "NativeProductionTranslationCoordinator.shared.invalidate(.terminate)" in APP
+    for reason in (".sleep", ".sessionResigned"):
+        assert f"setLifecycleActivationAllowed(false, reason: {reason})" in APP
 
 
 def test_xcode_legacy_and_ci_are_connected_without_user_script() -> None:

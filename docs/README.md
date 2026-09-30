@@ -11,9 +11,9 @@
 - [从源码构建与仓库结构](BUILD.md)
 - [构建与发布基线](RELEASE_BASELINE.md)
 - [开发记录](dev/)：原生各模块的设计、实验与审查记录，其中 [设计规范](dev/specs/README.md) 为早期规格
-- [源码安装与 Agent 指引](../AGENTS.md)：供 AI 编程助手安装可选云端组件时遵循
+- [Agent 指引](../AGENTS.md)：供 AI 编程助手代用户安装句译时遵循
 
-当前 Apple 本地翻译由原生 App 完成：双 Option、辅助功能取词、Apple Translation 与译文浮窗。全新本地安装不需要 Hammerspoon；已有开发组件保留原有 owner 互斥交接，可选火山云端仍有独立后台依赖。
+句译由原生 App 独立完成：双 Option、辅助功能取词、Apple Translation 或火山云端翻译、译文浮窗与朗读。不需要 Hammerspoon、Python 或后台服务；早期源码安装留下的组件由 App 检测，用户一键移除后才启用双 Option（见[使用说明](MENU_BAR_APP.md#早期组件)）。
 
 `dev/` 中的早期 Native Lab / foundation 文档是开发阶段记录，其“默认关闭”“由 Hammerspoon 触发”等描述不代表当前发布版本。相应的 lab 代码与 `JUYI_NATIVE_*` 编译开关已于 2026-09 从仓库移除。当前用户行为以使用说明与对应构建的发布记录为准。
 

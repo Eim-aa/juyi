@@ -3,10 +3,8 @@ import Foundation
 /// Inputs for AppModel's periodic refresh. Kept free of AppKit so the policy
 /// can be unit-tested without launching the app.
 struct AppRefreshContext: Equatable {
-    var selectedEngine: String
     var cloudSetupVisible: Bool
     var diagnosticsVisible: Bool
-    var launchAgentInstalled: Bool
     var applicationActive: Bool
 }
 
@@ -14,23 +12,13 @@ enum AppRefreshPolicy {
     static let activeInterval: TimeInterval = 2.5
     static let idleInterval: TimeInterval = 10
 
-    /// The loopback service exists only for the optional cloud and legacy
-    /// path. An Apple-only installation has nothing listening on the port, so
-    /// the periodic tick reads local state files only.
-    static func shouldProbeService(_ context: AppRefreshContext) -> Bool {
-        context.selectedEngine != "apple"
-            || context.cloudSetupVisible
-            || context.diagnosticsVisible
-            || context.launchAgentInstalled
-    }
-
-    /// The cloud path keeps the active cadence because its shortcut status is
-    /// derived from a legacy heartbeat that expires after a few seconds.
+    /// The periodic tick only re-runs the cheap early-component detection.
+    /// No engine depends on an external process, so an idle app uses the
+    /// slow cadence regardless of the selected engine.
     static func interval(_ context: AppRefreshContext) -> TimeInterval {
         context.applicationActive
             || context.cloudSetupVisible
             || context.diagnosticsVisible
-            || context.selectedEngine != "apple"
             ? activeInterval
             : idleInterval
     }

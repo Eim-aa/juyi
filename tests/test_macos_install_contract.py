@@ -7,43 +7,18 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 INSTALLER_PATH = ROOT / "scripts" / "install_macos_app.sh"
 INSTALLER = INSTALLER_PATH.read_text(encoding="utf-8")
-INSTALL_ALL = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
-BOOTSTRAP = (ROOT / "scripts" / "bootstrap.sh").read_text(encoding="utf-8")
 BUILD = (ROOT / "scripts" / "build_macos_app.sh").read_text(encoding="utf-8")
 SWIFT = (ROOT / "macos" / "JuyiMenuBar.swift").read_text(encoding="utf-8")
 FRAME_POLICY = (ROOT / "macos" / "WindowFramePolicy.swift").read_text(encoding="utf-8")
 CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
 
-def test_all_install_entries_reject_pre_macos_15_before_any_state_change():
-    bootstrap_guard = BOOTSTRAP.index("\nrequire_macos_15\n")
-    for operation in (
-        'command -v git',
-        'git -C "$DEST" fetch',
-        'git -C "$DEST" checkout',
-        'git -C "$DEST" merge',
-        'mkdir -p "$(dirname "$DEST")"',
-        'git clone --depth=1',
-        'exec "$DEST/scripts/install.sh"',
-    ):
-        assert bootstrap_guard < BOOTSTRAP.index(operation, bootstrap_guard)
-    assert "未更新源码、服务、Hammerspoon 或 App；现有安装已保留" in BOOTSTRAP
-
-    full_guard = INSTALL_ALL.index("\nrequire_macos_15\n")
-    for operation in (
-        '"$ROOT/scripts/hammerspoon_hook.sh" check',
-        '"$ROOT/scripts/ensure_auth_token.sh"',
-        'mkdir -p "$ROOT"',
-        '"$PYTHON" -m venv',
-        '"$ROOT/scripts/launchd_install.sh"',
-        '"$ROOT/scripts/hammerspoon_hook.sh" install',
-        '"$ROOT/scripts/build_apple_helper.sh"',
-        '"$ROOT/scripts/install_macos_app.sh"',
-    ):
-        assert full_guard < INSTALL_ALL.index(operation)
-    assert "现有安装已保留" in INSTALL_ALL
-    assert "configure the Volcengine cloud option" not in INSTALL_ALL
-
+def test_app_installer_rejects_pre_macos_15_before_any_state_change():
+    # The source-checkout service installers were removed in phase 4B; only
+    # the App installer remains.
+    for removed in ("install.sh", "bootstrap.sh", "build_apple_helper.sh", "hammerspoon_hook.sh"):
+        assert not (ROOT / "scripts" / removed).exists(), removed
+        assert removed not in INSTALLER, removed
     app_guard = INSTALLER.index("\nrequire_macos_15\n")
     for operation in (
         'if [[ "${1:-}" == "--install-helper" ]]',
@@ -53,7 +28,7 @@ def test_all_install_entries_reject_pre_macos_15_before_any_state_change():
         'install_verified_app "$STAGED_APP"',
     ):
         assert app_guard < INSTALLER.index(operation, app_guard)
-    assert "现有 App 与服务已保留" in INSTALLER
+    assert "现有 App 已保留" in INSTALLER
 
 
 def test_native_installer_targets_system_applications_and_is_executable():
@@ -106,12 +81,6 @@ def test_installer_registers_and_opens_verified_system_app():
     assert '/usr/bin/open "$DEST"' in INSTALLER
 
 
-def test_full_installer_reuses_native_installer_without_home_copy():
-    assert '"$ROOT/scripts/install_macos_app.sh"' in INSTALL_ALL
-    assert '"$HOME/Applications/句译.app"' not in INSTALL_ALL
-    assert 'Open 句译 from Applications or Launchpad.' in INSTALL_ALL
-
-
 def test_service_management_login_item_contract_is_visible_and_non_blocking():
     assert "import ServiceManagement" in SWIFT
     assert "SMAppService.mainApp" in SWIFT
@@ -148,7 +117,7 @@ def test_not_found_uses_validated_launch_agent_fallback_only_from_applications()
 
 def test_fallback_plist_is_atomic_exact_and_has_no_keepalive():
     fallback = SWIFT.split("nonisolated private static func setFallbackLoginItem", 1)[1]
-    fallback = fallback.split("private func readLocalState", 1)[0]
+    fallback = fallback.split("private static func validEngine", 1)[0]
     assert '"ProgramArguments": [fallbackLoginItemExecutable, "--login-item"]' in fallback
     assert '"RunAtLoad": true' in fallback
     assert '"KeepAlive": false' in fallback
@@ -228,23 +197,20 @@ def test_build_links_service_management_and_keeps_dock_and_menu_bar():
 def test_periodic_refresh_is_gated_and_chrome_is_deduplicated():
     assert BUILD.count('"$ROOT/macos/AppRefreshPolicy.swift"') == 1
     assert BUILD.count('"$ROOT/macos/NativeTriggerPreflight.swift"') == 1
-    refresh = SWIFT.split("func refresh(probeService forced: Bool = false) async {", 1)[1]
-    refresh = refresh.split("nonisolated private static func runBoundedProcess", 1)[0]
-    assert "forced || AppRefreshPolicy.shouldProbeService(refreshContext)" in refresh
-    assert refresh.index("shouldProbeService") < refresh.index('appendingPathComponent("health")')
+    assert BUILD.count('"$ROOT/macos/LegacyComponentCleanup.swift"') == 1
+    refresh = SWIFT.split("func refresh() async {", 1)[1].split("\n    }\n", 1)[0]
+    assert "refreshLegacyComponents()" in refresh
     assert "scheduleRefreshTimer()" in refresh
-    # Service operations still observe the service directly.
-    wait = SWIFT.split("private func waitForService", 1)[1].split("private func friendlyError", 1)[0]
-    assert "await refresh(probeService: true)" in wait
+    # No loopback service is probed any more; no cloud operation waits for it.
+    for removed in ("shouldProbeService", "URLSession.shared", "probeService", "func waitForService",
+                    "func startServiceAndWait", "func stopServiceAndConfirm", "launchAgentInstalled"):
+        assert removed not in SWIFT, removed
     assert "Timer.scheduledTimer(withTimeInterval: 2.5" not in SWIFT
     assert "AppRefreshPolicy.interval(refreshContext)" in SWIFT
-    assert "launchAgentInstalled: serviceInstalled" in SWIFT
     assert "func applicationDidResignActive" in SWIFT
-
-    # One LaunchServices query per refresh; derived properties read a value.
-    assert SWIFT.count("urlForApplication(withBundleIdentifier: \"org.hammerspoon.Hammerspoon\") != nil") == 1
-    assert SWIFT.count("Self.queryHammerspoonInstalled()") == 3
-    assert "@Published private(set) var hammerspoonInstalled = false" in SWIFT
+    # Hammerspoon is looked up only by the early-component cleanup.
+    assert "org.hammerspoon.Hammerspoon" not in SWIFT
+    assert "urlForApplication" not in SWIFT
 
     # Coordinator changes reach the chrome once (through AppModel.onChange),
     # and the NSMenu is rebuilt only when its derived snapshot changes.
@@ -258,14 +224,16 @@ def test_periodic_refresh_is_gated_and_chrome_is_deduplicated():
     assert "NativeTranslationOverlayController.shared.setPaused(model.userPaused)" in chrome
 
 
-def test_ci_builds_the_native_app_and_apple_translation_helper():
+def test_ci_builds_the_native_app_without_the_removed_helper():
     assert "runs-on: macos-15" in CI
     assert "xcodebuild -quiet -project Juyi.xcodeproj -scheme Juyi" in CI
     assert "-configuration Debug" in CI
     assert "-configuration Release" in CI
     assert "scripts/verify_macos_binary.sh" in CI
     assert "scripts/build_macos_app.sh" in CI
-    assert "scripts/build_apple_helper.sh" in CI
+    assert "scripts/build_apple_helper.sh" not in CI
+    assert "compileall" not in CI
+    assert "lua" not in CI.lower()
 
 
 def test_window_frame_policy_preserves_valid_positions_and_repairs_before_show():

@@ -20,20 +20,6 @@
                ReferencedContainer = "container:Juyi.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "YES"
-            buildForProfiling = "YES"
-            buildForArchiving = "YES"
-            buildForAnalyzing = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "A00000000000000000000009"
-               BuildableName = "apple-translation-helper"
-               BlueprintName = "AppleTranslationHelper"
-               ReferencedContainer = "container:Juyi.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction

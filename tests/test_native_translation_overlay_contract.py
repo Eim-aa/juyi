@@ -93,7 +93,7 @@ def test_overlay_has_no_live_selection_network_or_hotkey_owner():
     assert "commitDisplayedState(" in apply_state
     assert "NSEvent.mouseLocation" in CONTROLLER
     assert "selectionRect: nil" in CONTROLLER
-    assert "hammerspoon/argos-translator.lua" not in joined
+    assert "hammerspoon/argos-translator" + ".lua" not in joined
 
     cta_handler = APP.split("private func handleNativeOverlayCTA", 1)[1].split(
         "\n    }\n", 1
@@ -330,3 +330,35 @@ def test_all_build_paths_tests_and_docs_include_overlay_without_user_script():
     assert "默认未启用" in DOC
     assert "Hammerspoon" in DOC
     assert "真机验证" in DOC
+
+
+FEATURE = (ROOT / "macos" / "NativeOptionFeature.swift").read_text(encoding="utf-8")
+ENGINE = (ROOT / "macos" / "VolcTranslationEngine.swift").read_text(encoding="utf-8")
+
+
+def test_volc_engine_and_cloud_errors_are_emitted_by_production_code():
+    """The `.volc` engine, cloud errors and `checkCloudSettings` CTA were
+    reserved in the model; since phase 4A the native coordinator emits them."""
+    assert "requestedEngine: .volc" in FEATURE
+    assert "actualEngine: .volc" in FEATURE
+    assert "error: error.overlayError" in FEATURE
+    assert "error = .volcTimeout" in FEATURE
+    for case, overlay in (
+        (".credential", ".volcCredential"),
+        (".network", ".volcNetwork"),
+        (".timeout", ".volcTimeout"),
+        (".httpFailure", ".httpFailure"),
+        (".malformedResponse", ".malformedResponse"),
+        (".emptyResult", ".emptyResult"),
+    ):
+        assert f"case {case}: return {overlay}" in ENGINE
+    credential = MODEL.split("case .volcCredential:", 1)[1].split("case .volcNetwork", 1)[0]
+    assert "cta: .checkCloudSettings" in credential
+    assert "case .checkCloudSettings:" in APP
+    assert "model.openCloudSettings()" in APP.split("case .checkCloudSettings:", 1)[1][:120]
+    # Engines never substitute for each other: the Apple fallback warning is
+    # only a reducer case, never produced by the coordinator.
+    assert "usedAppleFallback" not in FEATURE
+    # Stale results stay generation-gated in the model and the coordinator.
+    assert "guard generation == expectedGeneration," in MODEL
+    assert FEATURE.count("overlayGeneration == panelGeneration") >= 4

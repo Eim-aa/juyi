@@ -16,20 +16,13 @@ jobs:
         with:
           python-version: "3.10"
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
+          cache-dependency-path: requirements-dev.txt
       - name: Install test dependencies
         run: python -m pip install --upgrade pip -r requirements-dev.txt
       - name: Ruff
-        run: python -m ruff check .
-      - name: Pytest
-        run: python -m pytest
-      - name: Compile Python sources
-        run: >-
-          python -m compileall -q
-          apple_engine.py config.py server.py translator.py volc_engine.py
-          eval scripts tests
+        run: python -m ruff check tests
+      - name: Contract tests
+        run: python -m pytest tests
 
   swift:
     runs-on: macos-15
@@ -51,14 +44,18 @@ jobs:
         run: |
           products="$RUNNER_TEMP/JuyiRelease/Build/Products/Release"
           scripts/verify_macos_binary.sh "$products/Juyi.app/Contents/MacOS/Juyi" 15.0
-          scripts/verify_macos_binary.sh "$products/apple-translation-helper" 15.0
+          if [ -e "$products/apple-translation-helper" ]; then exit 1; fi
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$products/Juyi.app/Contents/Info.plist")" = "$(scripts/read_xcconfig_value.sh Config/Version.xcconfig MARKETING_VERSION)"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$products/Juyi.app/Contents/Info.plist")" = "$(scripts/read_xcconfig_value.sh Config/Version.xcconfig CURRENT_PROJECT_VERSION)"
       - name: Verify production native chain
         run: |
           for directory in "$RUNNER_TEMP/JuyiDebug/Build/Products/Debug/Juyi.app/Contents/MacOS" "$RUNNER_TEMP/JuyiRelease/Build/Products/Release/Juyi.app/Contents/MacOS"; do
-            for token in 'NativeProductionTranslationCoordinator' 'NativeOptionMonitor' 'NativeOwnerActivationCoordinator' 'native-owner.lock' 'owner-request.json' 'io.github.Eim-aa.Juyi.native-translation-overlay'; do
+            for token in 'NativeProductionTranslationCoordinator' 'NativeOptionMonitor' 'VolcTranslationEngine' 'translate.volcengineapi.com' 'LegacyComponentCleanup' 'io.github.Eim-aa.Juyi.native-translation-overlay'; do
               LC_ALL=C grep -aFq "$token" "$directory"/*
+            done
+            # Removed transport; tokens are split so repository greps stay empty.
+            for token in 'NativeOwnerActivationCoordinator' 'owner-request''.json' '127.0.0.1:5432''1'; do
+              if LC_ALL=C grep -aFq "$token" "$directory"/*; then exit 1; fi
             done
             find "$directory" -maxdepth 1 -type f -exec otool -L {} + > "$RUNNER_TEMP/native-production.loads"
             grep -Fq '/Translation.framework/' "$RUNNER_TEMP/native-production.loads"
@@ -66,10 +63,8 @@ jobs:
             if grep -Fq '/Security.framework/' "$RUNNER_TEMP/native-production.loads"; then exit 1; fi
             if grep -Fq '/LocalAuthentication.framework/' "$RUNNER_TEMP/native-production.loads"; then exit 1; fi
           done
-      - name: Build legacy universal native app bundle and Apple Translation helper
-        run: |
-          scripts/build_macos_app.sh
-          scripts/build_apple_helper.sh "$RUNNER_TEMP/apple-translation-helper"
+      - name: Build legacy universal native app bundle
+        run: scripts/build_macos_app.sh
       - name: Run Swift tests
         run: scripts/run_swift_tests.sh "$RUNNER_TEMP/swift-tests"
 
@@ -77,12 +72,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Lua compiler
-        run: sudo apt-get update && sudo apt-get install --yes lua5.4
-      - name: Check Lua syntax
-        run: luac5.4 -p hammerspoon/argos-translator.lua
-      - name: Run Hammerspoon behavior contracts
-        run: lua5.4 tests/hammerspoon_runtime_test.lua hammerspoon/argos-translator.lua
       - name: Check Bash syntax
         run: |
           shopt -s nullglob
